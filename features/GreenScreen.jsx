@@ -68,6 +68,7 @@ const GreenScreen = ({ videoUrl, onVideoEnd }) => {
                 ref={videoRef}
                 src={videoUrl}
                 className="hidden"
+                style={{ display: 'none' }}
                 muted
                 playsInline
                 crossOrigin="anonymous" 
