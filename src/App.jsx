@@ -31,15 +31,14 @@ const App = () => {
 
     const downloadBrandKit = () => {
         alert("Preparing Onboardin Brand Kit Download...");
-        // Logic for brand kit download would go here
     };
 
     return (
         <div className="min-h-screen text-white relative font-sans selection:bg-purple-500/30">
             <BackgroundWaves />
             
-            {/* Navbar with Cinematic Fade-In linked to Landing video state */}
-            <nav className={`fixed top-0 left-0 w-full z-50 px-8 py-8 flex justify-between items-center transition-all duration-1000 ${uiVisible || currentView !== 'landing' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}>
+            {/* Navbar matching prototype layout and styling */}
+            <nav className={`fixed top-0 left-0 w-full z-50 px-6 py-6 md:px-12 md:py-8 flex justify-between items-center transition-all duration-1000 ${uiVisible || currentView !== 'landing' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}>
                 <div 
                     className="cursor-pointer nav-link flex items-center"
                     onClick={() => setCurrentView('landing')}
@@ -47,17 +46,30 @@ const App = () => {
                 >
                     <img src="/Onboardin.png" alt="Onboardin" className="h-10 md:h-12 w-auto object-contain" />
                 </div>
-                <div className="flex gap-8 text-sm md:text-base tracking-[0.2em] uppercase font-light">
+                
+                <div className="flex items-center gap-6 md:gap-10 text-[10px] md:text-xs tracking-[0.3em] uppercase font-bold">
+                    <button 
+                        onClick={() => setCurrentView('features')} 
+                        className="nav-link bg-transparent border-none cursor-pointer hidden sm:block hover:text-purple-300 transition-colors"
+                    >
+                        Features
+                    </button>
+                    <button 
+                        onClick={() => setCurrentView('pricing')} 
+                        className="nav-link bg-transparent border-none cursor-pointer hidden sm:block hover:text-purple-300 transition-colors"
+                    >
+                        Pricing
+                    </button>
                     <button 
                         onClick={() => setCurrentView('dashboard')} 
-                        className="nav-link bg-transparent border-none cursor-pointer text-purple-300 font-bold hover:text-white transition-colors"
+                        className="nav-link bg-transparent border-none cursor-pointer text-purple-300 hover:text-white transition-colors"
                     >
-                        {currentView === 'dashboard' ? 'Admin' : 'Login'}
+                        {currentView === 'dashboard' ? 'Admin Suite' : 'Login'}
                     </button>
                 </div>
             </nav>
 
-            {/* Custom Brand Kit Context Menu (Right-click Logo) */}
+            {/* Custom Brand Kit Context Menu */}
             {contextMenu.visible && (
                 <div 
                     className="custom-context-menu"
@@ -73,15 +85,31 @@ const App = () => {
                 </div>
             )}
             
-            <main>
+            <main className="relative z-10">
                 {currentView === 'landing' ? (
                     <Landing 
                         onNavigate={setCurrentView} 
                         uiVisible={uiVisible} 
                         setUiVisible={setUiVisible} 
                     />
-                ) : (
+                ) : currentView === 'dashboard' ? (
                     <Dashboard />
+                ) : (
+                    /* Placeholder for Features/Pricing to maintain layout integrity */
+                    <div className="h-screen flex items-center justify-center animate-[fadeIn_1s_ease-out]">
+                        <div className="text-center">
+                            <h2 className="text-4xl md:text-6xl font-bold mb-4 uppercase tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-500">
+                                {currentView}
+                            </h2>
+                            <p className="text-gray-400 tracking-widest text-xs uppercase mb-8">This module is under deployment.</p>
+                            <button 
+                                onClick={() => setCurrentView('landing')} 
+                                className="px-8 py-3 border border-white/20 rounded-full text-[10px] tracking-[0.2em] uppercase hover:bg-white/10 transition-colors"
+                            >
+                                Return Home
+                            </button>
+                        </div>
+                    </div>
                 )}
             </main>
         </div>
