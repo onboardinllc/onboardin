@@ -9,9 +9,14 @@ export default {
       fontFamily: {
         sans: ['Jost', 'sans-serif'],
       },
-      colors: {
-        violet: {
-            950: '#1a0b2e',
+      animation: {
+        'wave': 'waveMove 20s linear infinite',
+      },
+      keyframes: {
+        waveMove: {
+          '0%': { transform: 'translateX(0) translateZ(0) scaleY(1)' },
+          '50%': { transform: 'translateX(-25%) translateZ(0) scaleY(0.8)' },
+          '100%': { transform: 'translateX(-50%) translateZ(0) scaleY(1)' },
         }
       }
     },

@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Onboardin | Business Automation Suite</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+
+    <!-- Google Fonts: Jost (Futura Alternative) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Jost', sans-serif;
+            background-color: #1a0b2e; /* Deep Violet */
+            overflow-x: hidden;
+            color: white;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Waving Lines Animation */
+        .wave-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            overflow: hidden;
+        }
+
+        .wave-path {
+            fill: none;
+            stroke: rgba(255, 255, 255, 0.05);
+            stroke-width: 2;
+        }
+
+        @keyframes waveMove {
+            0% { transform: translateX(0) translateZ(0) scaleY(1) }
+            50% { transform: translateX(-25%) translateZ(0) scaleY(0.8) }
+            100% { transform: translateX(-50%) translateZ(0) scaleY(1) }
+        }
+
+        .animated-wave {
+            animation: waveMove 20s linear infinite;
+        }
+        
+        /* Navigation Links */
+        .nav-link {
+            transition: all 0.3s ease;
+        }
+        .nav-link:hover {
+            text-shadow: 0 0 10px rgba(255, 255, 255, 0.8), 0 0 20px rgba(255, 255, 255, 0.4);
+            transform: scale(1.05);
+        }
+
+        /* Context Menu */
+        .custom-context-menu {
+            position: fixed;
+            z-index: 1000;
+            background: rgba(20, 10, 40, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            padding: 8px 0;
+            min-width: 200px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            transform-origin: top left;
+            animation: menuFadeIn 0.2s ease-out;
+        }
+
+        @keyframes menuFadeIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .context-item {
+            padding: 10px 20px;
+            cursor: pointer;
+            transition: background 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 14px;
+        }
+
+        .context-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: #bd93f9;
+        }
+
+        /* Hide Scrollbar for clean UI */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1a0b2e; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #4c1d95; 
+            border-radius: 4px;
+        }
+        
+        /* Fade transitions */
+        .fade-enter {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+        .fade-enter-active {
+            opacity: 1;
+            transform: translateY(0);
+            transition: opacity 1000ms, transform 1000ms;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- COMPONENTS ---
+
+        // 1. Animated Background Component
+        const BackgroundWaves = () => (
+            <div className="wave-container pointer-events-none">
+                <svg className="w-[200%] h-full animated-wave" viewBox="0 0 1000 100" preserveAspectRatio="none">
+                    <path d="M0,50 C150,80 350,20 500,50 C650,80 850,20 1000,50 V100 H0 Z" className="wave-path" style={{ opacity: 0.1, animationDelay: '0s' }} />
+                    <path d="M0,50 C150,30 350,70 500,50 C650,30 850,70 1000,50 V100 H0 Z" className="wave-path" style={{ opacity: 0.2, animationDelay: '-5s' }} />
+                    <path d="M0,60 C200,90 400,30 600,60 C800,90 1000,30 1200,60 V100 H0 Z" className="wave-path" style={{ opacity: 0.15, animationDelay: '-10s', transform: 'scaleY(1.2)' }} />
+                </svg>
+            </div>
+        );
+
+        // 2. Chroma Key Video Component (Intro)
+        const GreenScreenIntro = ({ videoUrl, onVideoEnd }) => {
+            const videoRef = useRef(null);
+            const canvasRef = useRef(null);
+            const [isPlaying, setIsPlaying] = useState(false);
+            const [error, setError] = useState(false);
+
+            useEffect(() => {
+                let animationFrameId;
+
+                const processFrame = () => {
+                    const video = videoRef.current;
+                    const canvas = canvasRef.current;
+                    if (!video || !canvas || video.paused || video.ended) return;
+
+                    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+                    const width = video.videoWidth;
+                    const height = video.videoHeight;
+
+                    // Match canvas size to video
+                    if (canvas.width !== width) canvas.width = width;
+                    if (canvas.height !== height) canvas.height = height;
+
+                    // Draw original frame
+                    ctx.drawImage(video, 0, 0, width, height);
+                    
+                    // Get pixel data
+                    const frame = ctx.getImageData(0, 0, width, height);
+                    const l = frame.data.length / 4;
+
+                    for (let i = 0; i < l; i++) {
+                        const r = frame.data[i * 4 + 0];
+                        const g = frame.data[i * 4 + 1];
+                        const b = frame.data[i * 4 + 2];
+
+                        // Green Screen Logic
+                        if (g > 100 && g > r * 1.4 && g > b * 1.4) {
+                            frame.data[i * 4 + 3] = 0; // Transparent
+                        }
+                    }
+
+                    ctx.putImageData(frame, 0, 0);
+                    animationFrameId = requestAnimationFrame(processFrame);
+                };
+
+                if (isPlaying) {
+                    processFrame();
+                }
+
+                return () => cancelAnimationFrame(animationFrameId);
+            }, [isPlaying]);
+
+            const handlePlay = () => {
+                if(videoRef.current) {
+                    videoRef.current.play()
+                        .then(() => setIsPlaying(true))
+                        .catch(e => {
+                            console.error("Autoplay failed", e);
+                            setError(true);
+                        });
+                }
+            };
+
+            return (
+                <div className="relative flex justify-center items-center w-full max-w-4xl h-[50vh] md:h-[70vh]">
+                    <video 
+                        ref={videoRef}
+                        src={videoUrl}
+                        className="hidden"
+                        muted
+                        playsInline
+                        crossOrigin="anonymous" 
+                        onLoadedData={handlePlay}
+                        onEnded={onVideoEnd}
+                    />
+
+                    {!error ? (
+                        <canvas ref={canvasRef} className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(255,255,255,0.15)]" />
+                    ) : (
+                        // Fallback Text if video is missing locally
+                        <div className="text-center animate-pulse">
+                             <h1 className="text-6xl md:text-9xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
+                                Onboardin Ai
+                            </h1>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // 3. Navigation Component
+        const Navbar = ({ onViewChange, currentView, visible }) => {
+            const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0 });
+
+            useEffect(() => {
+                const handleClickOutside = () => setContextMenu({ ...contextMenu, visible: false });
+                document.addEventListener('click', handleClickOutside);
+                return () => document.removeEventListener('click', handleClickOutside);
+            }, [contextMenu]);
+
+            const handleLogoRightClick = (e) => {
+                e.preventDefault();
+                setContextMenu({
+                    visible: true,
+                    x: e.clientX,
+                    y: e.clientY
+                });
+            };
+
+            const downloadBrandKit = () => {
+                alert("Downloading Brand Kit...");
+                // In production: window.location.href = '/path/to/brand-kit.zip';
+            };
+
+            return (
+                <>
+                    <nav className={`fixed top-0 left-0 w-full z-50 px-6 py-6 flex justify-between items-center transition-all duration-1000 ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}>
+                        <div 
+                            className="cursor-pointer nav-link"
+                            onClick={() => onViewChange('landing')}
+                            onContextMenu={handleLogoRightClick}
+                        >
+                            {/* Logo Image */}
+                            <img src="Onboardin.png" alt="Onboardin Logo" className="h-10 md:h-12 w-auto object-contain" />
+                        </div>
+                        <div className="flex gap-6 md:gap-8 text-sm md:text-base tracking-widest uppercase">
+                            <button onClick={() => onViewChange('features')} className="nav-link bg-transparent border-none cursor-pointer hidden md:block">Features</button>
+                            <button onClick={() => onViewChange('pricing')} className="nav-link bg-transparent border-none cursor-pointer hidden md:block">Pricing</button>
+                            <button onClick={() => onViewChange('dashboard')} className="nav-link bg-transparent border-none cursor-pointer font-bold text-purple-300">
+                                {currentView === 'dashboard' ? 'Admin Suite' : 'Login'}
+                            </button>
+                        </div>
+                    </nav>
+
+                    {/* Custom Context Menu */}
+                    {contextMenu.visible && (
+                        <div 
+                            className="custom-context-menu"
+                            style={{ top: contextMenu.y, left: contextMenu.x }}
+                        >
+                            <div className="context-item" onClick={downloadBrandKit}>
+                                <i className="ph ph-download-simple text-lg"></i>
+                                <span>Download Brand Kit</span>
+                            </div>
+                        </div>
+                    )}
+                </>
+            );
+        };
+
+        // 4. Feature Card (Used in Dashboard)
+        const IntegrationCard = ({ icon, name, desc }) => (
+            <div className="bg-white/5 border border-white/10 p-6 rounded-xl hover:bg-white/10 transition-all duration-300 backdrop-blur-md group cursor-pointer">
+                <div className="text-3xl mb-4 text-blue-400 group-hover:text-purple-400 transition-colors">
+                    {icon}
+                </div>
+                <h3 className="text-xl font-bold mb-2">{name}</h3>
+                <p className="text-gray-300 text-sm leading-relaxed">{desc}</p>
+            </div>
+        );
+
+        // --- VIEWS ---
+
+        const LandingView = ({ setView, uiVisible, setUiVisible }) => {
+            
+            const handleVideoEnd = () => {
+                setUiVisible(true);
+            };
+
+            // Fallback: If video doesn't play or end, show UI after 4 seconds anyway
+            useEffect(() => {
+                const timer = setTimeout(() => {
+                    setUiVisible(true);
+                }, 4000);
+                return () => clearTimeout(timer);
+            }, []);
+
+            return (
+                <div className="flex flex-col items-center justify-center min-h-screen px-4 overflow-hidden relative">
+                    
+                    {/* Centered Video Hero */}
+                    <div className={`transition-all duration-1000 ${uiVisible ? 'scale-75 -translate-y-10' : 'scale-100'}`}>
+                        <GreenScreenIntro videoUrl="Onboardin-Ongreen.mp4" onVideoEnd={handleVideoEnd} /> 
+                    </div>
+
+                    {/* Content Fades in AFTER video */}
+                    <div className={`text-center z-10 transition-all duration-1000 delay-300 absolute bottom-20 md:bottom-32 w-full px-4 ${uiVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
+                        <button 
+                            onClick={() => setView('dashboard')} // Simulates going to "Login" or starting logic
+                            className="group relative px-10 py-4 bg-transparent border border-white/30 rounded-full overflow-hidden transition-all duration-300 hover:border-white/80 hover:drop-shadow-[0_0_15px_rgba(255,255,255,0.5)]"
+                        >
+                            <span className="relative z-10 font-bold tracking-[0.2em] uppercase text-sm md:text-base">Start Building</span>
+                            <div className="absolute inset-0 bg-white/10 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left duration-300"></div>
+                        </button>
+
+                        <p className="text-gray-400 text-xs md:text-sm mt-6 font-light tracking-wide uppercase opacity-70">
+                            Automate. Integrate. Scale.
+                        </p>
+                    </div>
+                </div>
+            );
+        };
+
+        const DashboardView = () => {
+            // This is now the "Backend Admin" area
+            const [apiKey, setApiKey] = useState('');
+
+            return (
+                <div className="pt-24 px-4 md:px-12 min-h-screen animate-fade-in">
+                    <div className="flex justify-between items-end mb-8 border-b border-white/10 pb-4">
+                        <div>
+                            <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">Admin Console</h1>
+                            <p className="text-sm text-gray-400">Backend System Management</p>
+                        </div>
+                        <div className="text-right">
+                            <span className="text-xs uppercase tracking-widest text-green-400 border border-green-400/30 px-2 py-1 rounded">Status: Active</span>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {/* API Key Manager */}
+                        <div className="col-span-1 md:col-span-2 bg-black/20 border border-white/10 rounded-xl p-6 backdrop-blur-sm">
+                            <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                                <i className="ph ph-lock-key"></i> Environment Variables
+                            </h3>
+                            
+                            <div className="space-y-4">
+                                <div className="flex gap-2 items-center">
+                                    <span className="w-32 text-sm font-bold text-gray-400">OPENAI_KEY</span>
+                                    <input type="password" value="sk-........................" disabled className="flex-1 bg-black/30 border border-white/5 rounded px-3 py-2 text-sm text-gray-500 font-mono" />
+                                    <button className="text-xs bg-white/5 px-3 py-2 rounded hover:bg-white/10 transition-colors">Edit</button>
+                                </div>
+                                <div className="flex gap-2 items-center">
+                                    <span className="w-32 text-sm font-bold text-gray-400">WAVE_TOKEN</span>
+                                    <input type="password" value="bv-........................" disabled className="flex-1 bg-black/30 border border-white/5 rounded px-3 py-2 text-sm text-gray-500 font-mono" />
+                                    <button className="text-xs bg-white/5 px-3 py-2 rounded hover:bg-white/10 transition-colors">Edit</button>
+                                </div>
+                                <div className="flex gap-2 items-center">
+                                    <span className="w-32 text-sm font-bold text-gray-400">SUPABASE_URL</span>
+                                    <input type="text" value="https://xyz.supabase.co" disabled className="flex-1 bg-black/30 border border-white/5 rounded px-3 py-2 text-sm text-gray-500 font-mono" />
+                                    <button className="text-xs bg-white/5 px-3 py-2 rounded hover:bg-white/10 transition-colors">Edit</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Quick Actions */}
+                        <div className="bg-gradient-to-b from-purple-900/20 to-blue-900/20 border border-white/10 rounded-xl p-6">
+                            <h3 className="text-xl font-bold mb-4">Deployments</h3>
+                            <div className="space-y-3">
+                                <button className="w-full flex items-center justify-between bg-white/5 p-3 rounded hover:bg-green-500/20 transition-all text-sm group border border-transparent hover:border-green-500/30">
+                                    <span>Clawbot v2.1</span>
+                                    <div className="flex items-center gap-2">
+                                        <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                                        <span className="text-xs text-gray-400">Live</span>
+                                    </div>
+                                </button>
+                                <button className="w-full flex items-center justify-between bg-white/5 p-3 rounded hover:bg-white/10 transition-all text-sm group">
+                                    <span>Tax Worker</span>
+                                    <span className="text-xs text-gray-500">Idle</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* App Grid */}
+                    <div className="mt-8">
+                        <h3 className="text-xl font-bold mb-4">Connected Services</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                            <IntegrationCard 
+                                icon={<i className="ph ph-github-logo"></i>} 
+                                name="GitHub" 
+                                desc="Connected" 
+                            />
+                            <IntegrationCard 
+                                icon={<i className="ph ph-waves"></i>} 
+                                name="Wave" 
+                                desc="Synced: 2m ago" 
+                            />
+                            <IntegrationCard 
+                                icon={<i className="ph ph-receipt"></i>} 
+                                name="Numeral" 
+                                desc="Active" 
+                            />
+                            <IntegrationCard 
+                                icon={<i className="ph ph-database"></i>} 
+                                name="Supabase" 
+                                desc="Healthy" 
+                            />
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // Main App Container
+        const App = () => {
+            const [currentView, setCurrentView] = useState('landing');
+            const [uiVisible, setUiVisible] = useState(false);
+
+            return (
+                <div className="min-h-screen text-white relative">
+                    <BackgroundWaves />
+                    
+                    {/* Pass uiVisible to Navbar to control fade in */}
+                    <Navbar onViewChange={setCurrentView} currentView={currentView} visible={uiVisible || currentView !== 'landing'} />
+
+                    <main className="transition-opacity duration-500 ease-in-out">
+                        {currentView === 'landing' && (
+                            <LandingView setView={setCurrentView} uiVisible={uiVisible} setUiVisible={setUiVisible} />
+                        )}
+                        
+                        {currentView === 'dashboard' && <DashboardView />}
+                        
+                        {(currentView === 'features' || currentView === 'pricing') && (
+                            <div className="h-screen flex items-center justify-center animate-fade-in">
+                                <div className="text-center">
+                                    <h2 className="text-4xl font-bold mb-4 capitalize text-transparent bg-clip-text bg-gradient-to-b from-white to-gray-500">{currentView}</h2>
+                                    <p className="text-gray-400">Public facing module.</p>
+                                    <button onClick={() => setCurrentView('landing')} className="mt-8 px-6 py-2 border border-white/20 rounded-full text-sm hover:bg-white/10 transition-colors">Return</button>
+                                </div>
+                            </div>
+                        )}
+                    </main>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
