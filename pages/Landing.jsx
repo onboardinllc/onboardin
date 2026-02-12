@@ -1,8 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import GreenScreen from '../features/GreenScreen';
 
-const Landing = ({ onNavigate }) => {
-    const [uiVisible, setUiVisible] = useState(false);
+const Landing = ({ onNavigate, uiVisible, setUiVisible }) => {
 
     const handleVideoEnd = () => {
         setUiVisible(true);
@@ -10,8 +9,10 @@ const Landing = ({ onNavigate }) => {
 
     // Fallback: Show UI after 4 seconds if video doesn't trigger end
     useEffect(() => {
-        const timer = setTimeout(() => setUiVisible(true), 4000);
-        return () => clearTimeout(timer);
+        if (!uiVisible) {
+            const timer = setTimeout(() => setUiVisible(true), 4000);
+            return () => clearTimeout(timer);
+        }
     }, []);
 
     return (

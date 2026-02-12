@@ -1,7 +1,68 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-4.  **Launch:**
-```bash
-npm run dev
-    (Click the localhost link to see your PWA in action!)
+
+:root {
+  font-family: 'Jost', sans-serif;
+  background-color: #1a0b2e; /* Deep Violet */
+  color: white;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+  background-color: #1a0b2e;
+}
+
+/* Waving Lines Animation */
+@keyframes waveMove {
+  0% { transform: translateX(0) translateZ(0) scaleY(1) }
+  50% { transform: translateX(-25%) translateZ(0) scaleY(0.8) }
+  100% { transform: translateX(-50%) translateZ(0) scaleY(1) }
+}
+
+.animate-wave {
+  animation: waveMove 20s linear infinite;
+}
+
+/* UI Elements */
+.nav-link {
+  transition: all 0.3s ease;
+}
+
+.nav-link:hover {
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.8), 0 0 20px rgba(255, 255, 255, 0.4);
+  transform: scale(1.05);
+}
+
+/* Custom Context Menu Styling */
+.custom-context-menu {
+  position: fixed;
+  z-index: 1000;
+  background: rgba(20, 10, 40, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(10px);
+  border-radius: 8px;
+  min-width: 200px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  transform-origin: top left;
+  animation: menuFadeIn 0.2s ease-out;
+}
+
+@keyframes menuFadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #1a0b2e; 
+}
+::-webkit-scrollbar-thumb {
+  background: #4c1d95; 
+  border-radius: 4px;
+}
