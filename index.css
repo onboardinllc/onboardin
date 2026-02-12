@@ -1,0 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+4.  **Launch:**
+```bash
+npm run dev
+    (Click the localhost link to see your PWA in action!)
