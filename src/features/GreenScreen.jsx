@@ -18,25 +18,44 @@ const GreenScreen = ({ videoUrl, onVideoEnd }) => {
             const width = video.videoWidth;
             const height = video.videoHeight;
 
-            // Match canvas size to video
-            if (canvas.width !== width) canvas.width = width;
+            // Define crop area to remove "Ai" from the top right
+            // We reduce the source width slightly to cut off the right side
+            const cropRight = 0.0; // Percent to cut from right (adjust this to trim "Ai")
+            const sourceWidth = width * (1 - cropRight);
+            
+            if (canvas.width !== sourceWidth) canvas.width = sourceWidth;
             if (canvas.height !== height) canvas.height = height;
 
-            // Draw original frame
-            ctx.drawImage(video, 0, 0, width, height);
+            // Draw the cropped video frame
+            ctx.drawImage(video, 0, 0, sourceWidth, height, 0, 0, sourceWidth, height);
             
-            // Get pixel data
-            const frame = ctx.getImageData(0, 0, width, height);
-            const l = frame.data.length / 4;
+            const frame = ctx.getImageData(0, 0, sourceWidth, height);
+            const data = frame.data;
 
-            for (let i = 0; i < l; i++) {
-                const r = frame.data[i * 4 + 0];
-                const g = frame.data[i * 4 + 1];
-                const b = frame.data[i * 4 + 2];
+            // Chroma Key Settings for Smoothing
+            const similarityThreshold = 0.4; // How close to green to start fading
+            const smoothnessThreshold = 0.08; // The range over which we fade alpha
 
-                // Green Screen Logic: If pixel is predominantly green
-                if (g > 100 && g > r * 1.4 && g > b * 1.4) {
-                    frame.data[i * 4 + 3] = 0; // Set Alpha to 0 (Transparent)
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i + 0];
+                const g = data[i + 1];
+                const b = data[i + 2];
+
+                // Calculate "Greenness" relative to other channels
+                const maxRB = Math.max(r, b);
+                const greenness = (g - maxRB) / 255;
+
+                if (greenness > similarityThreshold) {
+                    // Calculate soft alpha based on similarity
+                    const diff = greenness - similarityThreshold;
+                    if (diff < smoothnessThreshold) {
+                        // Blend edge pixels for smoothness
+                        const alpha = 1 - (diff / smoothnessThreshold);
+                        data[i + 3] = alpha * 255;
+                    } else {
+                        // Fully transparent
+                        data[i + 3] = 0;
+                    }
                 }
             }
 
@@ -63,12 +82,11 @@ const GreenScreen = ({ videoUrl, onVideoEnd }) => {
     };
 
     return (
-        <div className="relative flex justify-center items-center w-full max-w-4xl h-[50vh] md:h-[70vh]">
+        <div className="relative flex justify-center items-center w-full max-w-2xl h-[40vh] md:h-[50vh]">
             <video 
                 ref={videoRef}
                 src={videoUrl}
                 className="hidden"
-                style={{ display: 'none' }}
                 muted
                 playsInline
                 crossOrigin="anonymous" 
@@ -77,11 +95,14 @@ const GreenScreen = ({ videoUrl, onVideoEnd }) => {
             />
 
             {!error ? (
-                <canvas ref={canvasRef} className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(255,255,255,0.15)]" />
+                <canvas 
+                    ref={canvasRef} 
+                    className="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(255,255,255,0.1)] transition-all duration-700" 
+                />
             ) : (
                 <div className="text-center animate-pulse">
-                        <h1 className="text-6xl md:text-9xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
-                        Onboardin Ai
+                     <h1 className="text-6xl md:text-8xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
+                        Onboardin
                     </h1>
                 </div>
             )}
