@@ -38,7 +38,8 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      # Explicitly setting the URL ensures the GitHub UI points to your secure custom domain
+      url: https://onboardin.llc
     steps:
       - name: Deploy to GitHub Pages
         id: deployment

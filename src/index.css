@@ -15,7 +15,7 @@ body {
   background-color: #1a0b2e;
 }
 
-/* Waving Lines Animation */
+/* Waving Lines Animation - 20s for a slow, premium feel */
 @keyframes waveMove {
   0% { transform: translateX(0) translateZ(0) scaleY(1) }
   50% { transform: translateX(-25%) translateZ(0) scaleY(0.8) }
