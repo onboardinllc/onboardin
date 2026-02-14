@@ -148,66 +148,63 @@ const Landing = ({ onNavigate, uiVisible, setUiVisible }) => {
 
             <div className={`text-center z-10 transition-all duration-1000 delay-500 absolute bottom-32 md:bottom-44 w-full px-4 ${uiVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`}>
                 
-                {/* Mind Map Button Logic /}
-<div className="relative inline-block group">
-{/ Mind Map Nodes (Hidden by default, visible on hover) */}
-<div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-700 ease-out">
+                {/* Mind Map Button Logic */}
+                <div className="relative inline-block group">
+                    {/* Mind Map Nodes (Hidden by default, visible on hover) */}
+                    <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-700 ease-out">
+                        
+                        {/* Node 1: Tax (Top Left) */}
+                        <div className="absolute -top-16 -left-20 md:-left-32 animate-drift">
+                            <div className="relative flex flex-col items-center">
+                                <div className="w-2.5 h-2.5 bg-blue-400 rounded-full shadow-[0_0_15px_rgba(59,130,246,1)] z-10 relative"></div>
+                                {/* Fluid Thread: Adjusted to connect dot to button center */}
+                                <svg className="absolute top-1 left-1 w-[250px] h-[150px] overflow-visible pointer-events-none z-0">
+                                    <path 
+                                        d="M 0,0 Q 80,40 200,80" 
+                                        fill="none" 
+                                        stroke="rgba(59,130,246,0.4)" 
+                                        strokeWidth="1" 
+                                        className="fluid-thread"
+                                    />
+                                </svg>
+                                <span className="text-[10px] uppercase tracking-[0.2em] text-blue-200 mt-2 font-bold drop-shadow-[0_0_8px_rgba(59,130,246,0.8)] whitespace-nowrap">Tax Auto</span>
+                            </div>
+                        </div>
 
-                    {/* Node 1: Tax (Top Left) */}
-                    <div className="absolute -top-16 -left-20 md:-left-32 animate-drift">
-                        <div className="relative flex flex-col items-center">
-                            <div className="w-2.5 h-2.5 bg-blue-400 rounded-full shadow-[0_0_15px_rgba(59,130,246,1)] z-10 relative"></div>
-                            {/* Fluid Thread: Curved specifically to stem from button center area */}
-                            <svg className="absolute top-[5px] left-[5px] w-[200px] h-[200px] overflow-visible pointer-events-none z-0">
-                                <path 
-                                    d="M 0,0 Q 50,50 110,80" 
-                                    fill="none" 
-                                    stroke="rgba(59,130,246,0.3)" 
-                                    strokeWidth="1" 
-                                    strokeLinecap="round"
-                                    className="fluid-thread"
-                                />
-                            </svg>
-                            <span className="text-[10px] uppercase tracking-[0.2em] text-blue-200 mt-2 font-bold drop-shadow-[0_0_8px_rgba(59,130,246,0.8)] whitespace-nowrap">Tax Auto</span>
+                        {/* Node 2: Legal (Top Right) */}
+                        <div className="absolute -top-20 -right-20 md:-right-32 animate-drift-delayed">
+                            <div className="relative flex flex-col items-center">
+                                <div className="w-2.5 h-2.5 bg-purple-400 rounded-full shadow-[0_0_15px_rgba(168,85,247,1)] z-10 relative"></div>
+                                <svg className="absolute top-1 right-1 w-[250px] h-[150px] overflow-visible pointer-events-none z-0">
+                                    <path 
+                                        d="M 0,0 Q -80,40 -200,80" 
+                                        fill="none" 
+                                        stroke="rgba(168,85,247,0.4)" 
+                                        strokeWidth="1" 
+                                        className="fluid-thread"
+                                    />
+                                </svg>
+                                <span className="text-[10px] uppercase tracking-[0.2em] text-purple-200 mt-2 font-bold drop-shadow-[0_0_8px_rgba(168,85,247,0.8)] whitespace-nowrap">Legal Docs</span>
+                            </div>
+                        </div>
+
+                        {/* Node 3: Compliance (Bottom Center) */}
+                        <div className="absolute -bottom-24 left-1/2 -translate-x-1/2 animate-drift-slow">
+                            <div className="relative flex flex-col items-center">
+                                <div className="w-2.5 h-2.5 bg-green-400 rounded-full shadow-[0_0_15px_rgba(74,222,128,1)] z-10 relative"></div>
+                                <svg className="absolute bottom-1 left-1/2 -translate-x-1/2 w-[100px] h-[150px] overflow-visible pointer-events-none z-0">
+                                    <path 
+                                        d="M 0,0 Q 0,-40 0,-110" 
+                                        fill="none" 
+                                        stroke="rgba(74,222,128,0.4)" 
+                                        strokeWidth="1" 
+                                        className="fluid-thread"
+                                    />
+                                </svg>
+                                <span className="text-[10px] uppercase tracking-[0.2em] text-green-200 mt-2 font-bold drop-shadow-[0_0_8px_rgba(74,222,128,0.8)] whitespace-nowrap">Compliance</span>
+                            </div>
                         </div>
                     </div>
-
-                    {/* Node 2: Legal (Top Right) */}
-                    <div className="absolute -top-20 -right-20 md:-right-32 animate-drift-delayed">
-                        <div className="relative flex flex-col items-center">
-                            <div className="w-2.5 h-2.5 bg-purple-400 rounded-full shadow-[0_0_15px_rgba(168,85,247,1)] z-10 relative"></div>
-                            <svg className="absolute top-[5px] right-[5px] w-[200px] h-[200px] overflow-visible pointer-events-none z-0">
-                                <path 
-                                    d="M 0,0 Q -50,50 -110,90" 
-                                    fill="none" 
-                                    stroke="rgba(168,85,247,0.3)" 
-                                    strokeWidth="1" 
-                                    strokeLinecap="round"
-                                    className="fluid-thread"
-                                />
-                            </svg>
-                            <span className="text-[10px] uppercase tracking-[0.2em] text-purple-200 mt-2 font-bold drop-shadow-[0_0_8px_rgba(168,85,247,0.8)] whitespace-nowrap">Legal Docs</span>
-                        </div>
-                    </div>
-
-                    {/* Node 3: Compliance (Bottom Center) */}
-                    <div className="absolute -bottom-24 left-1/2 -translate-x-1/2 animate-drift-slow">
-                        <div className="relative flex flex-col items-center">
-                            <div className="w-2.5 h-2.5 bg-green-400 rounded-full shadow-[0_0_15px_rgba(74,222,128,1)] z-10 relative"></div>
-                            <svg className="absolute bottom-[5px] left-1/2 -translate-x-1/2 w-[10px] h-[150px] overflow-visible pointer-events-none z-0">
-                                <path 
-                                    d="M 0,0 Q 15,-40 0,-110" 
-                                    fill="none" 
-                                    stroke="rgba(74,222,128,0.3)" 
-                                    strokeWidth="1" 
-                                    strokeLinecap="round"
-                                    className="fluid-thread"
-                                />
-                            </svg>
-                            <span className="text-[10px] uppercase tracking-[0.2em] text-green-200 mt-2 font-bold drop-shadow-[0_0_8px_rgba(74,222,128,0.8)] whitespace-nowrap">Compliance</span>
-                        </div>
-                    </div>
-                </div>
 
                     <button onClick={onNavigate} className="relative z-20 px-12 py-5 border border-white/20 rounded-full uppercase tracking-[0.4em] font-black text-sm transition-all duration-[600ms] hover:border-white/90 hover:bg-white/5 hover:shadow-[0_0_35px_rgba(255,255,255,0.2)] active:scale-95 bg-[#1a0b2e]/80 backdrop-blur-md">
                         Start Building
@@ -225,12 +222,15 @@ const Landing = ({ onNavigate, uiVisible, setUiVisible }) => {
 // --- Features Page Component ---
 const Features = () => {
     const features = [
+	{ icon: "ph-robot", title: "Marketing Automation", desc: "Automated marketing campaign and content creation, scheduling and publishing." },
+	{ icon: "ph-database", title: "Digital Rights Managment", desc: "DRM documentation and coverage." },
         { icon: "ph-robot", title: "AI Agents", desc: "Deploy autonomous agents for tax, legal, and operational workflows." },
         { icon: "ph-waves", title: "Accounting", desc: "Real-time synchronization of invoices, expenses, and payroll data." },
+	{ icon: "ph-database", title: "Business Development", desc: "Sprint development and managment." },
         { icon: "ph-paper-plane-tilt", title: "Emails", desc: "Transactional email infrastructure with high deliverability." },
         { icon: "ph-receipt", title: "Taxes", desc: "Automated sales tax calculation and filing compliance." },
         { icon: "ph-database", title: "Databases", desc: "Scalable postgres database management included in every tier." },
-        { icon: "ph-scroll", title: "Legal", desc: "Auto-generated policies and consent management." }
+        { icon: "ph-scroll", title: "Legal Compliance", desc: "Auto-generated policies and consent management." }
     ];
 
     return (
