@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { supabase } from './lib/supabase';
 
 // --- VIDEO ENGINE: GreenScreen Component ---
 const GreenScreen = ({ videoUrl, onVideoEnd }) => {
@@ -309,45 +310,139 @@ const Pricing = ({ onContact }) => {
     );
 };
 
-// --- Dashboard Component (The "ONBOARD" Login Screen) ---
-const Dashboard = () => (
-    <div className="pt-32 px-8 md:px-16 animate-[fadeIn_1s_ease-out] flex flex-col items-center min-h-[60vh] relative z-10">
-        <div className="w-full max-w-md">
-            <div className="mb-10 text-center">
-                <h1 className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-400 uppercase tracking-tighter mb-3">ONBOARD</h1>
-                <p className="text-xs text-gray-400 uppercase tracking-[0.3em] opacity-70">Open your client dashboard</p>
-            </div>
+// --- Dashboard Component ---
+const Dashboard = () => {
+    const [session, setSession] = useState(null);
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
 
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl shadow-2xl">
-                <div className="space-y-6">
-                    <div className="group">
-                        <label className="block text-[10px] uppercase tracking-widest text-gray-500 mb-2 group-hover:text-purple-400 transition-colors">Username</label>
-                        <input 
-                            type="text" 
-                            className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-purple-500/50 focus:bg-black/60 transition-all" 
-                            placeholder="User ID" 
-                        />
+    useEffect(() => {
+        supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
+        return () => subscription.unsubscribe();
+    }, []);
+
+    const handleSignIn = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) setError(error.message);
+        setLoading(false);
+    };
+
+    const handleSignOut = async () => {
+        await supabase.auth.signOut();
+    };
+
+    if (session) {
+        return (
+            <div className="pt-32 px-8 md:px-16 animate-[fadeIn_1s_ease-out] min-h-screen relative z-10">
+                <div className="max-w-4xl mx-auto">
+                    <div className="flex justify-between items-center mb-12">
+                        <div>
+                            <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-400 uppercase tracking-tighter">Console</h1>
+                            <p className="text-xs text-gray-500 uppercase tracking-[0.3em] mt-1">{session.user.email}</p>
+                        </div>
+                        <button onClick={handleSignOut} className="px-6 py-2 border border-white/10 rounded-lg text-[10px] uppercase tracking-widest text-gray-400 hover:text-white hover:border-white/30 transition-all">
+                            Sign Out
+                        </button>
                     </div>
-                    <div className="group">
-                        <label className="block text-[10px] uppercase tracking-widest text-gray-500 mb-2 group-hover:text-purple-400 transition-colors">Password</label>
-                        <input 
-                            type="password" 
-                            className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-purple-500/50 focus:bg-black/60 transition-all" 
-                            placeholder="••••••••••••" 
-                        />
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                            <h3 className="text-[10px] uppercase tracking-widest text-gray-500 mb-4">Active Deployments</h3>
+                            <div className="space-y-3">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-300">Clawbot v2.1</span>
+                                    <span className="text-[9px] uppercase tracking-widest text-green-400 bg-green-400/10 px-2 py-1 rounded-full">Active</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-300">Tax Agent</span>
+                                    <span className="text-[9px] uppercase tracking-widest text-yellow-400 bg-yellow-400/10 px-2 py-1 rounded-full">Standby</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                            <h3 className="text-[10px] uppercase tracking-widest text-gray-500 mb-4">Integrations</h3>
+                            <div className="space-y-3">
+                                {['GitHub', 'Wave', 'Termly', 'Resend'].map(name => (
+                                    <div key={name} className="flex justify-between items-center">
+                                        <span className="text-sm text-gray-300">{name}</span>
+                                        <span className="text-[9px] uppercase tracking-widest text-blue-400 bg-blue-400/10 px-2 py-1 rounded-full">Connected</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
                     </div>
-                    <button className="w-full py-4 mt-2 bg-white/5 hover:bg-white/10 border border-white/10 border border-white/20 rounded-lg text-xs font-bold uppercase tracking-[0.2em] transition-all hover:shadow-[0_0_15px_rgba(255,255,255,0.05)]">
-                        Sign In
-                    </button>
+
+                    <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                        <h3 className="text-[10px] uppercase tracking-widest text-gray-500 mb-4">System Status</h3>
+                        <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+                            <span className="text-sm text-gray-300">All systems operational</span>
+                        </div>
+                    </div>
                 </div>
             </div>
-            
-            <div className="mt-12 text-center opacity-30 hover:opacity-100 transition-opacity">
-                <p className="text-[9px] uppercase tracking-[0.2em] cursor-pointer">Recover Access Credentials</p>
+        );
+    }
+
+    return (
+        <div className="pt-32 px-8 md:px-16 animate-[fadeIn_1s_ease-out] flex flex-col items-center min-h-[60vh] relative z-10">
+            <div className="w-full max-w-md">
+                <div className="mb-10 text-center">
+                    <h1 className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-400 uppercase tracking-tighter mb-3">ONBOARD</h1>
+                    <p className="text-xs text-gray-400 uppercase tracking-[0.3em] opacity-70">Open your client dashboard</p>
+                </div>
+
+                <form onSubmit={handleSignIn} className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl shadow-2xl">
+                    <div className="space-y-6">
+                        <div className="group">
+                            <label className="block text-[10px] uppercase tracking-widest text-gray-500 mb-2 group-hover:text-purple-400 transition-colors">Email</label>
+                            <input
+                                type="email"
+                                value={email}
+                                onChange={e => setEmail(e.target.value)}
+                                required
+                                className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-purple-500/50 focus:bg-black/60 transition-all"
+                                placeholder="you@example.com"
+                            />
+                        </div>
+                        <div className="group">
+                            <label className="block text-[10px] uppercase tracking-widest text-gray-500 mb-2 group-hover:text-purple-400 transition-colors">Password</label>
+                            <input
+                                type="password"
+                                value={password}
+                                onChange={e => setPassword(e.target.value)}
+                                required
+                                className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-sm text-white focus:outline-none focus:border-purple-500/50 focus:bg-black/60 transition-all"
+                                placeholder="••••••••••••"
+                            />
+                        </div>
+                        {error && (
+                            <p className="text-red-400 text-[11px] uppercase tracking-widest">{error}</p>
+                        )}
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="w-full py-4 mt-2 bg-white/5 hover:bg-white/10 border border-white/20 rounded-lg text-xs font-bold uppercase tracking-[0.2em] transition-all hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] disabled:opacity-40"
+                        >
+                            {loading ? 'Signing In...' : 'Sign In'}
+                        </button>
+                    </div>
+                </form>
+
+                <div className="mt-12 text-center opacity-30 hover:opacity-100 transition-opacity">
+                    <p className="text-[9px] uppercase tracking-[0.2em] cursor-pointer">Recover Access Credentials</p>
+                </div>
             </div>
         </div>
-    </div>
-);
+    );
+};
 
 // --- Background Waves (with Lower-Half Positioning & Floating Motion) ---
 const BackgroundWaves = ({ visible }) => (
