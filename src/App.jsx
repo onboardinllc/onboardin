@@ -6,7 +6,7 @@ const GreenScreen = ({ videoUrl, onVideoEnd }) => {
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
     const [isPlaying, setIsPlaying] = useState(false);
-    const [error, setError] = useState(false);
+    const [showFallback, setShowFallback] = useState(false);
 
     useEffect(() => {
         let animationFrameId;
@@ -21,20 +21,20 @@ const GreenScreen = ({ videoUrl, onVideoEnd }) => {
             const height = video.videoHeight;
 
             // --- VIDEO CROP ---
-            const cropRight = 0.0; 
+            const cropRight = 0.0;
             const sourceWidth = width * (1 - cropRight);
-            
+
             if (canvas.width !== sourceWidth) canvas.width = sourceWidth;
             if (canvas.height !== height) canvas.height = height;
 
             ctx.drawImage(video, 0, 0, sourceWidth, height, 0, 0, sourceWidth, height);
-            
+
             const frame = ctx.getImageData(0, 0, sourceWidth, height);
             const data = frame.data;
 
             // --- SOFT-KEYING ---
-            const similarity = 0.35; 
-            const smoothness = 0.12; 
+            const similarity = 0.35;
+            const smoothness = 0.12;
 
             for (let i = 0; i < data.length; i += 4) {
                 const r = data[i + 0];
@@ -49,7 +49,7 @@ const GreenScreen = ({ videoUrl, onVideoEnd }) => {
                     if (diff < smoothness) {
                         const alpha = 1 - (diff / smoothness);
                         data[i + 3] = alpha * 255;
-                        data[i + 1] = maxRB; 
+                        data[i + 1] = maxRB;
                     } else {
                         data[i + 3] = 0;
                     }
@@ -73,33 +73,43 @@ const GreenScreen = ({ videoUrl, onVideoEnd }) => {
                 .then(() => setIsPlaying(true))
                 .catch(e => {
                     console.error("Autoplay failed", e);
-                    setError(true);
+                    setShowFallback(true);
                 });
         }
     };
 
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (!isPlaying) {
+                setShowFallback(true);
+            }
+        }, 2000);
+        return () => clearTimeout(timer);
+    }, [isPlaying]);
+
     return (
         <div className="relative flex justify-center items-center w-full max-w-xl h-[35vh] md:h-[45vh]">
-            <video 
+            <video
                 ref={videoRef}
                 src={videoUrl}
                 className="hidden"
                 muted
                 playsInline
-                crossOrigin="anonymous" 
+                crossOrigin="anonymous"
                 onLoadedData={handlePlay}
                 onEnded={onVideoEnd}
+                onError={() => setShowFallback(true)}
             />
 
-            {!error ? (
-                <canvas 
-                    ref={canvasRef} 
-                    className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(255,255,255,0.15)] transition-opacity duration-1000" 
+            {!showFallback ? (
+                <canvas
+                    ref={canvasRef}
+                    className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(255,255,255,0.15)] transition-opacity duration-1000"
                     style={{ opacity: isPlaying ? 1 : 0 }}
                 />
             ) : (
-                <div className="text-center animate-pulse">
-                     <h1 className="text-6xl md:text-8xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500 uppercase">
+                <div className="text-center">
+                    <h1 className="text-6xl md:text-8xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500 uppercase">
                         Onboardin
                     </h1>
                 </div>
