@@ -4,31 +4,34 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Onboardin | Business Automation Suite</title>
-    
+
     <!-- PWA & SEO -->
-    <link rel="manifest" href="/manifest.json">
-    <meta name="theme-color" content="#1a0b2e">
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#1a0b2e" />
     <link rel="icon" type="image/png" href="/Onboardin.png" />
-    
+
     <!-- Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;700&display=swap" rel="stylesheet">
-    
-    <!-- Phosphor Icons (External script allowed if no COEP headers) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;700&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Phosphor Icons -->
     <script src="https://unpkg.com/@phosphor-icons/web"></script>
   </head>
   <body class="bg-[#1a0b2e] text-white overflow-x-hidden">
-    
     <div id="app"></div>
-    
-    <!-- This is the only script tag you need -->
+
     <script type="module" src="/src/main.jsx"></script>
-    
+
     <script>
       if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-          navigator.serviceWorker.register('/sw.js').catch(err => console.log('SW error', err));
+          navigator.serviceWorker.register('/sw.js').catch((err) =>
+            console.log('SW error', err)
+          );
         });
       }
     </script>
