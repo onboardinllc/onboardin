@@ -482,7 +482,7 @@ const BackgroundWaves = ({ visible }) => (
 
 const App = () => {
     const [currentView, setCurrentView] = useState('landing');
-    const [uiVisible, setUiVisible] = useState(false);
+    const [uiVisible, setUiVisible] = useState(true);
     const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0 });
 
     const handleLogoRightClick = (e) => {
