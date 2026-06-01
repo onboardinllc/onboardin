@@ -523,6 +523,7 @@ const Dashboard = ({ setCurrentView }) => {
     const [profileError, setProfileError] = useState(false);
     const [allClients, setAllClients] = useState([]);
     const [adminLoading, setAdminLoading] = useState(false);
+    const [advancingId, setAdvancingId] = useState(null);
 
     useEffect(() => {
         if (!supabase) return;
@@ -601,6 +602,19 @@ const Dashboard = ({ setCurrentView }) => {
     ];
     const currentStep = clientProfile?.onboarding_step ?? 0;
 
+    const handleAdvanceStep = async (clientId, currentStep) => {
+        if (currentStep >= 7 || !supabase) return;
+        setAdvancingId(clientId);
+        const { error } = await supabase
+            .from('clients')
+            .update({ onboarding_step: currentStep + 1, updated_at: new Date().toISOString() })
+            .eq('id', clientId);
+        if (!error) {
+            setAllClients(prev => prev.map(c => c.id === clientId ? { ...c, onboarding_step: currentStep + 1 } : c));
+        }
+        setAdvancingId(null);
+    };
+
     const stepLabels = ['Account created','Entity formation','Landing page deployed','GitHub repo provisioned','CRM connected','Analytics live','First AI agent deployed'];
 
     if (session && clientProfile?.is_admin) {
@@ -624,9 +638,9 @@ const Dashboard = ({ setCurrentView }) => {
                         </div>
                     ) : (
                         <div className="bg-white/5 border border-white/10 rounded-2xl backdrop-blur-xl overflow-hidden">
-                            <div className="grid grid-cols-[2fr_2fr_1fr_2fr_1fr] gap-0 px-6 py-3 border-b border-white/5">
-                                {['Company','Founder','Stage','Progress','Joined'].map(h => (
-                                    <span key={h} className="text-[10px] uppercase tracking-widest text-gray-500">{h}</span>
+                            <div className="grid grid-cols-[2fr_1.5fr_1fr_2fr_1fr_auto] gap-0 px-6 py-3 border-b border-white/5">
+                                {['Company','Founder','Stage','Progress','Joined',''].map((h, i) => (
+                                    <span key={i} className="text-[10px] uppercase tracking-widest text-gray-500">{h}</span>
                                 ))}
                             </div>
                             {allClients.filter(c => !c.is_admin).length === 0 ? (
@@ -636,8 +650,10 @@ const Dashboard = ({ setCurrentView }) => {
                                     const step = client.onboarding_step ?? 0;
                                     const pct = Math.round((step / 7) * 100);
                                     const joined = new Date(client.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                                    const isComplete = step >= 7;
+                                    const isAdvancing = advancingId === client.id;
                                     return (
-                                        <div key={client.id} className={`grid grid-cols-[2fr_2fr_1fr_2fr_1fr] gap-0 px-6 py-4 items-center ${i % 2 === 0 ? '' : 'bg-white/[0.02]'} hover:bg-white/5 transition-colors`}>
+                                        <div key={client.id} className={`grid grid-cols-[2fr_1.5fr_1fr_2fr_1fr_auto] gap-0 px-6 py-4 items-center ${i % 2 === 0 ? '' : 'bg-white/[0.02]'} hover:bg-white/5 transition-colors`}>
                                             <div>
                                                 <p className="text-sm font-medium text-white">{client.company_name}</p>
                                                 <p className="text-[10px] text-gray-500">{client.email}</p>
@@ -646,14 +662,22 @@ const Dashboard = ({ setCurrentView }) => {
                                             <span className="text-[9px] uppercase tracking-widest text-purple-300 bg-purple-400/10 px-2 py-1 rounded-full w-fit">{client.funding_stage || '—'}</span>
                                             <div className="pr-4">
                                                 <div className="flex items-center justify-between mb-1">
-                                                    <span className="text-[10px] text-gray-500">{stepLabels[step] || 'Complete'}</span>
+                                                    <span className="text-[10px] text-gray-500">{isComplete ? 'Complete' : stepLabels[step]}</span>
                                                     <span className="text-[10px] text-gray-500">{pct}%</span>
                                                 </div>
                                                 <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
-                                                    <div className="h-full bg-gradient-to-r from-blue-400 to-purple-500 rounded-full" style={{ width: `${pct}%` }} />
+                                                    <div className="h-full bg-gradient-to-r from-blue-400 to-purple-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
                                                 </div>
                                             </div>
                                             <span className="text-xs text-gray-500">{joined}</span>
+                                            <button
+                                                onClick={() => handleAdvanceStep(client.id, step)}
+                                                disabled={isComplete || isAdvancing}
+                                                className="ml-4 px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest rounded-lg border transition-all disabled:opacity-20 disabled:cursor-not-allowed border-purple-500/30 text-purple-300 hover:bg-purple-500/10 hover:border-purple-400/50"
+                                                title={isComplete ? 'All steps complete' : `Advance to: ${stepLabels[step + 1] || 'Complete'}`}
+                                            >
+                                                {isAdvancing ? '…' : isComplete ? '✓' : 'Advance'}
+                                            </button>
                                         </div>
                                     );
                                 })
