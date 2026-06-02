@@ -628,6 +628,8 @@ function recommendEntity(fundingStage, businessIntent, sellsTo, country) {
 function getDocCategories(entityType, country, jurisdiction) {
     const isUS = country === 'United States';
     const isCA = country === 'Canada';
+    const isJamaica = country === 'Jamaica';
+
     const base = [
         {
             id: 'gov_id',
@@ -642,6 +644,7 @@ function getDocCategories(entityType, country, jurisdiction) {
             icon: 'ph-user-list',
             desc: 'Signed founder agreement, equity split, and any existing IP assignments.',
             required: true,
+            templateUrl: 'https://onboardin.llc/templates/founder-agreement-v1.pdf'
         },
     ];
 
@@ -661,6 +664,7 @@ function getDocCategories(entityType, country, jurisdiction) {
             icon: 'ph-handshake',
             desc: 'Internal governance document outlining ownership and management structure.',
             required: false,
+            templateUrl: entityType === 'LLC' ? 'https://onboardin.llc/templates/llc-operating-agreement.pdf' : 'https://onboardin.llc/templates/corp-bylaws.pdf'
         });
     }
 
@@ -674,6 +678,17 @@ function getDocCategories(entityType, country, jurisdiction) {
         });
     }
 
+    if (isJamaica) {
+        base.push({
+            id: 'jam_brc',
+            label: 'BRC Certificate',
+            icon: 'ph-certificate',
+            desc: 'Business Registration Certificate from the Companies Office of Jamaica.',
+            required: false,
+            templateUrl: 'https://www.orcjamaica.com/forms/'
+        });
+    }
+
     if (isUS || isCA) {
         base.push({
             id: 'tax_id',
@@ -683,6 +698,7 @@ function getDocCategories(entityType, country, jurisdiction) {
                 ? 'IRS EIN confirmation letter (CP 575) if you already have one.'
                 : 'Canada Revenue Agency business number confirmation (if registered).',
             required: false,
+            templateUrl: isUS ? 'https://www.irs.gov/pub/irs-pdf/fss4.pdf' : 'https://www.canada.ca/en/revenue-agency/services/tax/businesses/topics/registering-your-business/bro-how-register.html'
         });
     }
 
@@ -2377,31 +2393,38 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                                                 {catDocs.length > 0 && <span className="text-[8px] uppercase tracking-widest text-green-400">{catDocs.length} file{catDocs.length > 1 ? 's' : ''}</span>}
                                                             </div>
                                                         </div>
-                                                        <label className="cursor-pointer flex-shrink-0">
-                                                            <i className={`ph ph-upload-simple text-sm transition-colors ${clientUploading ? 'text-gray-600' : 'text-gray-400 hover:text-purple-300'}`}></i>
-                                                            <input type="file" className="hidden" disabled={clientUploading} onChange={async (e) => {
-                                                                const file = e.target.files?.[0];
-                                                                if (!file || !supabase) return;
-                                                                setClientUploading(true);
-                                                                const path = `${session.user.id}/${cat.id}/${Date.now()}-${file.name}`;
-                                                                const { error: uploadError } = await supabase.storage.from('client-documents').upload(path, file);
-                                                                if (!uploadError) {
-                                                                    const { error: dbError } = await supabase.from('documents').insert({
-                                                                        client_id: session.user.id,
-                                                                        name: file.name,
-                                                                        path,
-                                                                        size: file.size,
-                                                                        uploaded_by: session.user.id,
-                                                                        category: cat.id,
-                                                                    });
-                                                                    if (!dbError) {
-                                                                        setMyDocs(prev => [{ name: file.name, path, size: file.size, category: cat.id, created_at: new Date().toISOString() }, ...prev]);
+                                                        <div className="flex items-center gap-3 flex-shrink-0">
+                                                            {cat.templateUrl && (
+                                                                <a href={cat.templateUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400/80 hover:text-blue-300 transition-colors" title="Download Template">
+                                                                    <i className="ph ph-file-arrow-down text-sm"></i>
+                                                                </a>
+                                                            )}
+                                                            <label className="cursor-pointer">
+                                                                <i className={`ph ph-upload-simple text-sm transition-colors ${clientUploading ? 'text-gray-600' : 'text-gray-400 hover:text-purple-300'}`}></i>
+                                                                <input type="file" className="hidden" disabled={clientUploading} onChange={async (e) => {
+                                                                    const file = e.target.files?.[0];
+                                                                    if (!file || !supabase) return;
+                                                                    setClientUploading(true);
+                                                                    const path = `${session.user.id}/${cat.id}/${Date.now()}-${file.name}`;
+                                                                    const { error: uploadError } = await supabase.storage.from('client-documents').upload(path, file);
+                                                                    if (!uploadError) {
+                                                                        const { error: dbError } = await supabase.from('documents').insert({
+                                                                            client_id: session.user.id,
+                                                                            name: file.name,
+                                                                            path,
+                                                                            size: file.size,
+                                                                            uploaded_by: session.user.id,
+                                                                            category: cat.id,
+                                                                        });
+                                                                        if (!dbError) {
+                                                                            setMyDocs(prev => [{ name: file.name, path, size: file.size, category: cat.id, created_at: new Date().toISOString() }, ...prev]);
+                                                                        }
                                                                     }
-                                                                }
-                                                                setClientUploading(false);
-                                                                e.target.value = '';
-                                                            }} />
-                                                        </label>
+                                                                    setClientUploading(false);
+                                                                    e.target.value = '';
+                                                                }} />
+                                                            </label>
+                                                        </div>
                                                     </div>
                                                     <p className="text-[10px] text-gray-500 leading-relaxed">{cat.desc}</p>
                                                     {catDocs.length > 0 && (
