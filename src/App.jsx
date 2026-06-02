@@ -20,14 +20,16 @@ const GreenScreen = ({ videoUrl, onVideoEnd }) => {
             const width = video.videoWidth;
             const height = video.videoHeight;
 
-            // VIDEO CROP
-            const cropRight = 0.0;
-            const sourceWidth = width * (1 - cropRight);
+            // VIDEO CROP — trim right to remove suffix text, trim left to re-center
+            const cropLeft = 0.15;
+            const cropRight = 0.30;
+            const sourceX = width * cropLeft;
+            const sourceWidth = width * (1 - cropLeft - cropRight);
 
             if (canvas.width !== sourceWidth) canvas.width = sourceWidth;
             if (canvas.height !== height) canvas.height = height;
 
-            ctx.drawImage(video, 0, 0, sourceWidth, height, 0, 0, sourceWidth, height);
+            ctx.drawImage(video, sourceX, 0, sourceWidth, height, 0, 0, sourceWidth, height);
 
             const frame = ctx.getImageData(0, 0, sourceWidth, height);
             const data = frame.data;
@@ -118,111 +120,230 @@ const GreenScreen = ({ videoUrl, onVideoEnd }) => {
     );
 };
 
+// SolarSystemCanvas — orbital mechanics around the button
+const MindMapCanvas = ({ active }) => {
+    const canvasRef = useRef(null);
+    const stateRef = useRef(null);
+    const rafRef = useRef(null);
+    const activeRef = useRef(active);
+    activeRef.current = active;
+
+    // Each planet: orbital radius, base angular speed, phase offset, color, label
+    const PLANETS = [
+        { label: 'Tax',        color: [59,130,246],  orbit: 125, speed: 0.0008, phase: 0 },
+        { label: 'Legal',      color: [168,85,247],  orbit: 155, speed: 0.0006, phase: 1.26 },
+        { label: 'Compliance', color: [74,222,128],  orbit: 183, speed: 0.00045,phase: 2.51 },
+        { label: 'Accounting', color: [251,191,36],  orbit: 210, speed: 0.00035,phase: 3.77 },
+        { label: 'AI Agents',  color: [239,68,68],   orbit: 236, speed: 0.00028,phase: 5.03 },
+    ];
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        const W = canvas.width = 560;
+        const H = canvas.height = 360;
+        const cx = W / 2, cy = H / 2;
+
+        if (!stateRef.current) {
+            stateRef.current = {
+                planets: PLANETS.map(p => ({
+                    ...p,
+                    // current orbital angle starts at phase
+                    theta: p.phase,
+                    // current rendered radius (starts at 0, expands on hover)
+                    r: 0,
+                    // trail: last N positions
+                    trail: [],
+                })),
+                t: 0,
+            };
+        }
+        const { planets } = stateRef.current;
+
+        const tick = () => {
+            stateRef.current.t++;
+            const t = stateRef.current.t;
+            const isActive = activeRef.current;
+
+            const ctx = canvas.getContext('2d');
+            ctx.clearRect(0, 0, W, H);
+
+            planets.forEach((p, i) => {
+                // smoothly grow/shrink orbital radius
+                const targetR = isActive ? p.orbit : 0;
+                p.r += (targetR - p.r) * 0.055;
+
+                // advance angle (faster while expanding, kepler-ish)
+                const angularVel = p.speed * (1 + Math.max(0, (p.orbit - p.r) / p.orbit) * 2);
+                p.theta += angularVel;
+
+                const x = cx + Math.cos(p.theta) * p.r;
+                const y = cy + Math.sin(p.theta) * p.r * 0.38; // flatten into ellipse
+
+                // trail
+                p.trail.push({ x, y, a: 0.35 });
+                if (p.trail.length > 38) p.trail.shift();
+
+                if (p.r < 4) return; // collapsed, skip drawing
+
+                const [r,g,b] = p.color;
+                const presence = Math.min(1, p.r / p.orbit); // 0→1 as orbit expands
+
+                // orbit ring (faint ellipse)
+                ctx.save();
+                ctx.translate(cx, cy);
+                ctx.scale(1, 0.38);
+                ctx.beginPath();
+                ctx.arc(0, 0, p.r, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(${r},${g},${b},${0.06 * presence})`;
+                ctx.lineWidth = 0.8;
+                ctx.stroke();
+                ctx.restore();
+
+                // trail fade
+                p.trail.forEach((pt, ti) => {
+                    const tf = ti / p.trail.length;
+                    ctx.beginPath();
+                    ctx.arc(pt.x, pt.y, 1.5 * tf, 0, Math.PI * 2);
+                    ctx.fillStyle = `rgba(${r},${g},${b},${tf * 0.25 * presence})`;
+                    ctx.fill();
+                });
+
+                // thread to center — curved inward like gravity
+                const cp1x = (x + cx) / 2 + (y - cy) * 0.3;
+                const cp1y = (y + cy) / 2 - (x - cx) * 0.3;
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.quadraticCurveTo(cp1x, cp1y, cx, cy);
+                const pulseAlpha = (0.1 + 0.08 * Math.sin(t * 0.04 + i)) * presence;
+                ctx.strokeStyle = `rgba(${r},${g},${b},${pulseAlpha})`;
+                ctx.lineWidth = 0.8;
+                ctx.setLineDash([4, 7]);
+                ctx.lineDashOffset = -(t * 0.5);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                // planet dot with glow
+                const grd = ctx.createRadialGradient(x, y, 0, x, y, 9);
+                grd.addColorStop(0, `rgba(${r},${g},${b},${0.9 * presence})`);
+                grd.addColorStop(1, `rgba(${r},${g},${b},0)`);
+                ctx.beginPath();
+                ctx.arc(x, y, 9, 0, Math.PI * 2);
+                ctx.fillStyle = grd;
+                ctx.fill();
+
+                ctx.beginPath();
+                ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${r},${g},${b},${presence})`;
+                ctx.shadowColor = `rgb(${r},${g},${b})`;
+                ctx.shadowBlur = 10;
+                ctx.fill();
+                ctx.shadowBlur = 0;
+
+                // label — appears as orbit opens
+                if (presence > 0.5) {
+                    ctx.font = `bold ${Math.round(8 * presence)}px sans-serif`;
+                    ctx.fillStyle = `rgba(${r},${g},${b},${(presence - 0.5) * 2 * 0.8})`;
+                    ctx.textAlign = 'center';
+                    // label above or below depending on y position
+                    const labelOffset = y < cy ? -12 : 14;
+                    ctx.fillText(p.label.toUpperCase(), x, y + labelOffset);
+                }
+            });
+
+            rafRef.current = requestAnimationFrame(tick);
+        };
+
+        rafRef.current = requestAnimationFrame(tick);
+        return () => cancelAnimationFrame(rafRef.current);
+    }, [active]);
+
+    return (
+        <canvas
+            ref={canvasRef}
+            width={560}
+            height={360}
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+            style={{ opacity: 1, width: 560, height: 360 }}
+        />
+    );
+};
+
 // Landing — public marketing page
-const Landing = ({ onNavigate, uiVisible, setUiVisible }) => {
-    const handleVideoEnd = () => {
-        setUiVisible(true);
-    };
+const Landing = ({ onNavigate, uiVisible, setUiVisible, onBrandKit, onElementsReady }) => {
+    const [hovered, setHovered] = useState(false);
+    const [showBrandPanel, setShowBrandPanel] = useState(false);
+    const [elementsVisible, setElementsVisible] = useState(false);
+
+    const handleVideoEnd = () => setUiVisible(true);
 
     useEffect(() => {
         const timer = setTimeout(() => setUiVisible(true), 4000);
         return () => clearTimeout(timer);
     }, [setUiVisible]);
 
+    useEffect(() => {
+        if (!uiVisible) return;
+        const timer = setTimeout(() => {
+            setElementsVisible(true);
+            onElementsReady?.();
+        }, 1500);
+        return () => clearTimeout(timer);
+    }, [uiVisible]);
+
+    const handleLogoClick = () => {
+        setShowBrandPanel(v => !v);
+    };
+
     return (
         <div className="flex flex-col items-center justify-center min-h-screen px-4 overflow-hidden relative z-10">
-            
-            {/* Custom Animations for Mind Map & Fluid Threads */}
-            <style>{`
-                @keyframes drift {
-                    0%, 100% { transform: translate(0px, 0px); }
-                    25% { transform: translate(6px, -10px); }
-                    50% { transform: translate(-4px, -18px); }
-                    75% { transform: translate(-8px, -8px); }
-                }
-                @keyframes pulseLine {
-                    0%, 100% { stroke-dashoffset: 0; opacity: 0.2; }
-                    50% { stroke-dashoffset: 20; opacity: 0.5; }
-                }
-                .animate-drift { animation: drift 8s ease-in-out infinite; }
-                .animate-drift-delayed { animation: drift 10s ease-in-out infinite 1.5s; }
-                .animate-drift-slow { animation: drift 12s ease-in-out infinite 3s; }
-                .fluid-thread { 
-                    stroke-dasharray: 100;
-                    animation: pulseLine 4s ease-in-out infinite;
-                }
-            `}</style>
-
-            <div className={`transition-all duration-[1500ms] ease-in-out ${uiVisible ? 'scale-[0.65] -translate-y-24 opacity-80' : 'scale-100 opacity-100'}`}>
-                <GreenScreen videoUrl="/Onboardin-Ongreen.mp4" onVideoEnd={handleVideoEnd} /> 
+            {/* Center logo — clickable for brand kit */}
+            <div
+                className={`transition-all duration-[1500ms] ease-in-out cursor-pointer ${uiVisible ? 'scale-[0.65] opacity-90' : 'scale-100 opacity-100'}`}
+                style={{ marginBottom: uiVisible ? '-4rem' : '0' }}
+                onClick={handleLogoClick}
+                title="Brand Kit"
+            >
+                <GreenScreen videoUrl="/Onboardin-Ongreen.mp4" onVideoEnd={handleVideoEnd} />
             </div>
 
-            <div className={`text-center z-10 transition-all duration-1000 delay-500 absolute bottom-32 md:bottom-44 w-full px-4 ${uiVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`}>
-                
-                {/* Mind Map Button Logic */}
-                <div className="relative inline-block group">
-                    {/* Mind Map Nodes (Hidden by default, visible on hover) */}
-                    <div className="absolute inset-0 pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-700 ease-out">
-                        
-                        {/* Node 1: Tax (Top Left) */}
-                        <div className="absolute -top-16 -left-20 md:-left-32 animate-drift">
-                            <div className="relative flex flex-col items-center">
-                                <div className="w-2.5 h-2.5 bg-blue-400 rounded-full shadow-[0_0_15px_rgba(59,130,246,1)] z-10 relative"></div>
-                                {/* Fluid Thread: Adjusted to connect dot to button center */}
-                                <svg className="absolute top-1 left-1 w-[250px] h-[150px] overflow-visible pointer-events-none z-0">
-                                    <path 
-                                        d="M 0,0 Q 80,40 200,80" 
-                                        fill="none" 
-                                        stroke="rgba(59,130,246,0.4)" 
-                                        strokeWidth="1" 
-                                        className="fluid-thread"
-                                    />
-                                </svg>
-                                <span className="text-[10px] uppercase tracking-[0.2em] text-blue-200 mt-2 font-bold drop-shadow-[0_0_8px_rgba(59,130,246,0.8)] whitespace-nowrap">Tax Auto</span>
-                            </div>
-                        </div>
-
-                        {/* Node 2: Legal (Top Right) */}
-                        <div className="absolute -top-20 -right-20 md:-right-32 animate-drift-delayed">
-                            <div className="relative flex flex-col items-center">
-                                <div className="w-2.5 h-2.5 bg-purple-400 rounded-full shadow-[0_0_15px_rgba(168,85,247,1)] z-10 relative"></div>
-                                <svg className="absolute top-1 right-1 w-[250px] h-[150px] overflow-visible pointer-events-none z-0">
-                                    <path 
-                                        d="M 0,0 Q -80,40 -200,80" 
-                                        fill="none" 
-                                        stroke="rgba(168,85,247,0.4)" 
-                                        strokeWidth="1" 
-                                        className="fluid-thread"
-                                    />
-                                </svg>
-                                <span className="text-[10px] uppercase tracking-[0.2em] text-purple-200 mt-2 font-bold drop-shadow-[0_0_8px_rgba(168,85,247,0.8)] whitespace-nowrap">Legal Docs</span>
-                            </div>
-                        </div>
-
-                        {/* Node 3: Compliance (Bottom Center) */}
-                        <div className="absolute -bottom-24 left-1/2 -translate-x-1/2 animate-drift-slow">
-                            <div className="relative flex flex-col items-center">
-                                <div className="w-2.5 h-2.5 bg-green-400 rounded-full shadow-[0_0_15px_rgba(74,222,128,1)] z-10 relative"></div>
-                                <svg className="absolute bottom-1 left-1/2 -translate-x-1/2 w-[100px] h-[150px] overflow-visible pointer-events-none z-0">
-                                    <path 
-                                        d="M 0,0 Q 0,-40 0,-110" 
-                                        fill="none" 
-                                        stroke="rgba(74,222,128,0.4)" 
-                                        strokeWidth="1" 
-                                        className="fluid-thread"
-                                    />
-                                </svg>
-                                <span className="text-[10px] uppercase tracking-[0.2em] text-green-200 mt-2 font-bold drop-shadow-[0_0_8px_rgba(74,222,128,0.8)] whitespace-nowrap">Compliance</span>
-                            </div>
-                        </div>
+            {/* Brand kit panel — slides in below logo, pushes button down */}
+            <div className={`transition-all duration-500 ease-in-out overflow-hidden ${uiVisible && showBrandPanel ? 'max-h-32 opacity-100 mb-3' : 'max-h-0 opacity-0 mb-0'}`}>
+                <div className="flex items-center gap-4 bg-white/5 border border-white/10 backdrop-blur-xl rounded-2xl px-6 py-4 mt-2">
+                    <i className="ph ph-download-simple text-blue-400 text-lg flex-shrink-0"></i>
+                    <div className="flex-1">
+                        <p className="text-xs font-bold text-white tracking-wide">Brand Kit</p>
+                        <p className="text-[10px] text-gray-500 tracking-widest uppercase">Logos, colors & assets</p>
                     </div>
+                    <button
+                        onClick={() => { onBrandKit(); setShowBrandPanel(false); }}
+                        className="px-4 py-2 bg-blue-500/20 border border-blue-500/30 rounded-lg text-[10px] font-bold uppercase tracking-widest text-blue-300 hover:bg-blue-500/30 transition-all"
+                    >
+                        Download
+                    </button>
+                    <button onClick={() => setShowBrandPanel(false)} className="text-gray-600 hover:text-gray-300 transition-colors ml-1">
+                        <i className="ph ph-x text-sm"></i>
+                    </button>
+                </div>
+            </div>
 
-                    <button onClick={onNavigate} className="relative z-20 px-12 py-5 border border-white/20 rounded-full uppercase tracking-[0.4em] font-black text-sm transition-all duration-[600ms] hover:border-white/90 hover:bg-white/5 hover:shadow-[0_0_35px_rgba(255,255,255,0.2)] active:scale-95 bg-[#1a0b2e]/80 backdrop-blur-md">
+            {/* Button + orbit canvas */}
+            <div className={`text-center z-10 transition-all duration-700 ${elementsVisible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-12'}`}>
+                <div
+                    className="relative inline-block"
+                    onMouseEnter={() => setHovered(true)}
+                    onMouseLeave={() => setHovered(false)}
+                >
+                    <MindMapCanvas active={hovered} />
+                    <button
+                        onClick={onNavigate}
+                        className="relative z-20 px-12 py-4 rounded-full uppercase tracking-[0.35em] font-black text-xs transition-all duration-[600ms] active:scale-95 bg-[#0d0820]/80 backdrop-blur-md border border-purple-500/25 text-purple-200/80 shadow-[0_0_18px_rgba(139,92,246,0.18),inset_0_0_18px_rgba(139,92,246,0.06)] hover:border-purple-400/50 hover:text-purple-100 hover:shadow-[0_0_32px_rgba(139,92,246,0.35),inset_0_0_24px_rgba(139,92,246,0.10)]"
+                    >
                         Start Building
                     </button>
                 </div>
 
-                <p className="text-gray-400 text-[10px] md:text-xs mt-16 font-medium tracking-[0.5em] uppercase opacity-50">
+                <p className="text-gray-400 text-[10px] md:text-xs mt-8 font-medium tracking-[0.5em] uppercase opacity-50">
                     Automate. Integrate. Scale.
                 </p>
             </div>
@@ -231,7 +352,7 @@ const Landing = ({ onNavigate, uiVisible, setUiVisible }) => {
 };
 
 // Features — service overview grid
-const Features = () => {
+const Features = ({ onDismiss, visible }) => {
     const features = [
         { icon: "ph-megaphone", title: "Marketing Automation", desc: "Automated campaign creation, content scheduling, and multi-channel publishing." },
         { icon: "ph-shield-check", title: "Digital Rights Management", desc: "Protect your IP from day one — automated DRM filing, licensing documentation, and ownership records." },
@@ -244,79 +365,206 @@ const Features = () => {
         { icon: "ph-scales", title: "Legal Compliance", desc: "Auto-generated policies and consent management." }
     ];
 
+    const ease = 'cubic-bezier(0.22, 1, 0.36, 1)';
     return (
-        <div className="pt-32 px-8 md:px-16 animate-[fadeIn_1s_ease-out] min-h-screen relative z-10">
-            <div className="text-center mb-16">
-                <h1 className="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-400 uppercase tracking-tighter mb-4">Automate to Scale</h1>
-                <p className="text-gray-400 text-xs md:text-sm tracking-[0.2em] uppercase opacity-70">Everything you need to automate your enterprise</p>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
-                {features.map((f, i) => (
-                    <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl hover:bg-white/10 transition-all group">
-                        <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
-                            <i className={`ph ${f.icon} text-2xl text-blue-400`}></i>
+        <>
+            {/* Backdrop — full screen, click to dismiss */}
+            <div
+                className="fixed inset-0 z-20"
+                style={{
+                    opacity: visible ? 1 : 0,
+                    transition: `opacity 320ms ${ease}`,
+                    backgroundColor: 'rgba(3, 2, 10, 0.35)',
+                    backdropFilter: visible ? 'blur(8px)' : 'blur(0px)',
+                    WebkitBackdropFilter: visible ? 'blur(8px)' : 'blur(0px)',
+                }}
+                onClick={onDismiss}
+            />
+            {/* Scrollable content — pointer-events-none on wrapper so backdrop stays clickable at sides */}
+            <div
+                className="fixed inset-0 z-30 overflow-y-auto pointer-events-none"
+                style={{
+                    opacity: visible ? 1 : 0,
+                    transition: `opacity 380ms ${ease}`,
+                }}
+            >
+                <div className="min-h-full flex flex-col items-center py-28 px-8">
+                    <div
+                        className="w-full max-w-3xl pointer-events-auto"
+                        style={{
+                            transform: visible ? 'translate3d(0, 0, 0)' : 'translate3d(0, 14px, 0)',
+                            transition: `transform 560ms ${ease}`,
+                            willChange: 'transform, opacity',
+                        }}
+                    >
+                        <div className="text-center mb-12">
+                            <h1 className="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-400 uppercase tracking-tighter mb-4">Automate to Scale</h1>
+                            <p className="text-gray-400 text-xs md:text-sm tracking-[0.2em] uppercase opacity-70">Everything you need to automate your enterprise</p>
                         </div>
-                        <h3 className="text-lg font-bold mb-3 uppercase tracking-wide">{f.title}</h3>
-                        <p className="text-gray-400 text-sm leading-relaxed">{f.desc}</p>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            {features.map((f, i) => (
+                                <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-8 hover:bg-white/10 hover:border-white/20 transition-colors duration-300 group">
+                                    <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center mb-6 mx-auto group-hover:scale-110 transition-transform duration-300">
+                                        <i className={`ph ${f.icon} text-2xl text-blue-400`}></i>
+                                    </div>
+                                    <h3 className="text-lg font-bold mb-3 uppercase tracking-wide">{f.title}</h3>
+                                    <p className="text-gray-400 text-sm leading-relaxed">{f.desc}</p>
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                ))}
+                </div>
             </div>
-        </div>
+        </>
     );
 };
 
 // Pricing — tiered plans
-const Pricing = ({ onContact }) => {
+const Pricing = ({ onContact, onDismiss, visible }) => {
+    const ease = 'cubic-bezier(0.22, 1, 0.36, 1)';
     return (
-        <div className="pt-32 px-8 md:px-16 animate-[fadeIn_1s_ease-out] min-h-screen flex flex-col items-center relative z-10">
-            <div className="text-center mb-16">
-                <h1 className="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-400 uppercase tracking-tighter mb-4">Scalable Pricing</h1>
-                <p className="text-gray-400 text-xs md:text-sm tracking-[0.2em] uppercase opacity-70">Start free, upgrade as you grow</p>
+        <>
+            {/* Backdrop — full screen, click to dismiss */}
+            <div
+                className="fixed inset-0 z-20"
+                style={{
+                    opacity: visible ? 1 : 0,
+                    transition: `opacity 320ms ${ease}`,
+                    backgroundColor: 'rgba(3, 2, 10, 0.35)',
+                    backdropFilter: visible ? 'blur(8px)' : 'blur(0px)',
+                    WebkitBackdropFilter: visible ? 'blur(8px)' : 'blur(0px)',
+                }}
+                onClick={onDismiss}
+            />
+            {/* Scrollable content — pointer-events-none on wrapper so backdrop stays clickable at sides */}
+            <div
+                className="fixed inset-0 z-30 overflow-y-auto pointer-events-none"
+                style={{
+                    opacity: visible ? 1 : 0,
+                    transition: `opacity 380ms ${ease}`,
+                }}
+            >
+                <div className="min-h-full flex flex-col items-center py-28 px-8">
+                <div
+                    className="w-full max-w-3xl pointer-events-auto"
+                    style={{
+                        transform: visible ? 'translate3d(0, 0, 0)' : 'translate3d(0, 14px, 0)',
+                        transition: `transform 560ms ${ease}`,
+                        willChange: 'transform, opacity',
+                    }}
+                >
+                    <div className="text-center mb-12">
+                        <h1 className="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-400 uppercase tracking-tighter mb-4">Scalable Pricing</h1>
+                        <p className="text-gray-400 text-xs md:text-sm tracking-[0.2em] uppercase opacity-70">Start free, upgrade as you grow</p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full">
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-8 flex flex-col hover:border-white/20 transition-colors duration-300">
+                            <h3 className="text-sm font-bold uppercase tracking-widest text-blue-300 mb-2">Starter</h3>
+                            <div className="text-4xl font-bold mb-6">$0 <span className="text-sm text-gray-500 font-normal">/mo</span></div>
+                            <ul className="space-y-4 mb-8 text-sm text-gray-300 flex-1">
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Entity Formation Guide</li>
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Basic Accounting Sync</li>
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> 1 AI Agent</li>
+                                <li className="flex items-center gap-3 opacity-50"><i className="ph ph-x text-gray-600"></i> Compliance Automation</li>
+                            </ul>
+                            <button onClick={onContact} className="w-full py-4 border border-white/20 rounded-xl text-xs font-bold uppercase tracking-[0.2em] hover:bg-white/10 transition-colors">Start Free</button>
+                        </div>
+                        <div className="bg-gradient-to-b from-purple-900/40 to-blue-900/40 border border-purple-500/30 rounded-2xl p-8 flex flex-col relative transform md:-translate-y-4 shadow-2xl">
+                            <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-purple-500 text-white text-[9px] font-bold uppercase tracking-widest px-3 py-1 rounded-full">Most Popular</div>
+                            <h3 className="text-sm font-bold uppercase tracking-widest text-purple-300 mb-2">Growth</h3>
+                            <div className="text-4xl font-bold mb-6">$49 <span className="text-sm text-gray-500 font-normal">/mo</span></div>
+                            <ul className="space-y-4 mb-8 text-sm text-gray-300 flex-1">
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> State Compliance Automation</li>
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Full Integration Suite</li>
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> 3 AI Agents</li>
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Priority Support</li>
+                            </ul>
+                            <button onClick={onContact} className="w-full py-4 bg-white text-black rounded-xl text-xs font-bold uppercase tracking-[0.2em] hover:bg-gray-200 transition-colors">Get Started</button>
+                        </div>
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-8 flex flex-col hover:border-white/20 transition-colors duration-300">
+                            <h3 className="text-sm font-bold uppercase tracking-widest text-gray-400 mb-2">Enterprise</h3>
+                            <div className="text-4xl font-bold mb-6">Custom</div>
+                            <ul className="space-y-4 mb-8 text-sm text-gray-300 flex-1">
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Turnkey Incorporation & Audit</li>
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Unlimited Users & AI Models</li>
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Dedicated Account Manager</li>
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Full Compliance SLA</li>
+                            </ul>
+                            <button onClick={onContact} className="w-full py-4 border border-white/20 rounded-xl text-xs font-bold uppercase tracking-[0.2em] hover:bg-white/10 transition-colors">Contact Sales</button>
+                        </div>
+                    </div>
+                </div>
+                </div>
             </div>
+        </>
+    );
+};
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl w-full">
-                {/* Starter Tier */}
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl flex flex-col hover:border-white/20 transition-all">
-                    <h3 className="text-sm font-bold uppercase tracking-widest text-blue-300 mb-2">Starter</h3>
-                    <div className="text-4xl font-bold mb-6">$0 <span className="text-sm text-gray-500 font-normal">/mo</span></div>
-                    <ul className="space-y-4 mb-8 text-sm text-gray-300 flex-1">
-                        <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Entity Formation Guide</li>
-                        <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Basic Accounting Sync</li>
-                        <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> 1 AI Agent </li>
-                        <li className="flex items-center gap-3 opacity-50"><i className="ph ph-x text-gray-600"></i> Compliance Automation</li>
-                    </ul>
-                    <button onClick={onContact} className="w-full py-4 border border-white/20 rounded-xl text-xs font-bold uppercase tracking-[0.2em] hover:bg-white/10 transition-colors">Start Free</button>
-                </div>
-
-                {/* Growth Tier */}
-                <div className="bg-gradient-to-b from-purple-900/40 to-blue-900/40 border border-purple-500/30 rounded-2xl p-8 backdrop-blur-xl flex flex-col relative transform md:-translate-y-4 shadow-2xl">
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-purple-500 text-white text-[9px] font-bold uppercase tracking-widest px-3 py-1 rounded-full">Most Popular</div>
-                    <h3 className="text-sm font-bold uppercase tracking-widest text-purple-300 mb-2">Growth</h3>
-                    <div className="text-4xl font-bold mb-6">$49 <span className="text-sm text-gray-500 font-normal">/mo</span></div>
-                    <ul className="space-y-4 mb-8 text-sm text-gray-300 flex-1">
-                        <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> State Compliance Automation</li>
-                        <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Full Integration Suite</li>
-                        <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> 3 AI Agents</li>
-                        <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Priority Support</li>
-                    </ul>
-                    <button onClick={onContact} className="w-full py-4 bg-white text-black rounded-xl text-xs font-bold uppercase tracking-[0.2em] hover:bg-gray-200 transition-colors">Get Started</button>
-                </div>
-
-                {/* Enterprise Tier */}
-                <div className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl flex flex-col hover:border-white/20 transition-all">
-                    <h3 className="text-sm font-bold uppercase tracking-widest text-gray-400 mb-2">Enterprise</h3>
-                    <div className="text-4xl font-bold mb-6">Custom</div>
-                    <ul className="space-y-4 mb-8 text-sm text-gray-300 flex-1">
-                        <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Turnkey Incorporation & Audit</li>
-                        <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Unlimited Users & AI Models</li>
-                        <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Dedicated Account Manager</li>
-                        <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Full Compliance SLA</li>
-                    </ul>
-                    <button onClick={onContact} className="w-full py-4 border border-white/20 rounded-xl text-xs font-bold uppercase tracking-[0.2em] hover:bg-white/10 transition-colors">Contact Sales</button>
+// Support — contact channels overlay
+const Support = ({ onDismiss, onContact, visible }) => {
+    const ease = 'cubic-bezier(0.22, 1, 0.36, 1)';
+    const channels = [
+        { icon: 'ph-envelope-simple', title: 'Email', desc: 'Reach our team directly. Replies within 24 hours on business days.', action: 'support@onboardin.llc', href: 'mailto:support@onboardin.llc' },
+        { icon: 'ph-lifebuoy', title: 'Priority Support', desc: 'Growth and Enterprise customers get same-day responses and direct Slack access.', action: 'Open ticket', form: true },
+        { icon: 'ph-book-open', title: 'Knowledge Base', desc: 'Browse guides on entity formation, integrations, billing, and AI agents.', action: 'Browse docs', href: 'mailto:support@onboardin.llc?subject=Docs%20request' },
+        { icon: 'ph-chats-circle', title: 'Sales & Partnerships', desc: 'For custom integrations, enterprise pricing, and reseller inquiries.', action: 'Talk to sales', form: true },
+    ];
+    return (
+        <>
+            <div
+                className="fixed inset-0 z-20"
+                style={{
+                    opacity: visible ? 1 : 0,
+                    transition: `opacity 320ms ${ease}`,
+                    backgroundColor: 'rgba(3, 2, 10, 0.35)',
+                    backdropFilter: visible ? 'blur(8px)' : 'blur(0px)',
+                    WebkitBackdropFilter: visible ? 'blur(8px)' : 'blur(0px)',
+                }}
+                onClick={onDismiss}
+            />
+            <div
+                className="fixed inset-0 z-30 overflow-y-auto pointer-events-none"
+                style={{
+                    opacity: visible ? 1 : 0,
+                    transition: `opacity 380ms ${ease}`,
+                }}
+            >
+                <div className="min-h-full flex flex-col items-center py-28 px-8">
+                    <div
+                        className="w-full max-w-3xl pointer-events-auto"
+                        style={{
+                            transform: visible ? 'translate3d(0, 0, 0)' : 'translate3d(0, 14px, 0)',
+                            transition: `transform 560ms ${ease}`,
+                            willChange: 'transform, opacity',
+                        }}
+                    >
+                        <div className="text-center mb-12">
+                            <h1 className="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-400 uppercase tracking-tighter mb-4">Here to Help</h1>
+                            <p className="text-gray-400 text-xs md:text-sm tracking-[0.2em] uppercase opacity-70">Talk to a human, browse docs, or open a ticket</p>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {channels.map((c, i) => (
+                                <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-8 hover:bg-white/10 hover:border-white/20 transition-colors duration-300 group flex flex-col">
+                                    <div className="w-12 h-12 bg-white/5 rounded-full flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
+                                        <i className={`ph ${c.icon} text-2xl text-blue-400`}></i>
+                                    </div>
+                                    <h3 className="text-lg font-bold mb-3 uppercase tracking-wide">{c.title}</h3>
+                                    <p className="text-gray-400 text-sm leading-relaxed flex-1 mb-6">{c.desc}</p>
+                                    {c.form ? (
+                                        <button onClick={onContact} className="w-full py-3 border border-white/20 rounded-xl text-xs font-bold uppercase tracking-[0.2em] hover:bg-white/10 transition-colors">{c.action}</button>
+                                    ) : (
+                                        <a href={c.href} className="w-full py-3 border border-white/20 rounded-xl text-xs font-bold uppercase tracking-[0.2em] hover:bg-white/10 transition-colors text-center">{c.action}</a>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                        <div className="text-center mt-10">
+                            <p className="text-gray-500 text-[10px] tracking-[0.3em] uppercase">Average first response · under 4 hours</p>
+                        </div>
+                    </div>
                 </div>
             </div>
-        </div>
+        </>
     );
 };
 
@@ -350,21 +598,28 @@ const REGIONS = {
     ],
 };
 
-const ENTITY_TYPES = ['LLC','C-Corp','S-Corp','Sole Proprietor','Non-Profit','Partnership'];
+const ENTITY_TYPES = ['LLC','C-Corp','S-Corp','Limited Company (Ltd)','PLC','Sole Proprietor','Non-Profit','Partnership'];
 
 // Returns recommended entity + reason based on intent signals
-function recommendEntity(fundingStage, businessIntent, sellsTo) {
+function recommendEntity(fundingStage, businessIntent, sellsTo, country) {
     const intent = (businessIntent || '').toLowerCase();
     const sells = (sellsTo || '').toLowerCase();
+    const isCaricom = (REGIONS['CARICOM'] || []).includes(country);
+
     const wantsVC = fundingStage === 'Seed' || fundingStage === 'Series A' || fundingStage === 'Series B+';
-    const isConsumer = sells.includes('consumer') || sells.includes('b2c') || sells.includes('individual');
     const isEnterprise = sells.includes('enterprise') || sells.includes('b2b') || sells.includes('business');
     const isNonProfit = intent.includes('nonprofit') || intent.includes('non-profit') || intent.includes('charity') || intent.includes('501');
 
     if (isNonProfit) return { entity: 'Non-Profit', reason: 'Non-profit status enables tax exemption and grant eligibility.' };
-    if (wantsVC) return { entity: 'C-Corp', reason: 'C-Corps are the standard for venture-backed companies — VCs and stock options require it.' };
-    if (isEnterprise && fundingStage === 'Pre-Seed') return { entity: 'LLC', reason: 'LLCs offer pass-through taxation and flexibility — ideal before a fundraise.' };
-    return { entity: 'LLC', reason: 'LLCs are the most common structure for early-stage startups — simple, flexible, and founder-friendly.' };
+
+    if (isCaricom) {
+        if (wantsVC) return { entity: 'PLC', reason: 'Public Limited Companies suit venture-scale businesses in CARICOM jurisdictions.' };
+        return { entity: 'Limited Company (Ltd)', reason: 'Limited Companies are the standard private structure across CARICOM.' };
+    }
+
+    if (wantsVC) return { entity: 'C-Corp', reason: 'C-Corps are the standard for venture-backed companies; VCs and stock options require it.' };
+    if (isEnterprise && fundingStage === 'Pre-Seed') return { entity: 'LLC', reason: 'LLCs offer pass-through taxation and flexibility, ideal before a fundraise.' };
+    return { entity: 'LLC', reason: 'LLCs are the most common structure for early-stage startups: simple, flexible, founder-friendly.' };
 }
 
 // Returns document categories required for a given entity type + country
@@ -474,7 +729,7 @@ const Signup = ({ setCurrentView }) => {
 
     const totalSteps = 5;
 
-    const recommendation = recommendEntity(fundingStage, businessIntent, sellsTo);
+    const recommendation = recommendEntity(fundingStage, businessIntent, sellsTo, country);
 
     const handleStep1 = (e) => { e.preventDefault(); setError(''); setStep(2); };
     const handleStep2 = (e) => {
@@ -815,7 +1070,7 @@ const Signup = ({ setCurrentView }) => {
 };
 
 // Dashboard — protected client console
-const Dashboard = ({ setCurrentView }) => {
+const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [session, setSession] = useState(null);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -831,6 +1086,9 @@ const Dashboard = ({ setCurrentView }) => {
     const [allClients, setAllClients] = useState([]);
     const [adminLoading, setAdminLoading] = useState(false);
     const [advancingId, setAdvancingId] = useState(null);
+    const [armedDeleteId, setArmedDeleteId] = useState(null);
+    const [deletingId, setDeletingId] = useState(null);
+    const [deleteError, setDeleteError] = useState('');
     const [selectedClient, setSelectedClient] = useState(null);
     const [clientDocs, setClientDocs] = useState([]);
     const [clientMessages, setClientMessages] = useState([]);
@@ -861,6 +1119,9 @@ const Dashboard = ({ setCurrentView }) => {
     const [setupEntity, setSetupEntity] = useState('');
     const [setupEntityOverride, setSetupEntityOverride] = useState(false);
     const [savingSetup, setSavingSetup] = useState(false);
+    const [adminInternalNotes, setAdminInternalNotes] = useState('');
+    const [savingNotes, setSavingNotes] = useState(false);
+    const [deliverableStep, setDeliverableStep] = useState('');
     const fileInputRef = React.useRef(null);
 
     useEffect(() => {
@@ -902,12 +1163,40 @@ const Dashboard = ({ setCurrentView }) => {
 
     useEffect(() => {
         if (!session || !supabase || clientProfile?.is_admin) return;
+        // Update client last read when profile is loaded
+        supabase.from('clients').update({ client_last_read_at: new Date().toISOString() }).eq('id', session.user.id).then(() => {
+            setUnreadCount(0);
+        });
+    }, [session, clientProfile]);
+
+    // Seed jurisdiction setup form from saved profile so editing pre-fills instead of starting blank
+    useEffect(() => {
+        if (!clientProfile) return;
+        if (clientProfile.country) setSetupCountry(clientProfile.country);
+        if (clientProfile.jurisdiction) setSetupJurisdiction(clientProfile.jurisdiction);
+        if (clientProfile.business_intent) setSetupIntent(clientProfile.business_intent);
+        if (clientProfile.sells_to) setSetupSellsTo(clientProfile.sells_to);
+        if (clientProfile.entity_type) {
+            setSetupEntity(clientProfile.entity_type);
+            setSetupEntityOverride(true);
+        }
+    }, [clientProfile]);
+
+    useEffect(() => {
+        if (!session || !supabase || clientProfile?.is_admin) return;
         setMyDocsLoading(true);
         setMyMessagesLoading(true);
         supabase.from('documents').select('*').eq('client_id', session.user.id).order('created_at', { ascending: false })
             .then(({ data }) => { setMyDocs(data || []); setMyDocsLoading(false); });
         supabase.from('messages').select('*').eq('client_id', session.user.id).order('created_at', { ascending: true })
-            .then(({ data }) => { setMyMessages(data || []); setMyMessagesLoading(false); });
+            .then(({ data }) => {
+                setMyMessages(data || []);
+                setMyMessagesLoading(false);
+                if (clientProfile && data) {
+                    const unread = data.filter(m => m.is_admin_message && m.created_at > clientProfile.client_last_read_at).length;
+                    setUnreadCount(unread);
+                }
+            });
     }, [session, clientProfile]);
 
     const handleClientUpload = async (e) => {
@@ -951,16 +1240,32 @@ const Dashboard = ({ setCurrentView }) => {
 
     const openClientDetail = async (client) => {
         setSelectedClient(client);
+        setAdminInternalNotes(client.internal_notes || '');
         setDetailLoading(true);
         setClientDocs([]);
         setClientMessages([]);
         const [{ data: docs }, { data: msgs }] = await Promise.all([
             supabase.from('documents').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
             supabase.from('messages').select('*').eq('client_id', client.id).order('created_at', { ascending: true }),
+            supabase.from('clients').update({ admin_last_read_at: new Date().toISOString() }).eq('id', client.id)
         ]);
         setClientDocs(docs || []);
         setClientMessages(msgs || []);
         setDetailLoading(false);
+    };
+
+    const handleUpdateInternalNotes = async () => {
+        if (!supabase || !selectedClient) return;
+        setSavingNotes(true);
+        const { error } = await supabase
+            .from('clients')
+            .update({ internal_notes: adminInternalNotes, updated_at: new Date().toISOString() })
+            .eq('id', selectedClient.id);
+        if (!error) {
+            setAllClients(prev => prev.map(c => c.id === selectedClient.id ? { ...c, internal_notes: adminInternalNotes } : c));
+            setSelectedClient(prev => ({ ...prev, internal_notes: adminInternalNotes }));
+        }
+        setSavingNotes(false);
     };
 
     const handleAdminMessage = async (e) => {
@@ -993,9 +1298,11 @@ const Dashboard = ({ setCurrentView }) => {
                 path,
                 size: file.size,
                 uploaded_by: session.user.id,
+                step_index: deliverableStep !== '' ? parseInt(deliverableStep) : null
             });
             if (!dbError) {
-                setClientDocs(prev => [{ name: file.name, path, size: file.size, created_at: new Date().toISOString() }, ...prev]);
+                setClientDocs(prev => [{ name: file.name, path, size: file.size, step_index: deliverableStep !== '' ? parseInt(deliverableStep) : null, created_at: new Date().toISOString() }, ...prev]);
+                setDeliverableStep('');
             }
         }
         setUploadingDoc(false);
@@ -1035,7 +1342,7 @@ const Dashboard = ({ setCurrentView }) => {
         e.preventDefault();
         if (!supabase || !session) return;
         setSavingSetup(true);
-        const rec = recommendEntity(clientProfile?.funding_stage, setupIntent, setupSellsTo);
+        const rec = recommendEntity(clientProfile?.funding_stage, setupIntent, setupSellsTo, setupCountry);
         const finalEntity = setupEntityOverride ? setupEntity : rec.entity;
         await supabase.from('clients').update({
             country: setupCountry,
@@ -1134,6 +1441,35 @@ const Dashboard = ({ setCurrentView }) => {
         setAdvancingId(null);
     };
 
+    const handleDeleteUser = async (clientId) => {
+        if (!supabase || !session) return;
+        setDeletingId(clientId);
+        setDeleteError('');
+        try {
+            const { data: { session: authSession } } = await supabase.auth.getSession();
+            const res = await fetch('https://qatfiicpkunabpphwqee.supabase.co/functions/v1/admin-delete-user', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authSession.access_token}`,
+                    'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhdGZpaWNwa3VuYWJwcGh3cWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzgyOTEsImV4cCI6MjA5NTkxNDI5MX0.00A9OEwex4Yeb4EXCy8vUtRXpCVPXmZDyXVHxl6XiVA',
+                },
+                body: JSON.stringify({ user_id: clientId }),
+            });
+            const json = await res.json();
+            if (json.ok) {
+                setAllClients(prev => prev.filter(c => c.id !== clientId));
+                if (selectedClient?.id === clientId) setSelectedClient(null);
+            } else {
+                setDeleteError(json.error || 'Delete failed');
+            }
+        } catch {
+            setDeleteError('Could not reach delete service');
+        }
+        setArmedDeleteId(null);
+        setDeletingId(null);
+    };
+
     const stepLabels = ['Account created','Entity formation','Landing page deployed','GitHub repo provisioned','CRM connected','Analytics live','First AI agent deployed'];
 
     if (session && clientProfile?.is_admin) {
@@ -1151,14 +1487,19 @@ const Dashboard = ({ setCurrentView }) => {
                         </div>
                     </div>
 
+                    {deleteError && (
+                        <div className="mb-4 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-xs text-red-200">
+                            {deleteError}
+                        </div>
+                    )}
                     {adminLoading ? (
                         <div className="space-y-3">
                             {[1,2,3].map(i => <div key={i} className="w-full h-16 bg-white/5 rounded-xl animate-pulse" />)}
                         </div>
                     ) : (
                         <div className="bg-white/5 border border-white/10 rounded-2xl backdrop-blur-xl overflow-hidden">
-                            <div className="grid grid-cols-[2fr_1.5fr_1fr_1fr_2fr_1fr_auto] gap-0 px-6 py-3 border-b border-white/5">
-                                {['Company','Founder','Stage','Plan','Progress','Joined',''].map((h, i) => (
+                            <div className="grid grid-cols-[2fr_1.5fr_1fr_1fr_2fr_1fr_auto_auto] gap-0 px-6 py-3 border-b border-white/5">
+                                {['Company','Founder','Stage','Plan','Progress','Joined','',''].map((h, i) => (
                                     <span key={i} className="text-[10px] uppercase tracking-widest text-gray-500">{h}</span>
                                 ))}
                             </div>
@@ -1171,11 +1512,16 @@ const Dashboard = ({ setCurrentView }) => {
                                     const joined = new Date(client.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
                                     const isComplete = step >= 7;
                                     const isAdvancing = advancingId === client.id;
+                                    const hasUnread = client.last_message_at > client.admin_last_read_at;
+
                                     return (
-                                        <div key={client.id} onClick={() => openClientDetail(client)} className={`grid grid-cols-[2fr_1.5fr_1fr_1fr_2fr_1fr_auto] gap-0 px-6 py-4 items-center cursor-pointer ${i % 2 === 0 ? '' : 'bg-white/[0.02]'} hover:bg-white/5 transition-colors ${selectedClient?.id === client.id ? 'bg-purple-500/5 border-l-2 border-purple-500/50' : ''}`}>
-                                            <div>
-                                                <p className="text-sm font-medium text-white">{client.company_name}</p>
-                                                <p className="text-[10px] text-gray-500">{client.email}</p>
+                                        <div key={client.id} onClick={() => openClientDetail(client)} className={`grid grid-cols-[2fr_1.5fr_1fr_1fr_2fr_1fr_auto_auto] gap-0 px-6 py-4 items-center cursor-pointer ${i % 2 === 0 ? '' : 'bg-white/[0.02]'} hover:bg-white/5 transition-colors ${selectedClient?.id === client.id ? 'bg-purple-500/5 border-l-2 border-purple-500/50' : ''}`}>
+                                            <div className="flex items-center gap-3">
+                                                {hasUnread && <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse flex-shrink-0" title="New Message"></div>}
+                                                <div>
+                                                    <p className="text-sm font-medium text-white">{client.company_name}</p>
+                                                    <p className="text-[10px] text-gray-500">{client.email}</p>
+                                                </div>
                                             </div>
                                             <span className="text-sm text-gray-300">{client.founder_name}</span>
                                             <span className="text-[9px] uppercase tracking-widest text-purple-300 bg-purple-400/10 px-2 py-1 rounded-full w-fit">{client.funding_stage || '—'}</span>
@@ -1203,6 +1549,24 @@ const Dashboard = ({ setCurrentView }) => {
                                             >
                                                 {isAdvancing ? '…' : isComplete ? '✓' : 'Advance'}
                                             </button>
+                                            {armedDeleteId === client.id ? (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleDeleteUser(client.id); }}
+                                                    disabled={deletingId === client.id}
+                                                    className="ml-2 px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest rounded-lg border border-red-500/60 bg-red-500/20 text-red-200 hover:bg-red-500/30 transition-all disabled:opacity-40"
+                                                    title="Confirm permanent delete"
+                                                >
+                                                    {deletingId === client.id ? '…' : 'Confirm'}
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); setArmedDeleteId(client.id); setDeleteError(''); }}
+                                                    className="ml-2 px-3 py-1.5 text-[9px] font-bold uppercase tracking-widest rounded-lg border border-white/10 text-gray-500 hover:border-red-500/40 hover:text-red-300 transition-all"
+                                                    title="Delete this client account"
+                                                >
+                                                    Delete
+                                                </button>
+                                            )}
                                         </div>
                                     );
                                 })
@@ -1213,14 +1577,31 @@ const Dashboard = ({ setCurrentView }) => {
                     {/* Client detail panel */}
                     {selectedClient && (
                         <div className="mt-8 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-xl overflow-hidden animate-[fadeIn_0.3s_ease-out]">
-                            <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
+                            <div className="px-6 py-4 bg-white/[0.03] border-b border-white/5 grid grid-cols-2 md:grid-cols-4 gap-4">
                                 <div>
-                                    <h3 className="text-sm font-bold text-white">{selectedClient.company_name}</h3>
-                                    <p className="text-[10px] text-gray-500 mt-0.5">{selectedClient.email}</p>
+                                    <p className="text-[9px] uppercase tracking-widest text-gray-500">Founder</p>
+                                    <p className="text-xs text-gray-300">{selectedClient.founder_name}</p>
                                 </div>
-                                <button onClick={() => setSelectedClient(null)} className="text-gray-500 hover:text-white transition-colors">
-                                    <i className="ph ph-x text-lg"></i>
-                                </button>
+                                <div>
+                                    <p className="text-[9px] uppercase tracking-widest text-gray-500">Jurisdiction</p>
+                                    <p className="text-xs text-gray-300">{selectedClient.jurisdiction || selectedClient.country || 'Not set'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[9px] uppercase tracking-widest text-gray-500">Entity Type</p>
+                                    <p className="text-xs text-purple-300">{selectedClient.entity_type || 'Not set'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-[9px] uppercase tracking-widest text-gray-500">Funding Stage</p>
+                                    <p className="text-xs text-purple-300">{selectedClient.funding_stage || 'Not set'}</p>
+                                </div>
+                                <div className="md:col-span-2">
+                                    <p className="text-[9px] uppercase tracking-widest text-gray-500">Business Intent</p>
+                                    <p className="text-xs text-gray-300 leading-relaxed truncate" title={selectedClient.business_intent}>{selectedClient.business_intent || 'No intent provided'}</p>
+                                </div>
+                                <div className="md:col-span-2">
+                                    <p className="text-[9px] uppercase tracking-widest text-gray-500">Target Market</p>
+                                    <p className="text-xs text-gray-300">{selectedClient.sells_to || 'Not provided'}</p>
+                                </div>
                             </div>
 
                             {detailLoading ? (
@@ -1228,24 +1609,59 @@ const Dashboard = ({ setCurrentView }) => {
                                     {[1,2].map(i => <div key={i} className="w-full h-10 bg-white/5 rounded animate-pulse" />)}
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-0 divide-y md:divide-y-0 md:divide-x divide-white/5">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-0 divide-y md:divide-y-0 md:divide-x divide-white/5">
+                                    {/* Internal Notes */}
+                                    <div className="p-6 flex flex-col">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h4 className="text-[10px] uppercase tracking-widest text-gray-500">Internal Notes</h4>
+                                            {adminInternalNotes !== selectedClient.internal_notes && (
+                                                <button onClick={handleUpdateInternalNotes} disabled={savingNotes} className="text-[9px] uppercase tracking-widest text-blue-400 hover:text-blue-300">
+                                                    {savingNotes ? 'Saving…' : 'Save'}
+                                                </button>
+                                            )}
+                                        </div>
+                                        <textarea
+                                            value={adminInternalNotes}
+                                            onChange={e => setAdminInternalNotes(e.target.value)}
+                                            placeholder="Private admin notes (not visible to client)…"
+                                            className="flex-1 min-h-[120px] bg-black/20 border border-white/5 rounded-xl p-4 text-xs text-gray-400 focus:outline-none focus:border-white/10 transition-all resize-none leading-relaxed"
+                                        />
+                                    </div>
+
                                     {/* Documents */}
                                     <div className="p-6">
                                         <div className="flex items-center justify-between mb-4">
                                             <h4 className="text-[10px] uppercase tracking-widest text-gray-500">Documents</h4>
-                                            <label className="cursor-pointer text-[9px] uppercase tracking-widest text-purple-300 border border-purple-500/30 px-3 py-1 rounded-lg hover:bg-purple-500/10 transition-all">
-                                                {uploadingDoc ? 'Uploading…' : '+ Upload'}
-                                                <input type="file" className="hidden" onChange={handleAdminUpload} disabled={uploadingDoc} />
-                                            </label>
+                                            <div className="flex items-center gap-2">
+                                                <select
+                                                    value={deliverableStep}
+                                                    onChange={e => setDeliverableStep(e.target.value)}
+                                                    className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-[9px] uppercase tracking-widest text-gray-400 focus:outline-none focus:border-purple-500/50 appearance-none cursor-pointer"
+                                                >
+                                                    <option value="">General</option>
+                                                    {stepLabels.map((label, idx) => (
+                                                        <option key={idx} value={idx}>Step {idx + 1}: {label}</option>
+                                                    ))}
+                                                </select>
+                                                <label className="cursor-pointer text-[9px] uppercase tracking-widest text-purple-300 border border-purple-500/30 px-3 py-1 rounded-lg hover:bg-purple-500/10 transition-all">
+                                                    {uploadingDoc ? '…' : '+ Upload'}
+                                                    <input type="file" className="hidden" onChange={handleAdminUpload} disabled={uploadingDoc} />
+                                                </label>
+                                            </div>
                                         </div>
                                         {clientDocs.length === 0 ? (
                                             <p className="text-xs text-gray-600 italic">No documents yet.</p>
                                         ) : (
-                                            <div className="space-y-2">
+                                            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                                                 {clientDocs.map((doc, i) => (
                                                     <div key={i} onClick={() => getSignedUrl(doc.path)} className="flex items-center gap-3 p-3 bg-white/5 rounded-lg hover:bg-white/10 cursor-pointer transition-all group">
                                                         <i className="ph ph-file text-gray-400 group-hover:text-blue-400 transition-colors flex-shrink-0"></i>
-                                                        <span className="text-xs text-gray-300 truncate flex-1">{doc.name}</span>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-xs text-gray-300 truncate">{doc.name}</p>
+                                                            {doc.step_index !== null && (
+                                                                <p className="text-[9px] text-blue-400/60 uppercase tracking-widest mt-0.5">Deliverable: {stepLabels[doc.step_index]}</p>
+                                                            )}
+                                                        </div>
                                                         <i className="ph ph-download-simple text-gray-600 group-hover:text-blue-400 transition-colors flex-shrink-0"></i>
                                                     </div>
                                                 ))}
@@ -1256,7 +1672,7 @@ const Dashboard = ({ setCurrentView }) => {
                                     {/* Messages */}
                                     <div className="p-6 flex flex-col">
                                         <h4 className="text-[10px] uppercase tracking-widest text-gray-500 mb-4">Messages</h4>
-                                        <div className="flex-1 space-y-3 max-h-48 overflow-y-auto mb-4 pr-1">
+                                        <div className="flex-1 space-y-3 max-h-64 overflow-y-auto mb-4 pr-1">
                                             {clientMessages.length === 0 ? (
                                                 <p className="text-xs text-gray-600 italic">No messages yet.</p>
                                             ) : (
@@ -1394,17 +1810,26 @@ const Dashboard = ({ setCurrentView }) => {
                                 {onboardingSteps.map((step, i) => {
                                     const done = i < currentStep;
                                     const active = i === currentStep;
+                                    const stepDeliverable = myDocs.find(d => d.step_index === i);
                                     return (
-                                        <div key={i} className="flex items-center gap-3">
-                                            {done ? (
-                                                <i className="ph ph-check-circle text-green-400 text-base flex-shrink-0"></i>
-                                            ) : active ? (
-                                                <i className={`ph ${step.icon} text-purple-400 text-base flex-shrink-0`}></i>
-                                            ) : (
-                                                <i className="ph ph-circle text-gray-700 text-base flex-shrink-0"></i>
+                                        <div key={i} className="flex flex-col gap-1">
+                                            <div className="flex items-center gap-3">
+                                                {done ? (
+                                                    <i className="ph ph-check-circle text-green-400 text-base flex-shrink-0"></i>
+                                                ) : active ? (
+                                                    <i className={`ph ${step.icon} text-purple-400 text-base flex-shrink-0`}></i>
+                                                ) : (
+                                                    <i className="ph ph-circle text-gray-700 text-base flex-shrink-0"></i>
+                                                )}
+                                                <span className={`text-sm ${done ? 'text-gray-200' : active ? 'text-purple-200' : 'text-gray-600'}`}>{step.label}</span>
+                                                {active && <span className="ml-auto text-[9px] uppercase tracking-widest text-purple-400 border border-purple-400/20 px-2 py-0.5 rounded-full">In Progress</span>}
+                                            </div>
+                                            {stepDeliverable && (
+                                                <div onClick={() => getSignedUrl(stepDeliverable.path)} className="ml-7 flex items-center gap-2 py-1 px-2 bg-blue-500/10 border border-blue-500/20 rounded-lg cursor-pointer hover:bg-blue-500/20 transition-all group w-fit">
+                                                    <i className="ph ph-file-arrow-down text-blue-400 text-[10px]"></i>
+                                                    <span className="text-[9px] uppercase tracking-widest text-blue-300 group-hover:text-blue-200">Download Deliverable</span>
+                                                </div>
                                             )}
-                                            <span className={`text-sm ${done ? 'text-gray-200' : active ? 'text-purple-200' : 'text-gray-600'}`}>{step.label}</span>
-                                            {active && <span className="ml-auto text-[9px] uppercase tracking-widest text-purple-400 border border-purple-400/20 px-2 py-0.5 rounded-full">In Progress</span>}
                                         </div>
                                     );
                                 })}
@@ -1822,28 +2247,162 @@ const Dashboard = ({ setCurrentView }) => {
     );
 };
 
-// BackgroundWaves — animated SVG ambient layer
-const BackgroundWaves = ({ visible }) => (
-    <div className={`fixed bottom-0 left-0 w-full h-1/2 z-0 overflow-hidden pointer-events-none transition-opacity duration-[2000ms] ease-in-out ${visible ? 'opacity-100' : 'opacity-0'}`}>
-        <style>{`
-            @keyframes organicWave {
-                0% { transform: translateX(0) translateY(0) scaleY(1); }
-                33% { transform: translateX(-15%) translateY(-5px) scaleY(0.9); }
-                66% { transform: translateX(-30%) translateY(5px) scaleY(1.1); }
-                100% { transform: translateX(-50%) translateY(0) scaleY(1); }
-            }
-            .animate-organic-wave {
-                animation: organicWave 18s linear infinite;
-            }
-        `}</style>
-        <svg className="w-[200%] h-full animate-organic-wave" viewBox="0 0 1000 100" preserveAspectRatio="none">
-            {/* Very thin, wavy paths only (removed straight horizontal line/fills) */}
-            <path d="M0,50 C150,80 350,20 500,50 C650,80 850,20 1000,50" fill="none" stroke="rgba(100, 149, 237, 0.08)" strokeWidth="0.3" />
-            <path d="M0,40 C150,20 350,60 500,40 C650,20 850,60 1000,40" fill="none" stroke="rgba(147, 112, 219, 0.08)" strokeWidth="0.3" style={{ animationDelay: '-4s' }} />
-            <path d="M0,60 C200,85 400,35 600,60 800,85 1000,35 1200,60" fill="none" stroke="rgba(255, 255, 255, 0.04)" strokeWidth="0.3" style={{ animationDelay: '-8s' }} />
-        </svg>
-    </div>
-);
+// GalaxyBackground — canvas starfield with nebula glow and shooting stars
+const GalaxyBackground = ({ visible }) => {
+    const canvasRef = useRef(null);
+    const stateRef = useRef(null);
+    const rafRef = useRef(null);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+
+        let W = window.innerWidth, H = window.innerHeight;
+        canvas.width = W; canvas.height = H;
+
+        const resize = () => {
+            W = canvas.width = window.innerWidth;
+            H = canvas.height = window.innerHeight;
+        };
+        window.addEventListener('resize', resize);
+
+        const rand = (a, b) => a + Math.random() * (b - a);
+
+        if (!stateRef.current) {
+            // dense star field — 3 layers (distant tiny, mid, bright foreground)
+            const stars = [
+                ...Array.from({ length: 420 }, () => { const x=Math.random(),y=Math.random(); const cx=Math.abs(x-0.5),cy=Math.abs(y-0.5); const nearCenter=(cx<0.18&&cy<0.18); return { x, y, r: nearCenter?rand(0.1,0.3):rand(0.2,0.7), alpha: nearCenter?rand(0.1,0.25):rand(0.2,0.55), twinkleSpeed: rand(0.03,0.10), twinkleOffset: Math.random()*Math.PI*2, drift: rand(-0.00002,0.00002), color: [255,255,255] }; }),
+                ...Array.from({ length: 140 }, () => { const x=Math.random(),y=Math.random(); const cx=Math.abs(x-0.5),cy=Math.abs(y-0.5); const nearCenter=(cx<0.18&&cy<0.18); return { x, y, r: nearCenter?rand(0.4,0.7):rand(0.7,1.4), alpha: nearCenter?rand(0.15,0.3):rand(0.4,0.8), twinkleSpeed: rand(0.05,0.14), twinkleOffset: Math.random()*Math.PI*2, drift: rand(-0.00004,0.00004), color: [220,210,255] }; }),
+                ...Array.from({ length: 22  }, () => { const x=Math.random(),y=Math.random(); const cx=Math.abs(x-0.5),cy=Math.abs(y-0.5); const nearCenter=(cx<0.22&&cy<0.22); return { x, y, r: nearCenter?rand(0.5,0.9):rand(1.4,2.4), alpha: nearCenter?rand(0.2,0.4):rand(0.6,1.0), twinkleSpeed: rand(0.06,0.16), twinkleOffset: Math.random()*Math.PI*2, drift: rand(-0.00006,0.00006), color: [200,180,255] }; }),
+            ];
+
+            // nebulae defined as simple radial gradients at absolute positions
+            const nebulae = [
+                { x: 0.78, y: 0.15, r: 0.38, color: [88,28,220],   alpha: 0.13 },
+                { x: 0.18, y: 0.60, r: 0.32, color: [29,78,216],   alpha: 0.11 },
+                { x: 0.50, y: 0.45, r: 0.48, color: [109,40,217],  alpha: 0.08 },
+                { x: 0.85, y: 0.72, r: 0.26, color: [16,185,129],  alpha: 0.07 },
+                { x: 0.28, y: 0.22, r: 0.30, color: [147,51,234],  alpha: 0.09 },
+            ];
+
+            const shooters = Array.from({ length: 5 }, (_, i) => ({
+                x: 0, y: 0, vx: 0, vy: 0, len: 0,
+                life: 0, maxLife: 0, active: false,
+                nextIn: rand(60, 300) + i * 80,
+            }));
+
+            stateRef.current = { stars, nebulae, shooters };
+        }
+
+        const { stars, nebulae, shooters } = stateRef.current;
+
+        const tick = (t) => {
+            const ctx = canvas.getContext('2d');
+
+            // deep space base
+            const bg = ctx.createRadialGradient(W*0.5, H*0.35, 0, W*0.5, H*0.55, W*0.9);
+            bg.addColorStop(0,    'rgb(18,9,40)');
+            bg.addColorStop(0.45, 'rgb(10,5,24)');
+            bg.addColorStop(1,    'rgb(3,2,10)');
+            ctx.fillStyle = bg;
+            ctx.fillRect(0, 0, W, H);
+
+            // nebulae — simple radial fills at viewport scale
+            nebulae.forEach(n => {
+                const nx = n.x * W, ny = n.y * H, nr = n.r * Math.min(W, H);
+                const [r,g,b] = n.color;
+                const grd = ctx.createRadialGradient(nx, ny, 0, nx, ny, nr);
+                grd.addColorStop(0,    `rgba(${r},${g},${b},${n.alpha})`);
+                grd.addColorStop(0.4,  `rgba(${r},${g},${b},${n.alpha * 0.5})`);
+                grd.addColorStop(1,    `rgba(${r},${g},${b},0)`);
+                ctx.beginPath();
+                ctx.arc(nx, ny, nr, 0, Math.PI * 2);
+                ctx.fillStyle = grd;
+                ctx.fill();
+            });
+
+            // stars
+            const now = t / 1000;
+            stars.forEach(s => {
+                s.x += s.drift;
+                if (s.x < 0) s.x += 1;
+                if (s.x > 1) s.x -= 1;
+                const twinkle = 0.5 + 0.5 * Math.sin(now * s.twinkleSpeed + s.twinkleOffset);
+                const a = s.alpha * (0.82 + 0.18 * twinkle);
+                const [cr,cg,cb] = s.color;
+                ctx.beginPath();
+                ctx.arc(s.x * W, s.y * H, s.r, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${cr},${cg},${cb},${a})`;
+                ctx.fill();
+                if (s.r > 1.3 && twinkle > 0.75) {
+                    const glow = ctx.createRadialGradient(s.x*W, s.y*H, 0, s.x*W, s.y*H, s.r*5);
+                    glow.addColorStop(0, `rgba(${cr},${cg},${cb},${a * 0.4})`);
+                    glow.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+                    ctx.beginPath();
+                    ctx.arc(s.x * W, s.y * H, s.r * 5, 0, Math.PI * 2);
+                    ctx.fillStyle = glow;
+                    ctx.fill();
+                }
+            });
+
+            // shooting stars
+            shooters.forEach(sh => {
+                if (!sh.active) {
+                    sh.nextIn--;
+                    if (sh.nextIn <= 0) {
+                        sh.x = rand(0.05, 0.6);
+                        sh.y = rand(0.02, 0.35);
+                        sh.vx = rand(0.003, 0.007);
+                        sh.vy = rand(0.001, 0.003);
+                        sh.len = rand(0.06, 0.16);
+                        sh.life = 0;
+                        sh.maxLife = rand(40, 80);
+                        sh.active = true;
+                    }
+                    return;
+                }
+                sh.life++;
+                const fade = sh.life < 8 ? sh.life / 8 : sh.life > sh.maxLife - 10 ? (sh.maxLife - sh.life) / 10 : 1;
+                const x1 = sh.x * W, y1 = sh.y * H;
+                const mag = Math.sqrt(sh.vx*sh.vx + sh.vy*sh.vy);
+                const x0 = x1 - (sh.vx/mag) * sh.len * W * 0.5;
+                const y0 = y1 - (sh.vy/mag) * sh.len * H * 0.5;
+                const grad = ctx.createLinearGradient(x0, y0, x1, y1);
+                grad.addColorStop(0, `rgba(255,255,255,0)`);
+                grad.addColorStop(0.7, `rgba(200,180,255,${fade * 0.5})`);
+                grad.addColorStop(1, `rgba(255,255,255,${fade * 0.9})`);
+                ctx.beginPath();
+                ctx.moveTo(x0, y0);
+                ctx.lineTo(x1, y1);
+                ctx.strokeStyle = grad;
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                sh.x += sh.vx;
+                sh.y += sh.vy;
+                if (sh.life >= sh.maxLife || sh.x > 1 || sh.y > 1) {
+                    sh.active = false;
+                    sh.nextIn = rand(300, 900);
+                }
+            });
+
+            rafRef.current = requestAnimationFrame(tick);
+        };
+
+        rafRef.current = requestAnimationFrame(tick);
+        return () => {
+            cancelAnimationFrame(rafRef.current);
+            window.removeEventListener('resize', resize);
+        };
+    }, []);
+
+    return (
+        <canvas
+            ref={canvasRef}
+            className="fixed inset-0 w-full h-full z-0 pointer-events-none"
+            style={{ opacity: visible ? 1 : 0, transition: 'opacity 2s ease' }}
+        />
+    );
+};
 
 const InquiryBanner = ({ onDismiss }) => {
     useEffect(() => {
@@ -1853,7 +2412,7 @@ const InquiryBanner = ({ onDismiss }) => {
 
     return (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-[fadeIn_0.4s_ease-out]">
-            <div className="flex items-center gap-4 bg-[#1a0b2e]/90 border border-purple-500/30 backdrop-blur-xl rounded-2xl px-6 py-4 shadow-2xl">
+            <div className="flex items-center gap-4 bg-[#03020a]/90 border border-purple-500/30 backdrop-blur-xl rounded-2xl px-6 py-4 shadow-2xl">
                 <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse flex-shrink-0"></div>
                 <p className="text-xs uppercase tracking-[0.25em] text-gray-200">Inquiry received — our team will be in touch shortly.</p>
                 <button onClick={onDismiss} className="ml-2 text-gray-500 hover:text-white transition-colors">
@@ -1872,7 +2431,7 @@ const BrandKitToast = ({ onDismiss }) => {
 
     return (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-[fadeIn_0.4s_ease-out]">
-            <div className="flex items-center gap-4 bg-[#1a0b2e]/90 border border-blue-500/30 backdrop-blur-xl rounded-2xl px-6 py-4 shadow-2xl">
+            <div className="flex items-center gap-4 bg-[#03020a]/90 border border-blue-500/30 backdrop-blur-xl rounded-2xl px-6 py-4 shadow-2xl">
                 <i className="ph ph-download-simple text-blue-400 text-lg flex-shrink-0"></i>
                 <p className="text-xs uppercase tracking-[0.25em] text-gray-200">Brand Kit download starting…</p>
                 <button onClick={onDismiss} className="ml-2 text-gray-500 hover:text-white transition-colors">
@@ -1885,10 +2444,24 @@ const BrandKitToast = ({ onDismiss }) => {
 
 const App = () => {
     const [currentView, setCurrentView] = useState('landing');
+    const [visibleView, setVisibleView] = useState('landing');
+    const [viewVisible, setViewVisible] = useState(true);
     const [uiVisible, setUiVisible] = useState(true);
+    const [navReady, setNavReady] = useState(false);
+
+    const navigateTo = (view) => {
+        if (view === visibleView) return;
+        setViewVisible(false);
+        setTimeout(() => {
+            setCurrentView(view);
+            setVisibleView(view);
+            requestAnimationFrame(() => requestAnimationFrame(() => setViewVisible(true)));
+        }, 180);
+    };
     const [contextMenu, setContextMenu] = useState({ visible: false, x: 0, y: 0 });
     const [showInquiry, setShowInquiry] = useState(false);
     const [showBrandKit, setShowBrandKit] = useState(false);
+    const [unreadCount, setUnreadCount] = useState(0);
 
     const handleLogoRightClick = (e) => {
         e.preventDefault();
@@ -1910,12 +2483,13 @@ const App = () => {
     };
 
     return (
-        <div className="min-h-screen text-white relative font-sans selection:bg-purple-500/30 bg-[#1a0b2e]">
-            <BackgroundWaves visible={uiVisible || currentView !== 'landing'} />
+        <div className="min-h-screen text-white relative font-sans selection:bg-purple-500/30 bg-[#03020a]">
+            <GalaxyBackground visible={true} />
 
-            <nav className={`fixed top-0 left-0 w-full z-50 px-8 py-8 md:px-16 md:py-12 flex justify-between items-center transition-all duration-1000 ${uiVisible || currentView !== 'landing' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}>
+            <nav className={`fixed top-0 left-0 w-full z-50 px-8 py-8 md:px-16 md:py-12 flex justify-center items-center transition-all duration-700 ${currentView !== 'landing' || navReady ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}>
+                {/* nav logo — muted, kept for reference */}
                 <div
-                    className="cursor-pointer nav-link flex items-center group"
+                    className="cursor-pointer nav-link flex items-center group opacity-0 pointer-events-none absolute left-8 md:left-16"
                     onClick={() => setCurrentView('landing')}
                     onContextMenu={handleLogoRightClick}
                 >
@@ -1929,9 +2503,13 @@ const App = () => {
                 </div>
 
                 <div className="flex items-center gap-8 md:gap-12 text-[10px] md:text-xs tracking-[0.3em] uppercase font-bold">
-                    <button onClick={() => setCurrentView('features')} className={`nav-link transition-opacity hidden sm:block ${currentView === 'features' ? 'text-purple-300 opacity-100' : 'opacity-60 hover:opacity-100'}`}>Features</button>
-                    <button onClick={() => setCurrentView('pricing')} className={`nav-link transition-opacity hidden sm:block ${currentView === 'pricing' ? 'text-purple-300 opacity-100' : 'opacity-60 hover:opacity-100'}`}>Pricing</button>
-                    <button onClick={() => handleAction(currentView === 'dashboard' ? 'contact' : 'admin')} className="nav-link text-purple-300 hover:text-white transition-colors">{currentView === 'dashboard' ? 'Support' : 'Login'}</button>
+                    <button onClick={() => navigateTo('features')} className={`nav-link transition-opacity hidden sm:block ${currentView === 'features' ? 'text-purple-300 opacity-100' : 'opacity-60 hover:opacity-100'}`}>Features</button>
+                    <button onClick={() => navigateTo('pricing')} className={`nav-link transition-opacity hidden sm:block ${currentView === 'pricing' ? 'text-purple-300 opacity-100' : 'opacity-60 hover:opacity-100'}`}>Pricing</button>
+                    <button onClick={() => navigateTo('support')} className={`nav-link transition-opacity hidden sm:block relative ${currentView === 'support' ? 'text-purple-300 opacity-100' : 'opacity-60 hover:opacity-100'}`}>
+                        Support
+                        {unreadCount > 0 && <span className="absolute -top-2 -right-3 w-4 h-4 bg-blue-500 text-white text-[8px] flex items-center justify-center rounded-full animate-pulse tracking-none">{unreadCount}</span>}
+                    </button>
+                    <button onClick={() => handleAction('admin')} className="nav-link text-purple-300 hover:text-white transition-colors">Login</button>
                 </div>
             </nav>
 
@@ -1950,15 +2528,23 @@ const App = () => {
             {showInquiry && <InquiryBanner onDismiss={() => setShowInquiry(false)} />}
             {showBrandKit && <BrandKitToast onDismiss={() => setShowBrandKit(false)} />}
 
+
             <main className="relative z-10">
-                {currentView === 'landing' && (
-                    <Landing onNavigate={() => setCurrentView('dashboard')} uiVisible={uiVisible} setUiVisible={setUiVisible} />
+                {(currentView === 'landing' || currentView === 'features' || currentView === 'pricing' || currentView === 'support') && (
+                    <Landing onNavigate={() => navigateTo('dashboard')} uiVisible={uiVisible} setUiVisible={setUiVisible} onBrandKit={() => setShowBrandKit(true)} onElementsReady={() => setNavReady(true)} />
                 )}
-                {currentView === 'dashboard' && <Dashboard setCurrentView={setCurrentView} />}
-                {currentView === 'signup' && <Signup setCurrentView={setCurrentView} />}
-                {currentView === 'features' && <Features />}
-                {currentView === 'pricing' && <Pricing onContact={() => handleAction('contact')} />}
+                {currentView === 'dashboard' && <Dashboard setCurrentView={navigateTo} setUnreadCount={setUnreadCount} />}
+                {currentView === 'signup' && <Signup setCurrentView={navigateTo} />}
             </main>
+
+            {/* Features/Pricing/Support overlay — fade up, tap outside to dismiss */}
+            {(currentView === 'features' || currentView === 'pricing' || currentView === 'support') && (
+                <>
+                    {currentView === 'features' && <Features onDismiss={() => navigateTo('landing')} visible={viewVisible} />}
+                    {currentView === 'pricing' && <Pricing onContact={() => handleAction('contact')} onDismiss={() => navigateTo('landing')} visible={viewVisible} />}
+                    {currentView === 'support' && <Support onDismiss={() => navigateTo('landing')} onContact={() => handleAction('contact')} visible={viewVisible} />}
+                </>
+            )}
         </div>
     );
 };

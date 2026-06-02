@@ -1,4 +1,3 @@
-[project]
 project_id = "qatfiicpkunabpphwqee"
 
 [functions.create-checkout]
@@ -17,4 +16,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.agent-formation]
+verify_jwt = true
+
+[functions.admin-delete-user]
 verify_jwt = true
