@@ -1,7 +1,7 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabase';
 
-// GreenScreen — canvas chroma key video engine
+// GreenScreen : canvas chroma key video engine
 const GreenScreen = ({ videoUrl, onVideoEnd }) => {
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
@@ -20,7 +20,7 @@ const GreenScreen = ({ videoUrl, onVideoEnd }) => {
             const width = video.videoWidth;
             const height = video.videoHeight;
 
-            // VIDEO CROP — trim right to remove suffix text, trim left to re-center
+            // VIDEO CROP : trim right to remove suffix text, trim left to re-center
             const cropLeft = 0.15;
             const cropRight = 0.30;
             const sourceX = width * cropLeft;
@@ -120,7 +120,7 @@ const GreenScreen = ({ videoUrl, onVideoEnd }) => {
     );
 };
 
-// SolarSystemCanvas — orbital mechanics around the button
+// SolarSystemCanvas : orbital mechanics around the button
 const MindMapCanvas = ({ active }) => {
     const canvasRef = useRef(null);
     const stateRef = useRef(null);
@@ -209,7 +209,7 @@ const MindMapCanvas = ({ active }) => {
                     ctx.fill();
                 });
 
-                // thread to center — curved inward like gravity
+                // thread to center : curved inward like gravity
                 const cp1x = (x + cx) / 2 + (y - cy) * 0.3;
                 const cp1y = (y + cy) / 2 - (x - cx) * 0.3;
                 ctx.beginPath();
@@ -240,7 +240,7 @@ const MindMapCanvas = ({ active }) => {
                 ctx.fill();
                 ctx.shadowBlur = 0;
 
-                // label — appears as orbit opens
+                // label : appears as orbit opens
                 if (presence > 0.5) {
                     ctx.font = `bold ${Math.round(8 * presence)}px sans-serif`;
                     ctx.fillStyle = `rgba(${r},${g},${b},${(presence - 0.5) * 2 * 0.8})`;
@@ -344,7 +344,7 @@ const Landing = ({ onNavigate, uiVisible, setUiVisible, onBrandKit, onElementsRe
                 </div>
 
                 <p className="text-gray-400 text-[10px] md:text-xs mt-8 font-medium tracking-[0.5em] uppercase opacity-50">
-                    Automate. Integrate. Scale.
+                    Launch faster. Scale smarter.
                 </p>
             </div>
         </div>
@@ -354,15 +354,15 @@ const Landing = ({ onNavigate, uiVisible, setUiVisible, onBrandKit, onElementsRe
 // Features — service overview grid
 const Features = ({ onDismiss, visible }) => {
     const features = [
-        { icon: "ph-megaphone", title: "Marketing Automation", desc: "Automated campaign creation, content scheduling, and multi-channel publishing." },
-        { icon: "ph-shield-check", title: "Digital Rights Management", desc: "Protect your IP from day one — automated DRM filing, licensing documentation, and ownership records." },
-        { icon: "ph-robot", title: "AI Agents", desc: "Deploy autonomous agents for tax, legal, and operational workflows." },
-        { icon: "ph-chart-line", title: "Accounting", desc: "Real-time synchronization of invoices, expenses, and payroll data." },
-        { icon: "ph-rocket-launch", title: "Business Development", desc: "Structured sprint cycles, milestone tracking, and growth playbooks to move from zero to revenue." },
-        { icon: "ph-paper-plane-tilt", title: "Emails", desc: "Transactional and lifecycle emails with high deliverability — onboarding flows, invoices, and alerts." },
-        { icon: "ph-receipt", title: "Taxes", desc: "Automated sales tax calculation and filing compliance." },
-        { icon: "ph-database", title: "Databases", desc: "Scalable postgres database management included in every tier." },
-        { icon: "ph-scales", title: "Legal Compliance", desc: "Auto-generated policies and consent management." }
+        { icon: "ph-megaphone", title: "Marketing Automation", desc: "Marketing that never sleeps. We handle the campaign scheduling and cross-platform shipping while you focus on the product." },
+        { icon: "ph-shield-check", title: "Digital Rights Management", desc: "IP protection for the paranoid. Secure your assets with automated DRM filing and ownership records that stand up to scrutiny." },
+        { icon: "ph-robot", title: "AI Agents", desc: "Hire your first non-human team member. Specialized agents for the boring stuff: tax, legal, and operational overhead." },
+        { icon: "ph-chart-line", title: "Accounting", desc: "Books that actually make sense. Real-time synchronization of every invoice and payroll detail. Zero surprises." },
+        { icon: "ph-rocket-launch", title: "Business Development", desc: "Build momentum from day one. Move from zero to revenue with aggressive sprint cycles and growth playbooks." },
+        { icon: "ph-paper-plane-tilt", title: "Emails", desc: "Delivery that isn't a gamble. Transactional pipes built to land in the inbox, not the junk folder." },
+        { icon: "ph-receipt", title: "Taxes", desc: "The tax man won't bother you. Automated calculations and filing compliance built into your core workflow." },
+        { icon: "ph-database", title: "Databases", desc: "Industrial strength data. Managed Postgres that scales as fast as your ambition. Professional infra, included." },
+        { icon: "ph-scales", title: "Legal Compliance", desc: "Legal work without the legal bills. Auto-generated policies and consent tools that just work." }
     ];
 
     const ease = 'cubic-bezier(0.22, 1, 0.36, 1)';
@@ -398,8 +398,8 @@ const Features = ({ onDismiss, visible }) => {
                         }}
                     >
                         <div className="text-center mb-12">
-                            <h1 className="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-400 uppercase tracking-tighter mb-4">Automate to Scale</h1>
-                            <p className="text-gray-400 text-xs md:text-sm tracking-[0.2em] uppercase opacity-70">Everything you need to automate your enterprise</p>
+                            <h1 className="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-400 uppercase tracking-tighter mb-4">Operational Excellence</h1>
+                            <p className="text-gray-400 text-xs md:text-sm tracking-[0.2em] uppercase opacity-70">A complete suite for founders who value their time</p>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             {features.map((f, i) => (
@@ -454,18 +454,18 @@ const Pricing = ({ onContact, onDismiss, visible }) => {
                     }}
                 >
                     <div className="text-center mb-12">
-                        <h1 className="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-400 uppercase tracking-tighter mb-4">Scalable Pricing</h1>
-                        <p className="text-gray-400 text-xs md:text-sm tracking-[0.2em] uppercase opacity-70">Start free, upgrade as you grow</p>
+                        <h1 className="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-400 uppercase tracking-tighter mb-4">Plans for every stage</h1>
+                        <p className="text-gray-400 text-xs md:text-sm tracking-[0.2em] uppercase opacity-70">Grow at your own pace with modular business automation</p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-8 w-full">
                         <div className="bg-white/5 border border-white/10 rounded-2xl p-8 flex flex-col hover:border-white/20 transition-colors duration-300">
                             <h3 className="text-sm font-bold uppercase tracking-widest text-blue-300 mb-2">Starter</h3>
                             <div className="text-4xl font-bold mb-6">$0 <span className="text-sm text-gray-500 font-normal">/mo</span></div>
                             <ul className="space-y-4 mb-8 text-sm text-gray-300 flex-1">
-                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Entity Formation Guide</li>
-                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Basic Accounting Sync</li>
-                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> 1 AI Agent</li>
-                                <li className="flex items-center gap-3 opacity-50"><i className="ph ph-x text-gray-600"></i> Compliance Automation</li>
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Step-by-step formation guides</li>
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Real-time accounting sync</li>
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Formation Assistant access</li>
+                                <li className="flex items-center gap-3 opacity-50"><i className="ph ph-x text-gray-600"></i> Automated compliance filings</li>
                             </ul>
                             <button onClick={onContact} className="w-full py-4 border border-white/20 rounded-xl text-xs font-bold uppercase tracking-[0.2em] hover:bg-white/10 transition-colors">Start Free</button>
                         </div>
@@ -474,10 +474,10 @@ const Pricing = ({ onContact, onDismiss, visible }) => {
                             <h3 className="text-sm font-bold uppercase tracking-widest text-purple-300 mb-2">Growth</h3>
                             <div className="text-4xl font-bold mb-6">$49 <span className="text-sm text-gray-500 font-normal">/mo</span></div>
                             <ul className="space-y-4 mb-8 text-sm text-gray-300 flex-1">
-                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> State Compliance Automation</li>
-                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Full Integration Suite</li>
-                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> 3 AI Agents</li>
-                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Priority Support</li>
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Automated state filings</li>
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Full integration suite</li>
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Three specialized AI agents</li>
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Priority response times</li>
                             </ul>
                             <button onClick={onContact} className="w-full py-4 bg-white text-black rounded-xl text-xs font-bold uppercase tracking-[0.2em] hover:bg-gray-200 transition-colors">Get Started</button>
                         </div>
@@ -485,10 +485,10 @@ const Pricing = ({ onContact, onDismiss, visible }) => {
                             <h3 className="text-sm font-bold uppercase tracking-widest text-gray-400 mb-2">Enterprise</h3>
                             <div className="text-4xl font-bold mb-6">Custom</div>
                             <ul className="space-y-4 mb-8 text-sm text-gray-300 flex-1">
-                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Turnkey Incorporation & Audit</li>
-                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Unlimited Users & AI Models</li>
-                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Dedicated Account Manager</li>
-                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Full Compliance SLA</li>
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Turnkey incorporation & audit</li>
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Unlimited users & models</li>
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Dedicated account manager</li>
+                                <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Custom compliance SLAs</li>
                             </ul>
                             <button onClick={onContact} className="w-full py-4 border border-white/20 rounded-xl text-xs font-bold uppercase tracking-[0.2em] hover:bg-white/10 transition-colors">Contact Sales</button>
                         </div>
@@ -500,14 +500,16 @@ const Pricing = ({ onContact, onDismiss, visible }) => {
     );
 };
 
-// Support — contact channels overlay
+// Support : contact channels overlay
 const Support = ({ onDismiss, onContact, visible }) => {
     const ease = 'cubic-bezier(0.22, 1, 0.36, 1)';
+    
+    /*--- scaf ---*/
     const channels = [
-        { icon: 'ph-envelope-simple', title: 'Email', desc: 'Reach our team directly. Replies within 24 hours on business days.', action: 'support@onboardin.llc', href: 'mailto:support@onboardin.llc' },
-        { icon: 'ph-lifebuoy', title: 'Priority Support', desc: 'Growth and Enterprise customers get same-day responses and direct Slack access.', action: 'Open ticket', form: true },
-        { icon: 'ph-book-open', title: 'Knowledge Base', desc: 'Browse guides on entity formation, integrations, billing, and AI agents.', action: 'Browse docs', href: 'mailto:support@onboardin.llc?subject=Docs%20request' },
-        { icon: 'ph-chats-circle', title: 'Sales & Partnerships', desc: 'For custom integrations, enterprise pricing, and reseller inquiries.', action: 'Talk to sales', form: true },
+        { icon: 'ph-envelope-simple', title: 'Email', desc: 'Direct line to our specialists. We usually reply within a few hours on business days.', action: 'support@onboardin.llc', href: 'mailto:support@onboardin.llc' },
+        { icon: 'ph-lifebuoy', title: 'Priority Support', desc: 'Same-day responses and private Slack channels for our Growth and Enterprise partners.', action: 'Open ticket', form: true },
+        { icon: 'ph-book-open', title: 'Knowledge Base', desc: 'Explore guides on entity formation, integrations, and operational automation.', action: 'Browse docs', href: 'mailto:support@onboardin.llc?subject=Docs%20request' },
+        { icon: 'ph-chats-circle', title: 'Sales & Partnerships', desc: 'Custom integrations, enterprise volume, and reseller program inquiries.', action: 'Talk to sales', form: true },
     ];
     return (
         <>
@@ -539,8 +541,8 @@ const Support = ({ onDismiss, onContact, visible }) => {
                         }}
                     >
                         <div className="text-center mb-12">
-                            <h1 className="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-400 uppercase tracking-tighter mb-4">Here to Help</h1>
-                            <p className="text-gray-400 text-xs md:text-sm tracking-[0.2em] uppercase opacity-70">Talk to a human, browse docs, or open a ticket</p>
+                            <h1 className="text-4xl md:text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-400 uppercase tracking-tighter mb-4">Direct Access</h1>
+                            <p className="text-gray-400 text-xs md:text-sm tracking-[0.2em] uppercase opacity-70">Connect with our team or explore our knowledge base</p>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             {channels.map((c, i) => (
@@ -729,6 +731,7 @@ const Signup = ({ setCurrentView }) => {
 
     const totalSteps = 5;
 
+    /*--- scaf ---*/
     const recommendation = recommendEntity(fundingStage, businessIntent, sellsTo, country);
 
     const handleStep1 = (e) => { e.preventDefault(); setError(''); setStep(2); };
@@ -811,7 +814,7 @@ const Signup = ({ setCurrentView }) => {
             <div className="w-full max-w-md">
                 <div className="mb-10 text-center">
                     <h1 className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-400 uppercase tracking-tighter mb-3">Get Started</h1>
-                    <p className="text-xs text-gray-400 uppercase tracking-[0.3em] opacity-70">Client intake — takes about a minute</p>
+                    <p className="text-xs text-gray-400 uppercase tracking-[0.3em] opacity-70">Client intake: should take about a minute</p>
                 </div>
 
                 {success ? (
@@ -821,7 +824,7 @@ const Signup = ({ setCurrentView }) => {
                         </div>
                         <div className="space-y-1">
                             <p className="text-sm font-bold text-white">You're in.</p>
-                            <p className="text-xs text-gray-400 leading-relaxed">Check your email to confirm your address — you can explore your dashboard in the meantime.</p>
+                            <p className="text-xs text-gray-400 leading-relaxed">Check your email to confirm your address. You can explore your dashboard in the meantime.</p>
                         </div>
                         <button onClick={() => setCurrentView('dashboard')} className="w-full py-4 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-purple-500/30 rounded-lg text-xs font-bold uppercase tracking-[0.2em] text-purple-200 hover:from-blue-500/30 hover:to-purple-500/30 transition-all">Go to Dashboard →</button>
                     </div>
@@ -835,7 +838,7 @@ const Signup = ({ setCurrentView }) => {
                         </div>
                         <p className="text-[10px] uppercase tracking-widest text-gray-500 text-center mb-6">Step {step} of {totalSteps}</p>
 
-                        {/* Step 1 — Company info */}
+                        {/* Step 1: Company info */}
                         {step === 1 && (
                             <form onSubmit={handleStep1} className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl shadow-2xl space-y-6">
                                 <div className="group"><label className={labelClass}>Company Name</label><input type="text" value={companyName} onChange={e => setCompanyName(e.target.value)} required className={inputClass} placeholder="Acme Corp" /></div>
@@ -854,7 +857,7 @@ const Signup = ({ setCurrentView }) => {
                             </form>
                         )}
 
-                        {/* Step 2 — Jurisdiction + intent */}
+                        {/* Step 2: Jurisdiction + intent */}
                         {step === 2 && (
                             <form onSubmit={handleStep2} className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl shadow-2xl space-y-6">
                                 <div className="group">
@@ -866,7 +869,7 @@ const Signup = ({ setCurrentView }) => {
                                 <div className="group">
                                     <label className={labelClass}>{country === 'United States' ? 'State' : country === 'Canada' ? 'Province / Territory' : 'Country'}</label>
                                     <select value={jurisdiction} onChange={e => setJurisdiction(e.target.value)} required className={`${inputClass} appearance-none cursor-pointer`}>
-                                        <option value="">Select…</option>
+                                        <option value="">Select your region</option>
                                         {(REGIONS[country] || []).map(j => <option key={j} value={j}>{j}</option>)}
                                     </select>
                                 </div>
@@ -877,7 +880,7 @@ const Signup = ({ setCurrentView }) => {
                                 <div className="group">
                                     <label className={labelClass}>Who do you sell to?</label>
                                     <select value={sellsTo} onChange={e => setSellsTo(e.target.value)} className={`${inputClass} appearance-none cursor-pointer`}>
-                                        <option value="">Select…</option>
+                                        <option value="">Select your target market</option>
                                         <option value="b2b">Businesses (B2B)</option>
                                         <option value="b2c">Consumers (B2C)</option>
                                         <option value="b2b2c">Both (B2B2C)</option>
@@ -890,11 +893,11 @@ const Signup = ({ setCurrentView }) => {
                                     <button type="button" onClick={() => setStep(1)} className="py-4 px-4 border border-white/10 rounded-lg text-[10px] uppercase tracking-widest text-gray-500 hover:text-white transition-all">← Back</button>
                                     <button type="submit" className="flex-1 py-4 bg-white/5 hover:bg-white/10 border border-white/20 rounded-lg text-xs font-bold uppercase tracking-[0.2em] transition-all">Continue</button>
                                 </div>
-                                <button type="button" onClick={() => { setJurisdiction(''); setStep(3); }} className="w-full py-2 text-[9px] uppercase tracking-[0.2em] text-gray-500 hover:text-purple-300 transition-colors">Skip for now</button>
+                                <button type="button" onClick={() => { setJurisdiction(''); setStep(3); }} className="w-full py-2 text-[9px] uppercase tracking-[0.2em] text-gray-500 hover:text-purple-300 transition-colors">Decide later</button>
                             </form>
                         )}
 
-                        {/* Step 3 — Domain + business email */}
+                        {/* Step 3: Domain + business email */}
                         {step === 3 && (
                             <div className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl shadow-2xl space-y-6">
                                 {/* Domain */}
@@ -1006,11 +1009,11 @@ const Signup = ({ setCurrentView }) => {
                                     <button type="button" onClick={() => setStep(2)} className="py-4 px-4 border border-white/10 rounded-lg text-[10px] uppercase tracking-widest text-gray-500 hover:text-white transition-all">← Back</button>
                                     <button type="button" onClick={handleStep3} className="flex-1 py-4 bg-white/5 hover:bg-white/10 border border-white/20 rounded-lg text-xs font-bold uppercase tracking-[0.2em] transition-all">Continue</button>
                                 </div>
-                                <button type="button" onClick={() => setStep(4)} className="w-full py-2 text-[9px] uppercase tracking-[0.2em] text-gray-500 hover:text-purple-300 transition-colors">Skip for now</button>
+                                <button type="button" onClick={() => setStep(4)} className="w-full py-2 text-[9px] uppercase tracking-[0.2em] text-gray-500 hover:text-purple-300 transition-colors">Decide later</button>
                             </div>
                         )}
 
-                        {/* Step 4 — Entity recommendation */}
+                        {/* Step 4: Entity recommendation */}
                         {step === 4 && (
                             <form onSubmit={handleStep4} className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl shadow-2xl space-y-6">
                                 <div>
@@ -1027,7 +1030,7 @@ const Signup = ({ setCurrentView }) => {
                                         <div className="group">
                                             <label className={labelClass}>Entity Type</label>
                                             <select value={entityType} onChange={e => setEntityType(e.target.value)} required className={`${inputClass} appearance-none cursor-pointer`}>
-                                                <option value="">Select…</option>
+                                                <option value="">Select your entity type</option>
                                                 {ENTITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                                             </select>
                                         </div>
@@ -1040,7 +1043,7 @@ const Signup = ({ setCurrentView }) => {
                                     <button type="button" onClick={() => setStep(3)} className="py-4 px-4 border border-white/10 rounded-lg text-[10px] uppercase tracking-widest text-gray-500 hover:text-white transition-all">← Back</button>
                                     <button type="submit" className="flex-1 py-4 bg-white/5 hover:bg-white/10 border border-white/20 rounded-lg text-xs font-bold uppercase tracking-[0.2em] transition-all">Continue</button>
                                 </div>
-                                <button type="button" onClick={() => setStep(5)} className="w-full py-2 text-[9px] uppercase tracking-[0.2em] text-gray-500 hover:text-purple-300 transition-colors">Skip for now</button>
+                                <button type="button" onClick={() => setStep(5)} className="w-full py-2 text-[9px] uppercase tracking-[0.2em] text-gray-500 hover:text-purple-300 transition-colors">Decide later</button>
                             </form>
                         )}
 
@@ -1089,6 +1092,11 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [armedDeleteId, setArmedDeleteId] = useState(null);
     const [deletingId, setDeletingId] = useState(null);
     const [deleteError, setDeleteError] = useState('');
+    // Phase A — admin filters
+    const [adminSearch, setAdminSearch] = useState('');
+    const [adminPlanFilter, setAdminPlanFilter] = useState('all'); // 'all' | 'starter' | 'growth' | 'past_due'
+    const [adminLifecycleFilter, setAdminLifecycleFilter] = useState('all'); // 'all' | 'onboarding' | 'active' | 'paused' | 'churned' | 'archived'
+    const [updatingLifecycleId, setUpdatingLifecycleId] = useState(null);
     const [selectedClient, setSelectedClient] = useState(null);
     const [clientDocs, setClientDocs] = useState([]);
     const [clientMessages, setClientMessages] = useState([]);
@@ -1110,6 +1118,11 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [agentLoading, setAgentLoading] = useState(false);
     const [agentAnswer, setAgentAnswer] = useState('');
     const [agentError, setAgentError] = useState('');
+    // Jurisdiction-tailored blueprint (starter questions + required docs)
+    const [blueprint, setBlueprint] = useState(null);
+    // Capital readiness — partner intro request state
+    const [capitalRequestSent, setCapitalRequestSent] = useState(false);
+    const [capitalRequesting, setCapitalRequesting] = useState(false);
     // Jurisdiction setup (for clients who skipped step 2/3 during signup)
     const [showJurisdictionSetup, setShowJurisdictionSetup] = useState(false);
     const [setupCountry, setSetupCountry] = useState('United States');
@@ -1146,6 +1159,17 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                     setProfileError(true);
                 } else {
                     setClientProfile(data);
+                    
+                    // Trigger first welcome message if it's a new client and no messages yet
+                    if (!data.is_admin) {
+                        supabase.from('messages').select('id').eq('client_id', session.user.id).limit(1)
+                            .then(({ data: msgs }) => {
+                                if (!msgs || msgs.length === 0) {
+                                    handleAgentQuestion(null, true);
+                                }
+                            });
+                    }
+
                     if (data?.is_admin) {
                         setAdminLoading(true);
                         supabase
@@ -1181,6 +1205,32 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
             setSetupEntityOverride(true);
         }
     }, [clientProfile]);
+
+    // Fetch jurisdiction-tailored blueprint (starter questions + doc checklist) once the profile is loaded
+    useEffect(() => {
+        if (!session || !supabase || !clientProfile || clientProfile.is_admin) return;
+        if (!clientProfile.country && !clientProfile.entity_type) return; // need at least one signal
+        let cancelled = false;
+        (async () => {
+            try {
+                const { data: { session: authSession } } = await supabase.auth.getSession();
+                const res = await fetch('https://qatfiicpkunabpphwqee.supabase.co/functions/v1/client-blueprint', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authSession.access_token}`,
+                        'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhdGZpaWNwa3VuYWJwcGh3cWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzgyOTEsImV4cCI6MjA5NTkxNDI5MX0.00A9OEwex4Yeb4EXCy8vUtRXpCVPXmZDyXVHxl6XiVA',
+                    },
+                    body: '{}',
+                });
+                const json = await res.json();
+                if (!cancelled && json.starter_questions) setBlueprint(json);
+            } catch {
+                // fail quietly — fallback questions live in the component
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [session, clientProfile?.country, clientProfile?.entity_type, clientProfile?.funding_stage]);
 
     useEffect(() => {
         if (!session || !supabase || clientProfile?.is_admin) return;
@@ -1254,6 +1304,15 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         setDetailLoading(false);
     };
 
+    const handleBoostCredits = async () => {
+        if (!supabase || !selectedClient) return;
+        const { error } = await supabase.from('clients').update({ daily_ai_credits: 5, updated_at: new Date().toISOString() }).eq('id', selectedClient.id);
+        if (!error) {
+            setAllClients(prev => prev.map(c => c.id === selectedClient.id ? { ...c, daily_ai_credits: 5 } : c));
+            setSelectedClient(prev => ({ ...prev, daily_ai_credits: 5 }));
+        }
+    };
+
     const handleUpdateInternalNotes = async () => {
         if (!supabase || !selectedClient) return;
         setSavingNotes(true);
@@ -1309,11 +1368,12 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         e.target.value = '';
     };
 
-    const handleAgentQuestion = async (e) => {
-        e.preventDefault();
-        if (!agentQuestion.trim() || !supabase || !session) return;
+    const handleAgentQuestion = async (e, isWelcome = false) => {
+        if (e) e.preventDefault();
+        if (!agentQuestion.trim() && !isWelcome) return;
+        if (!supabase || !session) return;
+
         setAgentLoading(true);
-        setAgentAnswer('');
         setAgentError('');
         try {
             const { data: { session: authSession } } = await supabase.auth.getSession();
@@ -1322,13 +1382,18 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${authSession.access_token}`,
-                    'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhdGZpaWNwa3VuYWJwcGh3cWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzgyOTEsImV4cCI6MjA5NTkxNDI5MX0.00A9OEwex4Yeb4EXCy8vUtRXpCVPXmZDyXVHxl6XiVA',
                 },
-                body: JSON.stringify({ question: agentQuestion.trim() }),
+                body: JSON.stringify({ question: isWelcome ? '' : agentQuestion.trim(), isWelcome }),
             });
             const json = await res.json();
             if (json.answer) {
                 setAgentAnswer(json.answer);
+                // Refresh profile for credits
+                const { data: prof } = await supabase.from('clients').select('*').eq('id', session.user.id).single();
+                setClientProfile(prof);
+                // Refresh messages
+                const { data: msgs } = await supabase.from('messages').select('*').eq('client_id', session.user.id).order('created_at', { ascending: true });
+                setMyMessages(msgs || []);
             } else {
                 setAgentError(json.error || 'No response. Try again.');
             }
@@ -1336,6 +1401,31 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
             setAgentError('Could not reach formation assistant.');
         }
         setAgentLoading(false);
+        setAgentQuestion('');
+    };
+
+    const handleTogglePrivacy = async () => {
+        if (!supabase || !session) return;
+        const newVal = !clientProfile.share_ai_data;
+        const { error } = await supabase.from('clients').update({ share_ai_data: newVal }).eq('id', session.user.id);
+        if (!error) setClientProfile(prev => ({ ...prev, share_ai_data: newVal }));
+    };
+
+    const handleRequestCapitalIntro = async () => {
+        if (!supabase || !session || capitalRequesting) return;
+        setCapitalRequesting(true);
+        const body = `[CAPITAL INTRO REQUEST]\nCountry: ${clientProfile?.country || 'unspecified'}\nJurisdiction: ${clientProfile?.jurisdiction || 'unspecified'}\nStage: ${clientProfile?.funding_stage || 'unspecified'}\nEntity: ${clientProfile?.entity_type || 'unspecified'}\nBusiness: ${clientProfile?.business_intent || 'unspecified'}\n\nThe founder would like an introduction to a capital source matched to this profile.`;
+        const { error } = await supabase.from('messages').insert({
+            client_id: session.user.id,
+            sender_id: session.user.id,
+            body,
+            is_admin_message: false,
+        });
+        if (!error) {
+            setCapitalRequestSent(true);
+            setMyMessages(prev => [...prev, { sender_id: session.user.id, body, is_admin_message: false, created_at: new Date().toISOString() }]);
+        }
+        setCapitalRequesting(false);
     };
 
     const handleSaveJurisdiction = async (e) => {
@@ -1441,6 +1531,32 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         setAdvancingId(null);
     };
 
+    const handleRollbackStep = async (clientId, currentStep) => {
+        if (currentStep <= 0 || !supabase) return;
+        const { error } = await supabase
+            .from('clients')
+            .update({ onboarding_step: currentStep - 1, updated_at: new Date().toISOString() })
+            .eq('id', clientId);
+        if (!error) {
+            setAllClients(prev => prev.map(c => c.id === clientId ? { ...c, onboarding_step: currentStep - 1 } : c));
+            if (selectedClient?.id === clientId) setSelectedClient(prev => ({ ...prev, onboarding_step: currentStep - 1 }));
+        }
+    };
+
+    const handleLifecycleChange = async (clientId, newLifecycle) => {
+        if (!supabase) return;
+        setUpdatingLifecycleId(clientId);
+        const { error } = await supabase
+            .from('clients')
+            .update({ lifecycle: newLifecycle, updated_at: new Date().toISOString() })
+            .eq('id', clientId);
+        if (!error) {
+            setAllClients(prev => prev.map(c => c.id === clientId ? { ...c, lifecycle: newLifecycle } : c));
+            if (selectedClient?.id === clientId) setSelectedClient(prev => ({ ...prev, lifecycle: newLifecycle }));
+        }
+        setUpdatingLifecycleId(null);
+    };
+
     const handleDeleteUser = async (clientId) => {
         if (!supabase || !session) return;
         setDeletingId(clientId);
@@ -1492,21 +1608,115 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                             {deleteError}
                         </div>
                     )}
+
+                    {/* Phase A — Action queue: clients waiting on admin attention */}
+                    {(() => {
+                        const nonAdmin = allClients.filter(c => !c.is_admin);
+                        const unread = nonAdmin.filter(c => c.last_message_at > c.admin_last_read_at);
+                        const stale = nonAdmin.filter(c => {
+                            const step = c.onboarding_step ?? 0;
+                            if (step >= 7 || step === 0) return false;
+                            const updated = c.updated_at ? new Date(c.updated_at) : new Date(c.created_at);
+                            const ageDays = (Date.now() - updated.getTime()) / 86400000;
+                            return ageDays > 7;
+                        });
+                        const capitalReq = nonAdmin.filter(c => c.last_message_at > c.admin_last_read_at);
+                        const total = unread.length + stale.length;
+                        if (total === 0 || adminLoading) return null;
+                        return (
+                            <div className="mb-6 bg-gradient-to-br from-purple-500/10 to-blue-500/10 border border-purple-500/20 rounded-2xl p-5 backdrop-blur-xl">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-7 h-7 bg-purple-500/20 rounded-full flex items-center justify-center">
+                                            <i className="ph ph-bell text-purple-300 text-sm"></i>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-[10px] uppercase tracking-widest text-purple-200">Needs your attention</h3>
+                                            <p className="text-xs text-gray-400 mt-0.5">{total} item{total !== 1 ? 's' : ''} across {Math.max(unread.length, stale.length)} client{nonAdmin.length !== 1 ? 's' : ''}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {unread.length > 0 && (
+                                        <div className="bg-black/30 rounded-xl p-3">
+                                            <p className="text-[9px] uppercase tracking-widest text-blue-300 mb-2">Unread messages · {unread.length}</p>
+                                            <div className="space-y-1">
+                                                {unread.slice(0, 3).map(c => (
+                                                    <button key={c.id} onClick={() => openClientDetail(c)} className="block w-full text-left text-xs text-gray-300 hover:text-white transition-colors">→ {c.company_name}</button>
+                                                ))}
+                                                {unread.length > 3 && <p className="text-[10px] text-gray-600">+ {unread.length - 3} more</p>}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {stale.length > 0 && (
+                                        <div className="bg-black/30 rounded-xl p-3">
+                                            <p className="text-[9px] uppercase tracking-widest text-yellow-300 mb-2">Stale &gt; 7 days · {stale.length}</p>
+                                            <div className="space-y-1">
+                                                {stale.slice(0, 3).map(c => (
+                                                    <button key={c.id} onClick={() => openClientDetail(c)} className="block w-full text-left text-xs text-gray-300 hover:text-white transition-colors">→ {c.company_name} <span className="text-gray-600">· step {c.onboarding_step}</span></button>
+                                                ))}
+                                                {stale.length > 3 && <p className="text-[10px] text-gray-600">+ {stale.length - 3} more</p>}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* Phase A — Filter bar */}
+                    {!adminLoading && (
+                        <div className="mb-4 flex flex-wrap items-center gap-3">
+                            <div className="flex-1 min-w-[200px] relative">
+                                <i className="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm"></i>
+                                <input
+                                    type="text"
+                                    value={adminSearch}
+                                    onChange={e => setAdminSearch(e.target.value)}
+                                    placeholder="Search company, founder, email…"
+                                    className="w-full bg-black/30 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder:text-gray-600 focus:outline-none focus:border-purple-500/50 transition-all"
+                                />
+                            </div>
+                            <select value={adminPlanFilter} onChange={e => setAdminPlanFilter(e.target.value)} className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-gray-300 focus:outline-none focus:border-purple-500/50">
+                                <option value="all">All plans</option>
+                                <option value="starter">Starter</option>
+                                <option value="growth">Growth</option>
+                                <option value="past_due">Past Due</option>
+                            </select>
+                            <select value={adminLifecycleFilter} onChange={e => setAdminLifecycleFilter(e.target.value)} className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-xs text-gray-300 focus:outline-none focus:border-purple-500/50">
+                                <option value="all">All lifecycles</option>
+                                <option value="onboarding">Onboarding</option>
+                                <option value="active">Active</option>
+                                <option value="paused">Paused</option>
+                                <option value="churned">Churned</option>
+                                <option value="archived">Archived</option>
+                            </select>
+                        </div>
+                    )}
+
                     {adminLoading ? (
                         <div className="space-y-3">
                             {[1,2,3].map(i => <div key={i} className="w-full h-16 bg-white/5 rounded-xl animate-pulse" />)}
                         </div>
                     ) : (
                         <div className="bg-white/5 border border-white/10 rounded-2xl backdrop-blur-xl overflow-hidden">
-                            <div className="grid grid-cols-[2fr_1.5fr_1fr_1fr_2fr_1fr_auto_auto] gap-0 px-6 py-3 border-b border-white/5">
-                                {['Company','Founder','Stage','Plan','Progress','Joined','',''].map((h, i) => (
+                            <div className="grid grid-cols-[2fr_1.5fr_1fr_1fr_1fr_1fr_2fr_1fr_auto_auto] gap-0 px-6 py-3 border-b border-white/5">
+                                {['Company','Founder','Stage','Plan','Lifecycle','Credits','Progress','Joined','',''].map((h, i) => (
                                     <span key={i} className="text-[10px] uppercase tracking-widest text-gray-500">{h}</span>
                                 ))}
                             </div>
-                            {allClients.filter(c => !c.is_admin).length === 0 ? (
-                                <div className="px-6 py-12 text-center text-gray-600 text-sm">No clients yet.</div>
-                            ) : (
-                                allClients.filter(c => !c.is_admin).map((client, i) => {
+                            {(() => {
+                                const q = adminSearch.trim().toLowerCase();
+                                const filtered = allClients.filter(c => !c.is_admin).filter(c => {
+                                    if (q && !((c.company_name || '').toLowerCase().includes(q) || (c.founder_name || '').toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q))) return false;
+                                    if (adminPlanFilter !== 'all' && (c.plan ?? 'starter') !== adminPlanFilter) return false;
+                                    if (adminLifecycleFilter !== 'all' && (c.lifecycle ?? 'onboarding') !== adminLifecycleFilter) return false;
+                                    return true;
+                                });
+                                if (filtered.length === 0) {
+                                    return <div className="px-6 py-12 text-center text-gray-600 text-sm">{allClients.filter(c => !c.is_admin).length === 0 ? 'No clients yet.' : 'No clients match these filters.'}</div>;
+                                }
+                                return filtered.map((client, i) => {
                                     const step = client.onboarding_step ?? 0;
                                     const pct = Math.round((step / 7) * 100);
                                     const joined = new Date(client.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -1515,7 +1725,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                     const hasUnread = client.last_message_at > client.admin_last_read_at;
 
                                     return (
-                                        <div key={client.id} onClick={() => openClientDetail(client)} className={`grid grid-cols-[2fr_1.5fr_1fr_1fr_2fr_1fr_auto_auto] gap-0 px-6 py-4 items-center cursor-pointer ${i % 2 === 0 ? '' : 'bg-white/[0.02]'} hover:bg-white/5 transition-colors ${selectedClient?.id === client.id ? 'bg-purple-500/5 border-l-2 border-purple-500/50' : ''}`}>
+                                        <div key={client.id} onClick={() => openClientDetail(client)} className={`grid grid-cols-[2fr_1.5fr_1fr_1fr_1fr_1fr_2fr_1fr_auto_auto] gap-0 px-6 py-4 items-center cursor-pointer ${i % 2 === 0 ? '' : 'bg-white/[0.02]'} hover:bg-white/5 transition-colors ${selectedClient?.id === client.id ? 'bg-purple-500/5 border-l-2 border-purple-500/50' : ''}`}>
                                             <div className="flex items-center gap-3">
                                                 {hasUnread && <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse flex-shrink-0" title="New Message"></div>}
                                                 <div>
@@ -1531,6 +1741,12 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                                 if (p === 'past_due') return <span className="text-[9px] uppercase tracking-widest text-red-300 bg-red-400/10 px-2 py-1 rounded-full w-fit">Past Due</span>;
                                                 return <span className="text-[9px] uppercase tracking-widest text-gray-500 bg-white/5 px-2 py-1 rounded-full w-fit">Free</span>;
                                             })()}
+                                            {(() => {
+                                                const lc = client.lifecycle ?? 'onboarding';
+                                                const palette = lc === 'active' ? 'text-green-300 bg-green-400/10' : lc === 'paused' ? 'text-yellow-300 bg-yellow-400/10' : lc === 'churned' ? 'text-red-300 bg-red-400/10' : lc === 'archived' ? 'text-gray-500 bg-white/5' : 'text-blue-300 bg-blue-400/10';
+                                                return <span className={`text-[9px] uppercase tracking-widest px-2 py-1 rounded-full w-fit ${palette}`}>{lc}</span>;
+                                            })()}
+                                            <span className="text-xs text-gray-400">{client.daily_ai_credits}</span>
                                             <div className="pr-4">
                                                 <div className="flex items-center justify-between mb-1">
                                                     <span className="text-[10px] text-gray-500">{isComplete ? 'Complete' : stepLabels[step]}</span>
@@ -1569,15 +1785,29 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                             )}
                                         </div>
                                     );
-                                })
-                            )}
+                                });
+                            })()}
                         </div>
                     )}
 
                     {/* Client detail panel */}
                     {selectedClient && (
                         <div className="mt-8 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-xl overflow-hidden animate-[fadeIn_0.3s_ease-out]">
-                            <div className="px-6 py-4 bg-white/[0.03] border-b border-white/5 grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div className="px-6 py-4 bg-white/[0.03] border-b border-white/5 grid grid-cols-2 md:grid-cols-4 gap-4 relative">
+                                <div className="absolute top-4 right-6 flex items-center gap-3">
+                                    <div className="flex flex-col items-end">
+                                        <span className={`text-[8px] uppercase tracking-widest ${selectedClient.share_ai_data ? 'text-green-400' : 'text-gray-500'}`}>
+                                            {selectedClient.share_ai_data ? 'AI Chat: Shared' : 'AI Chat: Private'}
+                                        </span>
+                                        <span className="text-[9px] text-gray-600">{selectedClient.daily_ai_credits} credits</span>
+                                    </div>
+                                    <button onClick={handleBoostCredits} className="px-3 py-1 bg-blue-500/10 border border-blue-500/30 rounded-lg text-[9px] font-bold uppercase tracking-widest text-blue-300 hover:bg-blue-500/20 transition-all">
+                                        Boost
+                                    </button>
+                                    <button onClick={() => setSelectedClient(null)} className="text-gray-500 hover:text-white transition-colors ml-2">
+                                        <i className="ph ph-x text-lg"></i>
+                                    </button>
+                                </div>
                                 <div>
                                     <p className="text-[9px] uppercase tracking-widest text-gray-500">Founder</p>
                                     <p className="text-xs text-gray-300">{selectedClient.founder_name}</p>
@@ -1700,6 +1930,81 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                     </div>
                                 </div>
                             )}
+
+                            {/* Phase A — Lifecycle + onboarding step controls */}
+                            <div className="px-6 py-4 border-t border-white/5 bg-white/[0.02] grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <p className="text-[9px] uppercase tracking-widest text-gray-500 mb-2">Lifecycle</p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {['onboarding','active','paused','churned','archived'].map(lc => {
+                                            const active = (selectedClient.lifecycle ?? 'onboarding') === lc;
+                                            return (
+                                                <button
+                                                    key={lc}
+                                                    onClick={() => handleLifecycleChange(selectedClient.id, lc)}
+                                                    disabled={updatingLifecycleId === selectedClient.id}
+                                                    className={`text-[9px] uppercase tracking-widest px-2.5 py-1 rounded-full border transition-all disabled:opacity-40 ${active ? 'bg-purple-500/20 border-purple-500/40 text-purple-200' : 'border-white/10 text-gray-500 hover:border-white/20 hover:text-gray-300'}`}
+                                                >
+                                                    {lc}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                <div>
+                                    <p className="text-[9px] uppercase tracking-widest text-gray-500 mb-2">Onboarding Step</p>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => handleRollbackStep(selectedClient.id, selectedClient.onboarding_step ?? 0)}
+                                            disabled={(selectedClient.onboarding_step ?? 0) <= 0}
+                                            className="text-[9px] uppercase tracking-widest px-3 py-1.5 rounded-lg border border-white/10 text-gray-400 hover:border-yellow-500/40 hover:text-yellow-300 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                                            title="Roll back one step (e.g. if a filing was rejected)"
+                                        >
+                                            ← Rollback
+                                        </button>
+                                        <span className="text-xs text-gray-400">Step {selectedClient.onboarding_step ?? 0} of 7 · {stepLabels[selectedClient.onboarding_step ?? 0] || 'Complete'}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/*-- scaf --
+                              Recurring Obligations : see migrations/_scaffold_recurring_obligations.sql
+                              Implement when client.lifecycle === 'active'. Query public.obligations for this client.
+                              Show upcoming/due/overdue with due_at; allow admin to mark filed + attach proof.
+                            */}
+                            {(selectedClient.lifecycle ?? 'onboarding') === 'active' && (
+                                <div className="px-6 py-4 border-t border-white/5">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <p className="text-[9px] uppercase tracking-widest text-gray-500">Recurring Obligations</p>
+                                        <span className="text-[8px] uppercase tracking-widest text-purple-400/60 border border-purple-500/20 px-2 py-0.5 rounded-full">Scaffold</span>
+                                    </div>
+                                    <p className="text-xs text-gray-600 italic">Annual report, franchise tax, BOI/CTA, registered agent renewal tracking will appear here once obligations are seeded for this client's jurisdiction.</p>
+                                </div>
+                            )}
+
+                            {/*-- scaf --
+                              Audit Log : see migrations/_scaffold_audit_log.sql
+                              Query public.audit_log where client_id = selectedClient.id order by created_at desc.
+                              Show actor email + action + payload diff. Paginate at 25.
+                            */}
+                            <div className="px-6 py-4 border-t border-white/5">
+                                <div className="flex items-center justify-between mb-2">
+                                    <p className="text-[9px] uppercase tracking-widest text-gray-500">Audit Log</p>
+                                    <span className="text-[8px] uppercase tracking-widest text-purple-400/60 border border-purple-500/20 px-2 py-0.5 rounded-full">Scaffold</span>
+                                </div>
+                                <p className="text-xs text-gray-600 italic">Per-client change history (step advances, rollbacks, lifecycle changes, document uploads, admin notes) will appear here once the audit_log table is enabled.</p>
+                            </div>
+
+                            {/*-- scaf --
+                              Message Templates : see migrations/_scaffold_message_templates.sql
+                              Dropdown above the message composer; selecting fills the textarea with body,
+                              substituting (founder_name), (company_name), (jurisdiction), (entity_type).
+                            */}
+                            {/*-- scaf --
+                              AI-Suggested Admin Reply
+                              Button next to Send. Calls a new edge function 'admin-reply-suggest' with the last N
+                              messages + client profile. Returns a draft for admin to edit before sending.
+                            */}
                         </div>
                     )}
                 </div>
@@ -1837,28 +2142,32 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         </div>
                     </div>
 
-                    <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-                        <h3 className="text-[10px] uppercase tracking-widest text-gray-500 mb-4">System Status</h3>
-                        <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-                            <span className="text-sm text-gray-300">All systems operational</span>
-                        </div>
-                    </div>
-
                     {/* Formation Assistant */}
                     <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-                        <div className="flex items-center gap-3 mb-5">
-                            <div className="w-7 h-7 bg-purple-500/20 rounded-full flex items-center justify-center flex-shrink-0">
-                                <i className="ph ph-robot text-purple-300 text-sm"></i>
+                        <div className="flex items-center justify-between mb-5">
+                            <div className="flex items-center gap-3">
+                                <div className="w-7 h-7 bg-purple-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+                                    <i className="ph ph-robot text-purple-300 text-sm"></i>
+                                </div>
+                                <div>
+                                    <h3 className="text-[10px] uppercase tracking-widest text-gray-500">Formation Assistant</h3>
+                                    <p className="text-[10px] text-gray-600 mt-0.5">Bespoke advice for {clientProfile?.company_name}</p>
+                                </div>
                             </div>
-                            <div>
-                                <h3 className="text-[10px] uppercase tracking-widest text-gray-500">Formation Assistant</h3>
-                                <p className="text-[10px] text-gray-600 mt-0.5">Ask anything about structuring, filing, or next steps</p>
+                            <div className="flex flex-col items-end gap-1">
+                                <span className="text-[9px] uppercase tracking-widest text-gray-500">{clientProfile?.daily_ai_credits ?? 0} Credits remaining</span>
+                                <div className="flex items-center gap-2 cursor-pointer group" onClick={handleTogglePrivacy}>
+                                    <span className="text-[8px] uppercase tracking-widest text-gray-600 group-hover:text-gray-400 transition-colors">{clientProfile?.share_ai_data ? 'AI Data shared with team' : 'AI Data private'}</span>
+                                    <div className={`w-6 h-3 rounded-full relative transition-colors ${clientProfile?.share_ai_data ? 'bg-purple-500/40' : 'bg-white/10'}`}>
+                                        <div className={`absolute top-0.5 w-2 h-2 rounded-full transition-all ${clientProfile?.share_ai_data ? 'right-0.5 bg-purple-300' : 'left-0.5 bg-gray-500'}`} />
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
                         {agentAnswer && (
-                            <div className="mb-4 bg-purple-500/5 border border-purple-500/20 rounded-xl p-4 text-xs text-gray-300 leading-relaxed whitespace-pre-wrap animate-[fadeIn_0.4s_ease-out]">
+                            <div className="mb-4 bg-purple-500/5 border border-purple-500/20 rounded-xl p-4 text-xs text-gray-300 leading-relaxed whitespace-pre-wrap animate-[fadeIn_0.4s_ease-out] relative">
+                                <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-400 rounded-full shadow-[0_0_8px_rgba(74,222,128,0.5)]" title="AI Generated"></div>
                                 {agentAnswer}
                             </div>
                         )}
@@ -1867,12 +2176,12 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         )}
 
                         <div className="flex flex-wrap gap-2 mb-4">
-                            {[
+                            {(blueprint?.starter_questions?.length ? blueprint.starter_questions : [
                                 'What entity type should I form?',
                                 'What are my first filing steps?',
-                                'Do I need an EIN before a bank account?',
-                                "What's the difference between LLC and C-Corp?",
-                            ].map(q => (
+                                'Do I need a tax ID before opening a bank account?',
+                                'What documents do I need to collect first?',
+                            ]).map(q => (
                                 <button key={q} type="button"
                                     onClick={() => setAgentQuestion(q)}
                                     className="text-[9px] uppercase tracking-widest border border-white/10 text-gray-500 px-2.5 py-1.5 rounded-lg hover:border-purple-500/30 hover:text-purple-300 transition-all">
@@ -1886,7 +2195,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                 type="text"
                                 value={agentQuestion}
                                 onChange={e => setAgentQuestion(e.target.value)}
-                                placeholder="Ask about entity formation, filings, structure…"
+                                placeholder="Ask about entity formation, filings, or your structure."
                                 className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500/50 transition-all"
                                 disabled={agentLoading}
                             />
@@ -1897,13 +2206,19 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         </form>
                     </div>
 
-                    {/* Documents — categorized by entity + jurisdiction */}
+                    {/* Documents: categorized by entity + jurisdiction */}
                     {(() => {
                         const hasJurisdiction = clientProfile?.jurisdiction || clientProfile?.entity_type;
                         const entityType = clientProfile?.entity_type || 'LLC';
                         const country = clientProfile?.country || 'United States';
                         const jurisdiction = clientProfile?.jurisdiction || '';
-                        const categories = getDocCategories(entityType, country, jurisdiction);
+                        const baseCategories = getDocCategories(entityType, country, jurisdiction);
+                        // Layer in any AI-suggested doc categories the baseline doesn't already cover
+                        const baseIds = new Set(baseCategories.map(c => c.id));
+                        const aiExtras = (blueprint?.required_documents || [])
+                            .filter(d => d.id && !baseIds.has(d.id))
+                            .map(d => ({ id: d.id, label: d.label, icon: 'ph-sparkle', desc: d.desc, required: false, suggested: true }));
+                        const categories = [...baseCategories, ...aiExtras];
                         // Group uploaded docs by category tag
                         const docsByCategory = {};
                         myDocs.forEach(doc => {
@@ -1920,7 +2235,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                         <h3 className="text-[10px] uppercase tracking-widest text-gray-500">Documents</h3>
                                         {hasJurisdiction && (
                                             <p className="text-[10px] text-gray-600 mt-0.5">
-                                                {entityType} · {jurisdiction || country}
+                                                {entityType} : {jurisdiction || country}
                                                 <button onClick={() => setShowJurisdictionSetup(true)} className="ml-2 text-purple-400 hover:text-purple-300 transition-colors">edit</button>
                                             </p>
                                         )}
@@ -1933,7 +2248,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                 {/* Jurisdiction setup prompt */}
                                 {!hasJurisdiction && !showJurisdictionSetup && (
                                     <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 space-y-3">
-                                        <p className="text-xs text-gray-300 leading-relaxed">Tell us where you're building and what kind of business — we'll show you exactly what documents you need.</p>
+                                        <p className="text-xs text-gray-300 leading-relaxed">Tell us where you're building and what kind of business. We'll show you exactly what documents you need.</p>
                                         <button onClick={() => setShowJurisdictionSetup(true)} className="text-[9px] uppercase tracking-widest text-blue-300 border border-blue-500/30 px-3 py-2 rounded-lg hover:bg-blue-500/10 transition-all">Set Up →</button>
                                     </div>
                                 )}
@@ -2068,13 +2383,19 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                             ) : myMessages.length === 0 ? (
                                 <p className="text-xs text-gray-600 italic">Your Onboardin team will message you here.</p>
                             ) : (
-                                myMessages.map((msg, i) => (
-                                    <div key={i} className={`flex ${msg.is_admin_message ? 'justify-start' : 'justify-end'}`}>
-                                        <div className={`max-w-[80%] px-3 py-2 rounded-xl text-xs leading-relaxed ${msg.is_admin_message ? 'bg-white/5 text-gray-300' : 'bg-purple-500/20 text-purple-100'}`}>
-                                            {msg.body}
+                                    myMessages.map((msg, i) => (
+                                        <div key={i} className={`flex ${msg.is_admin_message ? 'justify-start' : 'justify-end'}`}>
+                                            <div className="max-w-[80%] flex flex-col gap-1">
+                                                <div className={`px-3 py-2 rounded-xl text-xs leading-relaxed relative ${msg.is_admin_message ? 'bg-white/5 text-gray-300' : 'bg-purple-500/20 text-purple-100'}`}>
+                                                    {msg.is_ai_generated && <div className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-green-400 rounded-full" title="AI Assistant"></div>}
+                                                    {msg.body}
+                                                </div>
+                                                <p className={`text-[8px] uppercase tracking-widest text-gray-600 ${msg.is_admin_message ? 'text-left' : 'text-right'}`}>
+                                                    {msg.is_admin_message ? (msg.is_ai_generated ? 'AI Assistant' : 'Onboardin Team') : 'You'}
+                                                </p>
+                                            </div>
                                         </div>
-                                    </div>
-                                ))
+                                    ))
                             )}
                         </div>
                         <form onSubmit={handleClientMessage} className="flex gap-2">
@@ -2090,6 +2411,95 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                             </button>
                         </form>
                     </div>
+
+                    {/* Capital Readiness — Growth tier; Starter sees an upsell */}
+                    {(() => {
+                        const plan = clientProfile?.plan ?? 'starter';
+                        const isPaid = plan === 'growth';
+
+                        /*--- scaf ---*/
+                        // Readiness score : deterministic checks, each missing = -20
+                        const checks = [
+                            { label: 'Entity formed', pass: (clientProfile?.onboarding_step ?? 0) >= 2 },
+                            { label: 'Jurisdiction confirmed', pass: !!clientProfile?.jurisdiction },
+                            { label: 'Entity type set', pass: !!clientProfile?.entity_type },
+                            { label: 'Funding stage set', pass: !!clientProfile?.funding_stage },
+                            { label: 'Founder docs uploaded', pass: myDocs.some(d => d.category === 'founder_docs') },
+                        ];
+                        const passed = checks.filter(c => c.pass).length;
+                        const score = Math.round((passed / checks.length) * 100);
+                        const status = score >= 80 ? 'Ready' : score >= 60 ? 'Almost there' : 'Not ready';
+                        const statusColor = score >= 80 ? 'text-green-300 bg-green-400/10 border-green-400/20' : score >= 60 ? 'text-yellow-300 bg-yellow-400/10 border-yellow-400/20' : 'text-gray-400 bg-white/5 border-white/10';
+
+                        if (!isPaid) {
+                            return (
+                                <div className="bg-gradient-to-br from-purple-500/5 to-blue-500/5 border border-purple-500/15 rounded-2xl p-6 backdrop-blur-xl">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h3 className="text-[10px] uppercase tracking-widest text-gray-500">Capital Readiness</h3>
+                                        <span className="text-[9px] uppercase tracking-widest text-purple-300 bg-purple-400/10 border border-purple-400/20 px-2 py-1 rounded-full">Growth</span>
+                                    </div>
+                                    <p className="text-xs text-gray-400 leading-relaxed mb-4">Diagnose whether your business is ready to approach capital, and request introductions to vetted financing partners. Available on the Growth plan.</p>
+                                    <button onClick={handleUpgrade} disabled={checkoutLoading} className="text-[10px] uppercase tracking-widest text-purple-300 border border-purple-500/30 px-3 py-2 rounded-lg hover:bg-purple-500/10 transition-all disabled:opacity-40">
+                                        {checkoutLoading ? 'Redirecting…' : 'Upgrade to unlock →'}
+                                    </button>
+                                </div>
+                            );
+                        }
+
+                        return (
+                            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl space-y-5">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-[10px] uppercase tracking-widest text-gray-500">Capital Readiness</h3>
+                                </div>
+                                {/* Readiness Score */}
+                                <div className="bg-black/30 border border-white/5 rounded-xl p-4 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="text-[10px] uppercase tracking-widest text-gray-500">Your Readiness Score</p>
+                                            <p className="text-3xl font-bold text-white mt-1">{score}<span className="text-base text-gray-500 font-normal">/100</span></p>
+                                        </div>
+                                        <span className={`text-[9px] uppercase tracking-widest border px-2 py-1 rounded-full ${statusColor}`}>{status}</span>
+                                    </div>
+                                    <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
+                                        <div className={`h-full rounded-full transition-all duration-500 ${score >= 80 ? 'bg-green-400' : score >= 60 ? 'bg-yellow-400' : 'bg-gray-500'}`} style={{ width: `${score}%` }} />
+                                    </div>
+                                    <ul className="space-y-1.5 pt-1">
+                                        {checks.map((c, i) => (
+                                            <li key={i} className="flex items-center gap-2 text-xs">
+                                                <i className={`ph ${c.pass ? 'ph-check-circle text-green-400' : 'ph-circle-dashed text-gray-600'} text-sm flex-shrink-0`}></i>
+                                                <span className={c.pass ? 'text-gray-300' : 'text-gray-500'}>{c.label}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                                {/* Capital Partners — empty state */}
+                                <div className="bg-black/30 border border-white/5 rounded-xl p-4">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <i className="ph ph-handshake text-purple-300 text-sm"></i>
+                                        <p className="text-[10px] uppercase tracking-widest text-gray-500">Capital Partners</p>
+                                    </div>
+                                    {capitalRequestSent ? (
+                                        <div className="flex items-start gap-2 py-2">
+                                            <i className="ph ph-check-circle text-green-400 text-base flex-shrink-0 mt-0.5"></i>
+                                            <p className="text-xs text-gray-300 leading-relaxed">Request received. Our team will review your profile and message you with matched capital sources within 1–2 business days.</p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <p className="text-xs text-gray-400 leading-relaxed mb-3">No direct partners are live in your region yet. While we build out integrations, our team can do a manual capital-source intro on request — matched to your stage, country, and business model.</p>
+                                            <button
+                                                onClick={handleRequestCapitalIntro}
+                                                disabled={capitalRequesting || score < 60}
+                                                className="text-[10px] uppercase tracking-widest text-purple-300 border border-purple-500/30 px-3 py-2 rounded-lg hover:bg-purple-500/10 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                                                title={score < 60 ? 'Reach at least 60/100 readiness to request an intro' : 'Request a manual intro'}
+                                            >
+                                                {capitalRequesting ? 'Sending…' : 'Request capital intro'}
+                                            </button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })()}
 
                     {/* Billing — last */}
                     {(() => {
