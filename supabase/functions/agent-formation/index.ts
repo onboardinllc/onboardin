@@ -2,6 +2,10 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
+const DEEPSEEK_API_KEY = Deno.env.get('DEEPSEEK_API_KEY') ?? '';
+const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
+const PROVIDER = Deno.env.get('MODEL_PROVIDER') ?? 'anthropic'; // 'anthropic' | 'deepseek' | 'openai'
+
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
 
@@ -37,28 +41,66 @@ Client profile:
 - Sells to: ${profile?.sells_to || 'Not provided'}
 - Plan: ${profile?.plan || 'starter'}`;
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 600,
-        system: systemPrompt,
-        messages: [{ role: 'user', content: question }],
-      }),
-    });
+    let answer = '';
 
-    if (!response.ok) {
-      const err = await response.text();
-      return new Response(JSON.stringify({ error: 'Claude API error', detail: err }), { status: 502, headers: { ...cors, 'Content-Type': 'application/json' } });
+    if (PROVIDER === 'anthropic' && ANTHROPIC_API_KEY) {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 600,
+          system: systemPrompt,
+          messages: [{ role: 'user', content: question }],
+        }),
+      });
+      if (response.ok) {
+        const result = await response.json();
+        answer = result.content?.[0]?.text ?? '';
+      } else {
+        throw new Error(`Anthropic error: ${await response.text()}`);
+      }
+    } else if ((PROVIDER === 'deepseek' && DEEPSEEK_API_KEY) || (PROVIDER === 'openai' && OPENAI_API_KEY)) {
+      const isDeepSeek = PROVIDER === 'deepseek';
+      const url = isDeepSeek ? 'https://api.deepseek.com/chat/completions' : 'https://api.openai.com/v1/chat/completions';
+      const key = isDeepSeek ? DEEPSEEK_API_KEY : OPENAI_API_KEY;
+      const model = isDeepSeek ? 'deepseek-chat' : 'gpt-4o';
+
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${key}`,
+        },
+        body: JSON.stringify({
+          model: model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: question }
+          ],
+          max_tokens: 600,
+        }),
+      });
+      if (response.ok) {
+        const result = await response.json();
+        answer = result.choices?.[0]?.message?.content ?? '';
+      } else {
+        throw new Error(`${PROVIDER} error: ${await response.text()}`);
+      }
+    } else {
+      // Concierge Fallback: Log question for manual processing
+      await supabase.from('messages').insert({
+          client_id: user.id,
+          sender_id: user.id,
+          body: `[SYSTEM: Assistant Inquiry] ${question}`,
+          is_admin_message: false
+      });
+      answer = "I've passed your question to our formation specialists. They will review your profile and message you directly in the dashboard shortly.";
     }
-
-    const result = await response.json();
-    const answer = result.content?.[0]?.text ?? '';
 
     return new Response(JSON.stringify({ answer }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   } catch (err) {

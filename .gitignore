@@ -9,3 +9,7 @@ npm-debug.log*
 yarn-error.log*
 .gitignore
 .clinerules
+supabase/.temp/
+test-results/
+playwright-report/
+.playwright-mcp/
