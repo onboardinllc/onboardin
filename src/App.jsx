@@ -2602,7 +2602,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         <div className="pt-32 px-8 md:px-16 animate-[fadeIn_1s_ease-out] flex flex-col items-center min-h-[60vh] relative z-10">
             <div className="w-full max-w-md">
                 <div className="mb-10 text-center">
-                    <h1 className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-400 uppercase tracking-tighter mb-3">ONBOARD</h1>
+                    <h1 className="text-5xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-400 uppercase tracking-tighter mb-3">{Math.random() < 0.5 ? 'GET ONBOARD' : 'WELCOME ONBOARD'}</h1>
                     <p className="text-xs text-gray-400 uppercase tracking-[0.3em] opacity-70">Open your client dashboard</p>
                 </div>
 
