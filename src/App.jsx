@@ -1122,6 +1122,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [blueprint, setBlueprint] = useState(null);
     // Capital readiness — partner intro request state
     const [capitalRequestSent, setCapitalRequestSent] = useState(false);
+    const [activePhaseTab, setActivePhaseTab] = useState('foundation'); // 'foundation' | 'operations' | 'infrastructure'
     const [capitalRequesting, setCapitalRequesting] = useState(false);
     // Jurisdiction setup (for clients who skipped step 2/3 during signup)
     const [showJurisdictionSetup, setShowJurisdictionSetup] = useState(false);
@@ -1508,18 +1509,22 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     };
 
     const onboardingSteps = [
-        { label: 'Account created', icon: 'ph-user-circle' },
-        { label: 'Entity formation', icon: 'ph-buildings' },
-        { label: 'Landing page deployed', icon: 'ph-globe' },
-        { label: 'GitHub repo provisioned', icon: 'ph-github-logo' },
-        { label: 'CRM connected', icon: 'ph-address-book' },
-        { label: 'Analytics live', icon: 'ph-chart-line' },
-        { label: 'First AI agent deployed', icon: 'ph-robot' },
+        { label: 'Account Created',          icon: 'ph-user-circle',       phase: 'foundation',    tier: 'starter' },
+        { label: 'Entity Formation',          icon: 'ph-buildings',         phase: 'foundation',    tier: 'starter' },
+        { label: 'Tax Registration',          icon: 'ph-identification-badge', phase: 'operations', tier: 'growth' },
+        { label: 'Business Banking',          icon: 'ph-bank',              phase: 'operations',    tier: 'growth' },
+        { label: 'IP & Contract Templates',   icon: 'ph-scroll',            phase: 'operations',    tier: 'growth' },
+        { label: 'Privacy & Compliance',      icon: 'ph-shield-check',      phase: 'operations',    tier: 'growth' },
+        { label: 'Landing Page Deployed',     icon: 'ph-globe',             phase: 'infrastructure',tier: 'growth' },
+        { label: 'Repository Provision',      icon: 'ph-github-logo',       phase: 'infrastructure',tier: 'growth' },
+        { label: 'CRM Connection',            icon: 'ph-address-book',      phase: 'infrastructure',tier: 'growth' },
+        { label: 'Analytics Live',            icon: 'ph-chart-line',        phase: 'infrastructure',tier: 'growth' },
+        { label: 'First AI Agent Deployed',   icon: 'ph-robot',             phase: 'infrastructure',tier: 'growth' },
     ];
     const currentStep = clientProfile?.onboarding_step ?? 0;
 
     const handleAdvanceStep = async (clientId, currentStep) => {
-        if (currentStep >= 7 || !supabase) return;
+        if (currentStep >= 11 || !supabase) return;
         setAdvancingId(clientId);
         const { error } = await supabase
             .from('clients')
@@ -1586,7 +1591,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         setDeletingId(null);
     };
 
-    const stepLabels = ['Account created','Entity formation','Landing page deployed','GitHub repo provisioned','CRM connected','Analytics live','First AI agent deployed'];
+    const stepLabels = ['Account Created','Entity Formation','Tax Registration','Business Banking','IP & Contract Templates','Privacy & Compliance','Landing Page Deployed','Repository Provision','CRM Connection','Analytics Live','First AI Agent Deployed'];
 
     if (session && clientProfile?.is_admin) {
         return (
@@ -1599,7 +1604,6 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         </div>
                         <div className="flex items-center gap-4">
                             <span className="text-[10px] uppercase tracking-[0.3em] text-green-400 border border-green-400/20 px-4 py-2 rounded-full bg-green-400/5">{allClients.filter(c => !c.is_admin).length} Clients</span>
-                            <button onClick={handleSignOut} className="px-6 py-2 border border-white/10 rounded-lg text-[10px] uppercase tracking-widest text-gray-400 hover:text-white hover:border-white/30 transition-all">Sign Out</button>
                         </div>
                     </div>
 
@@ -1718,9 +1722,9 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                 }
                                 return filtered.map((client, i) => {
                                     const step = client.onboarding_step ?? 0;
-                                    const pct = Math.round((step / 7) * 100);
+                                    const pct = Math.round((step / 11) * 100);
                                     const joined = new Date(client.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                                    const isComplete = step >= 7;
+                                    const isComplete = step >= 11;
                                     const isAdvancing = advancingId === client.id;
                                     const hasUnread = client.last_message_at > client.admin_last_read_at;
 
@@ -1962,7 +1966,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                         >
                                             ← Rollback
                                         </button>
-                                        <span className="text-xs text-gray-400">Step {selectedClient.onboarding_step ?? 0} of 7 · {stepLabels[selectedClient.onboarding_step ?? 0] || 'Complete'}</span>
+                                        <span className="text-xs text-gray-400">Step {selectedClient.onboarding_step ?? 0} of 11 · {stepLabels[selectedClient.onboarding_step ?? 0] || 'Complete'}</span>
                                     </div>
                                 </div>
                             </div>
@@ -2031,9 +2035,6 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                             )}
                             <p className="text-xs text-gray-500 uppercase tracking-[0.3em] mt-1">{session.user.email}</p>
                         </div>
-                        <button onClick={handleSignOut} className="px-6 py-2 border border-white/10 rounded-lg text-[10px] uppercase tracking-widest text-gray-400 hover:text-white hover:border-white/30 transition-all">
-                            Sign Out
-                        </button>
                     </div>
 
                     {/* Quick setup banner — shown when jurisdiction/entity not yet set */}
@@ -2099,47 +2100,96 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                             )}
                         </div>
 
-                        {/* Onboarding Checklist card */}
-                        <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-                            <div className="flex items-center justify-between mb-4">
-                                <h3 className="text-[10px] uppercase tracking-widest text-gray-500">Onboarding Progress</h3>
-                                <span className="text-[10px] uppercase tracking-widest text-purple-300">{currentStep} / {onboardingSteps.length}</span>
-                            </div>
-                            <div className="w-full h-1 bg-white/5 rounded-full mb-5 overflow-hidden">
-                                <div
-                                    className="h-full bg-gradient-to-r from-blue-400 to-purple-500 rounded-full transition-all duration-700"
-                                    style={{ width: `${(currentStep / onboardingSteps.length) * 100}%` }}
-                                />
-                            </div>
-                            <div className="space-y-3">
-                                {onboardingSteps.map((step, i) => {
-                                    const done = i < currentStep;
-                                    const active = i === currentStep;
-                                    const stepDeliverable = myDocs.find(d => d.step_index === i);
-                                    return (
-                                        <div key={i} className="flex flex-col gap-1">
-                                            <div className="flex items-center gap-3">
-                                                {done ? (
-                                                    <i className="ph ph-check-circle text-green-400 text-base flex-shrink-0"></i>
-                                                ) : active ? (
-                                                    <i className={`ph ${step.icon} text-purple-400 text-base flex-shrink-0`}></i>
-                                                ) : (
-                                                    <i className="ph ph-circle text-gray-700 text-base flex-shrink-0"></i>
-                                                )}
-                                                <span className={`text-sm ${done ? 'text-gray-200' : active ? 'text-purple-200' : 'text-gray-600'}`}>{step.label}</span>
-                                                {active && <span className="ml-auto text-[9px] uppercase tracking-widest text-purple-400 border border-purple-400/20 px-2 py-0.5 rounded-full">In Progress</span>}
-                                            </div>
-                                            {stepDeliverable && (
-                                                <div onClick={() => getSignedUrl(stepDeliverable.path)} className="ml-7 flex items-center gap-2 py-1 px-2 bg-blue-500/10 border border-blue-500/20 rounded-lg cursor-pointer hover:bg-blue-500/20 transition-all group w-fit">
-                                                    <i className="ph ph-file-arrow-down text-blue-400 text-[10px]"></i>
-                                                    <span className="text-[9px] uppercase tracking-widest text-blue-300 group-hover:text-blue-200">Download Deliverable</span>
+                        {/* Onboarding Progress — phased tabs with tier gating */}
+                        {(() => {
+                            const plan = clientProfile?.plan ?? 'starter';
+                            const isPaid = plan === 'growth';
+                            const phases = [
+                                { id: 'foundation', label: 'Foundation' },
+                                { id: 'operations', label: 'Operations' },
+                                { id: 'infrastructure', label: 'Infrastructure' },
+                            ];
+                            const tabSteps = onboardingSteps.filter(s => s.phase === activePhaseTab);
+                            // index in the full array of the first step in this phase
+                            const phaseStartIdx = onboardingSteps.findIndex(s => s.phase === activePhaseTab);
+                            return (
+                                <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className="text-[10px] uppercase tracking-widest text-gray-500">Onboarding Progress</h3>
+                                        <span className="text-[10px] uppercase tracking-widest text-purple-300">{currentStep} / {onboardingSteps.length}</span>
+                                    </div>
+                                    <div className="w-full h-1 bg-white/5 rounded-full mb-5 overflow-hidden">
+                                        <div
+                                            className="h-full bg-gradient-to-r from-blue-400 to-purple-500 rounded-full transition-all duration-700"
+                                            style={{ width: `${(currentStep / onboardingSteps.length) * 100}%` }}
+                                        />
+                                    </div>
+                                    {/* Phase tabs */}
+                                    <div className="flex gap-1 mb-5 border-b border-white/5">
+                                        {phases.map(p => {
+                                            const active = activePhaseTab === p.id;
+                                            const phaseSteps = onboardingSteps.filter(s => s.phase === p.id);
+                                            const phaseTier = phaseSteps[0]?.tier || 'starter';
+                                            const locked = phaseTier === 'growth' && !isPaid;
+                                            return (
+                                                <button
+                                                    key={p.id}
+                                                    onClick={() => setActivePhaseTab(p.id)}
+                                                    className={`relative px-3 py-2 text-[10px] uppercase tracking-widest transition-all ${active ? 'text-purple-200 border-b-2 border-purple-400 -mb-px' : 'text-gray-500 hover:text-gray-300'}`}
+                                                >
+                                                    {p.label}
+                                                    {locked && <i className="ph ph-lock-simple text-[8px] ml-1.5 text-gray-600"></i>}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="space-y-3">
+                                        {tabSteps.map((step, localIdx) => {
+                                            const i = phaseStartIdx + localIdx;
+                                            const done = i < currentStep;
+                                            const active = i === currentStep;
+                                            const locked = step.tier === 'growth' && !isPaid;
+                                            const stepDeliverable = myDocs.find(d => d.step_index === i);
+                                            return (
+                                                <div key={i} className="flex flex-col gap-1">
+                                                    <div className={`flex items-center gap-3 ${locked ? 'opacity-50' : ''}`}>
+                                                        {done ? (
+                                                            <i className="ph ph-check-circle text-green-400 text-base flex-shrink-0"></i>
+                                                        ) : active ? (
+                                                            <i className={`ph ${step.icon} text-purple-400 text-base flex-shrink-0`}></i>
+                                                        ) : locked ? (
+                                                            <i className="ph ph-lock-simple text-gray-700 text-base flex-shrink-0"></i>
+                                                        ) : (
+                                                            <i className="ph ph-circle text-gray-700 text-base flex-shrink-0"></i>
+                                                        )}
+                                                        <span className={`text-sm ${done ? 'text-gray-200' : active ? 'text-purple-200' : locked ? 'text-gray-600' : 'text-gray-500'}`}>{step.label}</span>
+                                                        {active && !locked && <span className="ml-auto text-[9px] uppercase tracking-widest text-purple-400 border border-purple-400/20 px-2 py-0.5 rounded-full">In Progress</span>}
+                                                        {locked && (
+                                                            <button onClick={handleUpgrade} disabled={checkoutLoading} className="ml-auto text-[9px] uppercase tracking-widest text-gray-500 hover:text-purple-300 transition-colors disabled:opacity-40">
+                                                                Unlock with Growth →
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    {stepDeliverable && !locked && (
+                                                        <div onClick={() => getSignedUrl(stepDeliverable.path)} className="ml-7 flex items-center gap-2 py-1 px-2 bg-blue-500/10 border border-blue-500/20 rounded-lg cursor-pointer hover:bg-blue-500/20 transition-all group w-fit">
+                                                            <i className="ph ph-file-arrow-down text-blue-400 text-[10px]"></i>
+                                                            <span className="text-[9px] uppercase tracking-widest text-blue-300 group-hover:text-blue-200">Download Deliverable</span>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <p className="text-[10px] text-gray-600 mt-5 italic">
+                                        {activePhaseTab === 'foundation' && 'We take you as far as we can without cost. Foundation steps are always on the house.'}
+                                        {activePhaseTab === 'operations' && !isPaid && 'Operations covers tax registration, business banking, IP templates, and privacy compliance. Unlock with Growth.'}
+                                        {activePhaseTab === 'operations' && isPaid && 'Tax, banking, IP, and privacy — your specialist will work alongside the AI guide through each.'}
+                                        {activePhaseTab === 'infrastructure' && !isPaid && 'Infrastructure covers your landing page, repo, CRM, analytics, and first AI agent. Unlock with Growth.'}
+                                        {activePhaseTab === 'infrastructure' && isPaid && 'Your digital infrastructure — built and configured to your business profile.'}
+                                    </p>
+                                </div>
+                            );
+                        })()}
                     </div>
 
                     {/* Formation Assistant */}
@@ -2872,6 +2922,31 @@ const App = () => {
     const [showInquiry, setShowInquiry] = useState(false);
     const [showBrandKit, setShowBrandKit] = useState(false);
     const [unreadCount, setUnreadCount] = useState(0);
+    // Session awareness at App level so the top nav can swap between marketing and authenticated states
+    const [appSession, setAppSession] = useState(null);
+    const [appProfile, setAppProfile] = useState(null);
+
+    useEffect(() => {
+        if (!supabase) return;
+        supabase.auth.getSession().then(({ data: { session } }) => setAppSession(session));
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+            setAppSession(session);
+            if (!session) setAppProfile(null);
+        });
+        return () => subscription.unsubscribe();
+    }, []);
+
+    useEffect(() => {
+        if (!appSession || !supabase) { setAppProfile(null); return; }
+        supabase.from('clients').select('company_name,is_admin').eq('id', appSession.user.id).single()
+            .then(({ data }) => setAppProfile(data));
+    }, [appSession]);
+
+    const handleAppSignOut = async () => {
+        if (!supabase) return;
+        await supabase.auth.signOut();
+        setCurrentView('landing');
+    };
 
     const handleLogoRightClick = (e) => {
         e.preventDefault();
@@ -2912,15 +2987,26 @@ const App = () => {
                     </div>
                 </div>
 
-                <div className="flex items-center gap-8 md:gap-12 text-[10px] md:text-xs tracking-[0.3em] uppercase font-bold">
-                    <button onClick={() => navigateTo('features')} className={`nav-link transition-opacity hidden sm:block ${currentView === 'features' ? 'text-purple-300 opacity-100' : 'opacity-60 hover:opacity-100'}`}>Features</button>
-                    <button onClick={() => navigateTo('pricing')} className={`nav-link transition-opacity hidden sm:block ${currentView === 'pricing' ? 'text-purple-300 opacity-100' : 'opacity-60 hover:opacity-100'}`}>Pricing</button>
-                    <button onClick={() => navigateTo('support')} className={`nav-link transition-opacity hidden sm:block relative ${currentView === 'support' ? 'text-purple-300 opacity-100' : 'opacity-60 hover:opacity-100'}`}>
-                        Support
-                        {unreadCount > 0 && <span className="absolute -top-2 -right-3 w-4 h-4 bg-blue-500 text-white text-[8px] flex items-center justify-center rounded-full animate-pulse tracking-none">{unreadCount}</span>}
-                    </button>
-                    <button onClick={() => handleAction('admin')} className="nav-link text-purple-300 hover:text-white transition-colors">Login</button>
-                </div>
+                {appSession ? (
+                    /* Authenticated nav — identity + sign out */
+                    <div className="flex items-center gap-6 md:gap-8 text-[10px] md:text-xs tracking-[0.3em] uppercase font-bold">
+                        <span className="nav-link text-purple-200 truncate max-w-[200px]" title={appProfile?.company_name || appSession.user.email}>
+                            {appProfile?.is_admin ? 'Admin Console' : (appProfile?.company_name || appSession.user.email)}
+                        </span>
+                        <button onClick={handleAppSignOut} className="nav-link text-gray-500 hover:text-white transition-colors">Sign Out</button>
+                    </div>
+                ) : (
+                    /* Marketing nav — pre-auth */
+                    <div className="flex items-center gap-8 md:gap-12 text-[10px] md:text-xs tracking-[0.3em] uppercase font-bold">
+                        <button onClick={() => navigateTo('features')} className={`nav-link transition-opacity hidden sm:block ${currentView === 'features' ? 'text-purple-300 opacity-100' : 'opacity-60 hover:opacity-100'}`}>Features</button>
+                        <button onClick={() => navigateTo('pricing')} className={`nav-link transition-opacity hidden sm:block ${currentView === 'pricing' ? 'text-purple-300 opacity-100' : 'opacity-60 hover:opacity-100'}`}>Pricing</button>
+                        <button onClick={() => navigateTo('support')} className={`nav-link transition-opacity hidden sm:block relative ${currentView === 'support' ? 'text-purple-300 opacity-100' : 'opacity-60 hover:opacity-100'}`}>
+                            Support
+                            {unreadCount > 0 && <span className="absolute -top-2 -right-3 w-4 h-4 bg-blue-500 text-white text-[8px] flex items-center justify-center rounded-full animate-pulse tracking-none">{unreadCount}</span>}
+                        </button>
+                        <button onClick={() => handleAction('admin')} className="nav-link text-purple-300 hover:text-white transition-colors">Login</button>
+                    </div>
+                )}
             </nav>
 
             {contextMenu.visible && (
