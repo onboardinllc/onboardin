@@ -127,21 +127,58 @@ const MindMapCanvas = ({ active }) => {
     const rafRef = useRef(null);
     const activeRef = useRef(active);
     activeRef.current = active;
+    // Easter egg: when the user is actively making a text selection on the page,
+    // the planet labels become visible. Otherwise they stay hidden.
+    const selectingRef = useRef(false);
+    useEffect(() => {
+        const onSelectionChange = () => {
+            const sel = window.getSelection();
+            selectingRef.current = !!(sel && sel.toString().length > 0);
+        };
+        document.addEventListener('selectionchange', onSelectionChange);
+        return () => document.removeEventListener('selectionchange', onSelectionChange);
+    }, []);
 
-    // Each planet: orbital radius, base angular speed, phase offset, color, label
+    // 11 planets, one per onboarding pipeline step (Account Created through First AI Agent Deployed).
+    // Each has its own orbital plane (inclination), flatten ratio, and slightly different size.
+    // Size reflects relative "weight" of the step in the client journey.
+    // Colors echo the brand palette (blues/purples/magentas) with subtle variation.
+    // Color palette also serves as the canonical Onboardin step-color system.
+    // When these steps are built into the dashboard UI, the same colors carry through.
+    // See documents/Onboardin - Brand Atom.md for the broader brand color reference.
+    //
+    // Orbital mechanics: each orbit is a real ellipse with an eccentricity (0 = circle, ~0.5 = elongated)
+    // and rotation (inclination). Planets follow Kepler's second law - they sweep equal areas in equal
+    // time, so they move FAST at perihelion (near point) and SLOW at aphelion (far point). This makes
+    // them spend less time at the wide edges of the ellipse and more visible elsewhere.
+    //
+    // Inclinations are spread across the full unit circle so each planet's "wide axis" points in a
+    // different direction. The combined effect: planets distribute across the whole canvas instead of
+    // clustering on the left/right horizontal axis.
+    //
+    // baseSpeed is the mean orbital angular velocity (radians per frame).
     const PLANETS = [
-        { label: 'Tax',        color: [59,130,246],  orbit: 125, speed: 0.0008, phase: 0 },
-        { label: 'Legal',      color: [168,85,247],  orbit: 155, speed: 0.0006, phase: 1.26 },
-        { label: 'Compliance', color: [74,222,128],  orbit: 183, speed: 0.00045,phase: 2.51 },
-        { label: 'Accounting', color: [251,191,36],  orbit: 210, speed: 0.00035,phase: 3.77 },
-        { label: 'AI Agents',  color: [239,68,68],   orbit: 236, speed: 0.00028,phase: 5.03 },
+        // Foundation
+        { label: 'Account Created',          color: [125,211,252], orbit: 110, baseSpeed: 0.00120, phase: 0.00, inclination: 0.00,         eccentricity: 0.35, size: 3.0 }, // light blue : entry
+        { label: 'Entity Formation',         color: [ 99,102,241], orbit: 130, baseSpeed: 0.00098, phase: 0.57, inclination: Math.PI*0.30, eccentricity: 0.28, size: 4.5 }, // deep indigo : foundational
+        // Operations
+        { label: 'Tax Registration',         color: [251,191, 36], orbit: 150, baseSpeed: 0.00081, phase: 1.14, inclination: Math.PI*0.55, eccentricity: 0.42, size: 3.5 }, // amber : treasury/tax
+        { label: 'Business Banking',         color: [ 74,222,128], orbit: 168, baseSpeed: 0.00069, phase: 1.71, inclination: Math.PI*0.78, eccentricity: 0.32, size: 4.0 }, // green : money flow
+        { label: 'IP & Contract Templates',  color: [139, 92,246], orbit: 184, baseSpeed: 0.00060, phase: 2.28, inclination: Math.PI*1.10, eccentricity: 0.45, size: 3.5 }, // deep purple : legal/binding
+        { label: 'Privacy & Compliance',     color: [ 34,211,238], orbit: 198, baseSpeed: 0.00054, phase: 2.85, inclination: Math.PI*1.40, eccentricity: 0.25, size: 3.0 }, // cyan : shield/protective
+        // Infrastructure
+        { label: 'Landing Page Deployed',    color: [ 59,130,246], orbit: 211, baseSpeed: 0.00048, phase: 3.42, inclination: Math.PI*1.65, eccentricity: 0.38, size: 3.5 }, // blue : public-facing
+        { label: 'Repository Provision',     color: [148,163,184], orbit: 222, baseSpeed: 0.00044, phase: 3.99, inclination: Math.PI*0.18, eccentricity: 0.30, size: 3.0 }, // slate : developer/technical
+        { label: 'CRM Connection',           color: [129,140,232], orbit: 232, baseSpeed: 0.00040, phase: 4.56, inclination: Math.PI*0.42, eccentricity: 0.36, size: 3.5 }, // indigo : data connection
+        { label: 'Analytics Live',           color: [ 45,212,191], orbit: 242, baseSpeed: 0.00037, phase: 5.13, inclination: Math.PI*0.92, eccentricity: 0.28, size: 3.0 }, // teal : data freshness
+        { label: 'First AI Agent Deployed',  color: [192,132,252], orbit: 252, baseSpeed: 0.00034, phase: 5.70, inclination: Math.PI*1.25, eccentricity: 0.48, size: 4.5 }, // bright purple : AI/finale
     ];
 
     useEffect(() => {
         const canvas = canvasRef.current;
         if (!canvas) return;
-        const W = canvas.width = 560;
-        const H = canvas.height = 360;
+        const W = canvas.width = 820;
+        const H = canvas.height = 560;
         const cx = W / 2, cy = H / 2;
 
         if (!stateRef.current) {
@@ -154,6 +191,9 @@ const MindMapCanvas = ({ active }) => {
                     r: 0,
                     // trail: last N positions
                     trail: [],
+                    // smoothed label anchor position (lags planet so labels don't jitter)
+                    lx: null,
+                    ly: null,
                 })),
                 t: 0,
             };
@@ -169,16 +209,38 @@ const MindMapCanvas = ({ active }) => {
             ctx.clearRect(0, 0, W, H);
 
             planets.forEach((p, i) => {
-                // smoothly grow/shrink orbital radius
+                // Smoothly grow/shrink orbital radius (the "expand into view" effect on hover)
                 const targetR = isActive ? p.orbit : 0;
                 p.r += (targetR - p.r) * 0.055;
 
-                // advance angle (faster while expanding, kepler-ish)
-                const angularVel = p.speed * (1 + Math.max(0, (p.orbit - p.r) / p.orbit) * 2);
+                // === Keplerian motion (real orbital mechanics) ===
+                // Semi-major axis a = current displayed radius
+                // Eccentricity e is the planet's elongation (0 = circle, 0.5 = quite elongated)
+                // Semi-minor axis b = a * sqrt(1 - e^2)
+                // Heliocentric distance at current theta: r = a(1-e^2) / (1 + e*cos(theta))
+                // Kepler's 2nd law: dθ/dt = baseSpeed * (a/r)^2
+                //   (planets sweep equal areas in equal time, so they move FAST near the star
+                //    at perihelion and SLOW at aphelion)
+                const a = p.r;
+                const e = p.eccentricity;
+                const oneMinusE2 = 1 - e * e;
+                const radiusAtTheta = a * oneMinusE2 / (1 + e * Math.cos(p.theta));
+                const aOverR = a / Math.max(radiusAtTheta, 0.0001);
+                // Speed boost while orbit is still expanding so planets feel "lively" on hover
+                const expandBoost = 1 + Math.max(0, (p.orbit - p.r) / p.orbit) * 1.5;
+                const angularVel = p.baseSpeed * aOverR * aOverR * expandBoost;
                 p.theta += angularVel;
 
-                const x = cx + Math.cos(p.theta) * p.r;
-                const y = cy + Math.sin(p.theta) * p.r * 0.38; // flatten into ellipse
+                // Position on ellipse (planet's own frame), then rotate by inclination.
+                // Note: the focus of the ellipse sits at the center (where the button is),
+                // so we offset the ellipse by a*e along x so the focus is at origin.
+                const bMinor = a * Math.sqrt(oneMinusE2);
+                const ex = a * Math.cos(p.theta) - a * e;  // focus-centered: shift by a*e
+                const ey = bMinor * Math.sin(p.theta);
+                const ci = Math.cos(p.inclination);
+                const si = Math.sin(p.inclination);
+                const x = cx + ex * ci - ey * si;
+                const y = cy + ex * si + ey * ci;
 
                 // trail
                 p.trail.push({ x, y, a: 0.35 });
@@ -189,12 +251,16 @@ const MindMapCanvas = ({ active }) => {
                 const [r,g,b] = p.color;
                 const presence = Math.min(1, p.r / p.orbit); // 0→1 as orbit expands
 
-                // orbit ring (faint ellipse)
+                // Orbit ring (faint ellipse) - drawn to match the actual Keplerian orbit:
+                // - semi-major axis a, semi-minor axis bMinor = a*sqrt(1-e^2)
+                // - focus-centered: shift the ellipse by a*e so the focus sits at the canvas center
+                // - rotated by inclination so each planet's orbit has its own plane
                 ctx.save();
                 ctx.translate(cx, cy);
-                ctx.scale(1, 0.38);
+                ctx.rotate(p.inclination);
+                ctx.translate(-a * e, 0);
                 ctx.beginPath();
-                ctx.arc(0, 0, p.r, 0, Math.PI * 2);
+                ctx.ellipse(0, 0, a, bMinor, 0, 0, Math.PI * 2);
                 ctx.strokeStyle = `rgba(${r},${g},${b},${0.06 * presence})`;
                 ctx.lineWidth = 0.8;
                 ctx.stroke();
@@ -223,31 +289,58 @@ const MindMapCanvas = ({ active }) => {
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // planet dot with glow
-                const grd = ctx.createRadialGradient(x, y, 0, x, y, 9);
+                // planet dot with glow (size + glow radius scaled per planet)
+                const glowRadius = p.size * 2.6;
+                const grd = ctx.createRadialGradient(x, y, 0, x, y, glowRadius);
                 grd.addColorStop(0, `rgba(${r},${g},${b},${0.9 * presence})`);
                 grd.addColorStop(1, `rgba(${r},${g},${b},0)`);
                 ctx.beginPath();
-                ctx.arc(x, y, 9, 0, Math.PI * 2);
+                ctx.arc(x, y, glowRadius, 0, Math.PI * 2);
                 ctx.fillStyle = grd;
                 ctx.fill();
 
                 ctx.beginPath();
-                ctx.arc(x, y, 3.5, 0, Math.PI * 2);
+                ctx.arc(x, y, p.size, 0, Math.PI * 2);
                 ctx.fillStyle = `rgba(${r},${g},${b},${presence})`;
                 ctx.shadowColor = `rgb(${r},${g},${b})`;
                 ctx.shadowBlur = 10;
                 ctx.fill();
                 ctx.shadowBlur = 0;
 
-                // label : appears as orbit opens
-                if (presence > 0.5) {
-                    ctx.font = `bold ${Math.round(8 * presence)}px sans-serif`;
-                    ctx.fillStyle = `rgba(${r},${g},${b},${(presence - 0.5) * 2 * 0.8})`;
+                // Easter egg: labels show only when the user is actively selecting text on the page.
+                // Each planet is one of the 11 pipeline steps; the labels reveal what they map to.
+                // To stop them flying around with the planet (hard to read), we smooth-track
+                // the label's anchor position toward the planet over many frames, and clamp it
+                // to the canvas bounds so long labels never get cut off at the edges.
+                if (selectingRef.current && presence > 0.3 && p.label) {
+                    // Smoothed anchor (lerp toward planet position, slow factor for stability)
+                    if (p.lx == null) { p.lx = x; p.ly = y; }
+                    p.lx += (x - p.lx) * 0.04;
+                    p.ly += (y - p.ly) * 0.04;
+
+                    const labelOffset = p.ly < cy ? -(p.size + 10) : (p.size + 16);
+                    let labelY = p.ly + labelOffset;
+
+                    ctx.font = `600 ${Math.round(9 * presence)}px Inter, sans-serif`;
+                    // Mostly white with a hint of planet-color (mix ~75% white, 25% planet hue)
+                    // so labels stay readable on dark backgrounds while still grouping with their planet.
+                    const lr = Math.round(r * 0.25 + 255 * 0.75);
+                    const lg = Math.round(g * 0.25 + 255 * 0.75);
+                    const lb = Math.round(b * 0.25 + 255 * 0.75);
+                    ctx.fillStyle = `rgba(${lr},${lg},${lb},${presence * 0.75})`;
                     ctx.textAlign = 'center';
-                    // label above or below depending on y position
-                    const labelOffset = y < cy ? -12 : 14;
-                    ctx.fillText(p.label.toUpperCase(), x, y + labelOffset);
+
+                    // Clamp x so the label never gets cut off horizontally
+                    const labelText = p.label.toUpperCase();
+                    const halfTextWidth = ctx.measureText(labelText).width / 2;
+                    const margin = 6;
+                    const labelX = Math.max(halfTextWidth + margin, Math.min(W - halfTextWidth - margin, p.lx));
+
+                    ctx.fillText(labelText, labelX, labelY);
+                } else {
+                    // Reset smoothed anchor when label is hidden so next reveal pops at planet
+                    p.lx = null;
+                    p.ly = null;
                 }
             });
 
@@ -261,10 +354,10 @@ const MindMapCanvas = ({ active }) => {
     return (
         <canvas
             ref={canvasRef}
-            width={560}
-            height={360}
+            width={820}
+            height={560}
             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
-            style={{ opacity: 1, width: 560, height: 360 }}
+            style={{ opacity: 1, width: 820, height: 560 }}
         />
     );
 };
@@ -299,7 +392,7 @@ const Landing = ({ onNavigate, uiVisible, setUiVisible, onBrandKit, onElementsRe
         <div className="flex flex-col items-center justify-center min-h-screen px-4 overflow-hidden relative z-10">
             {/* Center logo — clickable for brand kit */}
             <div
-                className={`transition-all duration-[1500ms] ease-in-out cursor-pointer ${uiVisible ? 'scale-[0.65] opacity-90' : 'scale-100 opacity-100'}`}
+                className={`transition-all duration-[1500ms] ease-in-out cursor-pointer relative z-30 ${uiVisible ? 'scale-[0.65] opacity-90' : 'scale-100 opacity-100'}`}
                 style={{ marginBottom: uiVisible ? '-4rem' : '0' }}
                 onClick={handleLogoClick}
                 title="Brand Kit"
