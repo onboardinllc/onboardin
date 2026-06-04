@@ -1764,7 +1764,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     // Formation assistant
     const [agentQuestion, setAgentQuestion] = useState('');
     const [agentLoading, setAgentLoading] = useState(false);
-    const [agentAnswer, setAgentAnswer] = useState('');
+    const [agentAnswer, setAgentAnswer] = useState(() => { try { return localStorage.getItem('oq_last_answer') || ''; } catch { return ''; } });
     const [agentError, setAgentError] = useState('');
     // Jurisdiction-tailored blueprint (starter questions + required docs)
     const [blueprint, setBlueprint] = useState(null);
@@ -1781,7 +1781,14 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [setupIntent, setSetupIntent] = useState('');
     const [setupSellsTo, setSetupSellsTo] = useState('');
     const [setupEntity, setSetupEntity] = useState('');
-    const [dashTab, setDashTab] = useState('overview'); // 'overview' | 'pipeline' | 'vault' | 'messages' | 'capital'
+    const [dashTab, setDashTab] = useState(() => {
+        const h = window.location.hash.replace('#', '');
+        return ['overview','pipeline','vault','messages','capital'].includes(h) ? h : 'overview';
+    });
+    const switchTab = (id) => {
+        setDashTab(id);
+        history.replaceState(null, '', '#' + id);
+    };
     const [showPricing, setShowPricing] = useState(false);
     const [alertDismissed, setAlertDismissed] = useState(false);
     const [expandedVaultCard, setExpandedVaultCard] = useState(null);
@@ -1797,6 +1804,9 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [adminInternalNotes, setAdminInternalNotes] = useState('');
     const [savingNotes, setSavingNotes] = useState(false);
     const [deliverableStep, setDeliverableStep] = useState('');
+    const [adminMsgTab, setAdminMsgTab] = useState('team');
+    const [statusReportCache, setStatusReportCache] = useState({});
+    const [statusReportLoading, setStatusReportLoading] = useState(false);
     const fileInputRef = React.useRef(null);
 
     useEffect(() => {
@@ -1822,20 +1832,19 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                 } else {
                     setClientProfile(data);
                     
-                    // Load or generate the Formation Assistant welcome message
+                    // Load last AI answer from messages table — works across devices
                     if (!data.is_admin) {
                         supabase
                             .from('messages')
-                            .select('*')
+                            .select('body')
                             .eq('client_id', session.user.id)
-                            .eq('is_admin_message', false)
-                            .order('created_at', { ascending: true })
+                            .eq('is_ai_generated', true)
+                            .order('created_at', { ascending: false })
                             .limit(1)
                             .then(({ data: msgs }) => {
-                                if (msgs && msgs.length > 0 && msgs[0].content) {
-                                    setAgentAnswer(msgs[0].content);
-                                } else {
-                                    handleAgentQuestion(null, true);
+                                if (msgs && msgs.length > 0 && msgs[0].body) {
+                                    setAgentAnswer(msgs[0].body);
+                                    try { localStorage.setItem('oq_last_answer', msgs[0].body); } catch {}
                                 }
                             });
                     }
@@ -1853,6 +1862,22 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                     }
                 }
             });
+    }, [session]);
+
+    useEffect(() => {
+        if (!session || !supabase) return;
+        const channel = supabase
+            .channel('client-profile-' + session.user.id)
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'clients',
+                filter: `id=eq.${session.user.id}`,
+            }, ({ new: updated }) => {
+                setClientProfile(prev => ({ ...prev, ...updated }));
+            })
+            .subscribe();
+        return () => supabase.removeChannel(channel);
     }, [session]);
 
     useEffect(() => {
@@ -1876,13 +1901,32 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         }
     }, [clientProfile]);
 
-    // Load answered questions + vault step completion from localStorage
+    // Load answered questions + vault state — Supabase first, localStorage as fallback cache
     useEffect(() => {
-        if (!session) return;
-        try { setAnsweredQuestions(JSON.parse(localStorage.getItem(`oq_answered_${session.user.id}`) || '[]')); } catch {}
-        try { setVaultStepsDone(JSON.parse(localStorage.getItem(`oq_vsteps_${session.user.id}`) || '{}')); } catch {}
-        try { setVaultReminderSent(JSON.parse(localStorage.getItem(`oq_vrem_${session.user.id}`) || '{}')); } catch {}
-    }, [session?.user?.id]);
+        if (!session || !clientProfile) return;
+        const uid = session.user.id;
+        // answered_questions
+        if (clientProfile.answered_questions?.length) {
+            setAnsweredQuestions(clientProfile.answered_questions);
+            try { localStorage.setItem(`oq_answered_${uid}`, JSON.stringify(clientProfile.answered_questions)); } catch {}
+        } else {
+            try { setAnsweredQuestions(JSON.parse(localStorage.getItem(`oq_answered_${uid}`) || '[]')); } catch {}
+        }
+        // vault_steps_done
+        if (clientProfile.vault_steps_done && Object.keys(clientProfile.vault_steps_done).length) {
+            setVaultStepsDone(clientProfile.vault_steps_done);
+            try { localStorage.setItem(`oq_vsteps_${uid}`, JSON.stringify(clientProfile.vault_steps_done)); } catch {}
+        } else {
+            try { setVaultStepsDone(JSON.parse(localStorage.getItem(`oq_vsteps_${uid}`) || '{}')); } catch {}
+        }
+        // vault_reminders_sent
+        if (clientProfile.vault_reminders_sent && Object.keys(clientProfile.vault_reminders_sent).length) {
+            setVaultReminderSent(clientProfile.vault_reminders_sent);
+            try { localStorage.setItem(`oq_vrem_${uid}`, JSON.stringify(clientProfile.vault_reminders_sent)); } catch {}
+        } else {
+            try { setVaultReminderSent(JSON.parse(localStorage.getItem(`oq_vrem_${uid}`) || '{}')); } catch {}
+        }
+    }, [clientProfile?.id]);
 
     // Helper: call send-scheduled edge function
     const fireSendScheduled = async () => {
@@ -2024,6 +2068,15 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         }
     };
 
+    const handlePlanChange = async (plan) => {
+        if (!supabase || !selectedClient) return;
+        const { error } = await supabase.from('clients').update({ plan, updated_at: new Date().toISOString() }).eq('id', selectedClient.id);
+        if (!error) {
+            setAllClients(prev => prev.map(c => c.id === selectedClient.id ? { ...c, plan } : c));
+            setSelectedClient(prev => ({ ...prev, plan }));
+        }
+    };
+
     const handleUpdateInternalNotes = async () => {
         if (!supabase || !selectedClient) return;
         setSavingNotes(true);
@@ -2099,10 +2152,10 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         if (!supabase || !session) return;
         // Mark this question as answered so it stops showing as a suggestion
         if (!isWelcome && agentQuestion.trim()) {
-            const key = `oq_answered_${session.user.id}`;
             const updated = [...new Set([...answeredQuestions, agentQuestion.trim()])];
             setAnsweredQuestions(updated);
-            try { localStorage.setItem(key, JSON.stringify(updated)); } catch {}
+            try { localStorage.setItem(`oq_answered_${session.user.id}`, JSON.stringify(updated)); } catch {}
+            supabase.from('clients').update({ answered_questions: updated }).eq('id', session.user.id).then(() => {});
         }
 
         setAgentLoading(true);
@@ -2120,6 +2173,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
             const json = await res.json();
             if (json.answer) {
                 setAgentAnswer(json.answer);
+                try { localStorage.setItem('oq_last_answer', json.answer); } catch {}
                 // Refresh profile for credits
                 const { data: prof } = await supabase.from('clients').select('*').eq('id', session.user.id).single();
                 setClientProfile(prof);
@@ -2299,6 +2353,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         if (!updated[key]) delete updated[key];
         setVaultStepsDone(updated);
         try { localStorage.setItem(`oq_vsteps_${session.user.id}`, JSON.stringify(updated)); } catch {}
+        supabase.from('clients').update({ vault_steps_done: updated }).eq('id', session.user.id).then(() => {});
     };
 
     const handleVaultReminder = async (catId, trackIdx, stepIdx, stepText, days) => {
@@ -2319,6 +2374,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         const updated = { ...vaultReminderSent, [remKey]: { days, sendAt } };
         setVaultReminderSent(updated);
         try { localStorage.setItem(`oq_vrem_${session.user.id}`, JSON.stringify(updated)); } catch {}
+        supabase.from('clients').update({ vault_reminders_sent: updated }).eq('id', session.user.id).then(() => {});
         setVaultReminderStep(null);
         setVaultReminderSending(false);
     };
@@ -2364,14 +2420,14 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         return (
             <div className="pt-32 px-8 md:px-16 animate-[fadeIn_1s_ease-out] min-h-screen relative z-10">
                 <div className="max-w-6xl mx-auto">
-                    <div className="flex justify-between items-center mb-12">
+                    <div className="flex flex-wrap justify-between items-start gap-4 mb-12">
                         <div>
                             <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-400 uppercase tracking-tighter">Admin Console</h1>
-                            <p className="text-base text-gray-500 uppercase tracking-widest mt-1">{session.user.email}</p>
+                            <p className="text-sm text-gray-500 uppercase tracking-widest mt-1">{session.user.email}</p>
                         </div>
-                        <div className="flex items-center gap-4">
-                            <span className="text-sm uppercase tracking-widest text-green-400 border border-green-400/20 px-4 py-2 rounded-full bg-green-400/5">{allClients.filter(c => !c.is_admin).length} Clients</span>
-                        </div>
+                        <span className="text-xs uppercase tracking-widest text-green-400 border border-green-400/20 px-3 py-1.5 rounded-full bg-green-400/5 self-center">
+                            {allClients.filter(c => !c.is_admin).length} {allClients.filter(c => !c.is_admin).length === 1 ? 'Client' : 'Clients'}
+                        </span>
                     </div>
 
                     {deleteError && (
@@ -2472,9 +2528,10 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         </div>
                     ) : (
                         <div className="bg-white/5 border border-white/10 rounded-2xl backdrop-blur-xl overflow-hidden">
-                            <div className="grid grid-cols-[2fr_1.5fr_1fr_1fr_1fr_1fr_2fr_1fr_auto_auto] gap-0 px-6 py-3 border-b border-white/5">
+                            {/* Desktop header — hidden on mobile */}
+                            <div className="hidden md:grid md:grid-cols-[minmax(180px,2fr)_minmax(120px,1.2fr)_90px_100px_110px_60px_minmax(140px,1.5fr)_90px_90px_80px] gap-0 px-6 py-3 border-b border-white/5">
                                 {['Company','Founder','Stage','Plan','Lifecycle','Credits','Progress','Joined','',''].map((h, i) => (
-                                    <span key={i} className="text-sm uppercase tracking-widest text-gray-500">{h}</span>
+                                    <span key={i} className="text-xs uppercase tracking-widest text-gray-500">{h}</span>
                                 ))}
                             </div>
                             {(() => {
@@ -2495,77 +2552,107 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                     const isComplete = step >= 11;
                                     const isAdvancing = advancingId === client.id;
                                     const hasUnread = client.last_message_at > client.admin_last_read_at;
+                                    const p = client.plan ?? 'starter';
+                                    const planColor = p === 'growth' ? 'text-green-300 border-green-500/30 bg-green-500/10' : p === 'enterprise' ? 'text-purple-200 border-purple-500/30 bg-purple-500/10' : p === 'past_due' ? 'text-red-300 border-red-500/30 bg-red-500/10' : 'text-gray-500 border-white/10 bg-white/5';
+                                    const lc = client.lifecycle ?? 'onboarding';
+                                    const lcColor = lc === 'active' ? 'text-green-300 bg-green-400/10' : lc === 'paused' ? 'text-yellow-300 bg-yellow-400/10' : lc === 'churned' ? 'text-red-300 bg-red-400/10' : lc === 'archived' ? 'text-gray-500 bg-white/5' : 'text-blue-300 bg-blue-400/10';
+                                    const planSelect = (
+                                        <select
+                                            value={p}
+                                            onClick={e => e.stopPropagation()}
+                                            onChange={e => { e.stopPropagation(); handleSetPlan(client.id, e.target.value); }}
+                                            className={`text-xs uppercase tracking-widest px-2 py-0.5 rounded-full border cursor-pointer focus:outline-none appearance-none whitespace-nowrap w-full max-w-[96px] ${planColor}`}
+                                            style={{colorScheme:'dark'}}
+                                        >
+                                            <option value="starter">Free</option>
+                                            <option value="growth">Growth</option>
+                                            <option value="enterprise">Enterprise</option>
+                                            <option value="past_due">Past Due</option>
+                                        </select>
+                                    );
+                                    const advanceBtn = (
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleAdvanceStep(client.id, step); }}
+                                            disabled={isComplete || isAdvancing}
+                                            className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest rounded-lg border transition-all disabled:opacity-20 disabled:cursor-not-allowed border-purple-500/30 text-purple-300 hover:bg-purple-500/10 hover:border-purple-400/50"
+                                        >{isAdvancing ? '…' : isComplete ? '✓' : 'Advance'}</button>
+                                    );
+                                    const deleteBtn = armedDeleteId === client.id ? (
+                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteUser(client.id); }} disabled={deletingId === client.id}
+                                            className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest rounded-lg border border-red-500/60 bg-red-500/20 text-red-200 hover:bg-red-500/30 transition-all disabled:opacity-40">
+                                            {deletingId === client.id ? '…' : 'Confirm'}
+                                        </button>
+                                    ) : (
+                                        <button onClick={(e) => { e.stopPropagation(); setArmedDeleteId(client.id); setDeleteError(''); }}
+                                            className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest rounded-lg border border-white/10 text-gray-500 hover:border-red-500/40 hover:text-red-300 transition-all">
+                                            Delete
+                                        </button>
+                                    );
 
                                     return (
-                                        <div key={client.id} onClick={() => openClientDetail(client)} className={`grid grid-cols-[2fr_1.5fr_1fr_1fr_1fr_1fr_2fr_1fr_auto_auto] gap-0 px-6 py-4 items-center cursor-pointer ${i % 2 === 0 ? '' : 'bg-white/[0.02]'} hover:bg-white/5 transition-colors ${selectedClient?.id === client.id ? 'bg-purple-500/5 border-l-2 border-purple-500/50' : ''}`}>
-                                            <div className="flex items-center gap-3">
-                                                {hasUnread && <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse flex-shrink-0" title="New Message"></div>}
-                                                <div>
-                                                    <p className="text-base font-medium text-white">{client.company_name}</p>
-                                                    <p className="text-sm text-gray-500">{client.email}</p>
+                                        <div key={client.id} className={`${i % 2 === 0 ? '' : 'bg-white/[0.02]'} hover:bg-white/5 transition-colors ${selectedClient?.id === client.id ? 'bg-purple-500/5 border-l-2 border-purple-500/50' : ''}`}>
+                                            {/* Desktop row */}
+                                            <div onClick={() => openClientDetail(client)} className="hidden md:grid md:grid-cols-[minmax(180px,2fr)_minmax(120px,1.2fr)_90px_100px_110px_60px_minmax(140px,1.5fr)_90px_90px_80px] gap-0 px-6 py-3 items-center cursor-pointer">
+                                                <div className="flex items-center gap-2 min-w-0 pr-3">
+                                                    {hasUnread && <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse flex-shrink-0"></div>}
+                                                    <div className="min-w-0">
+                                                        <p className="text-sm font-medium text-white truncate">{client.company_name}</p>
+                                                        <p className="text-xs text-gray-500 truncate">{client.email}</p>
+                                                    </div>
+                                                </div>
+                                                <span className="text-xs text-gray-300 truncate pr-2">{client.founder_name}</span>
+                                                <span className="text-xs uppercase tracking-widest text-purple-300 border border-purple-400/20 px-2 py-0.5 rounded-full whitespace-nowrap">{client.funding_stage || '—'}</span>
+                                                {planSelect}
+                                                <span className={`text-xs uppercase tracking-widest px-2 py-0.5 rounded-full whitespace-nowrap ${lcColor}`}>{lc}</span>
+                                                <span className="text-xs text-gray-400">{client.daily_ai_credits}</span>
+                                                <div className="pr-3">
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <span className="text-xs text-gray-500 truncate pr-1">{isComplete ? 'Done' : stepLabels[step]}</span>
+                                                        <span className="text-xs text-gray-600 flex-shrink-0">{pct}%</span>
+                                                    </div>
+                                                    <div className="w-full h-0.5 bg-white/5 rounded-full overflow-hidden">
+                                                        <div className="h-full bg-gradient-to-r from-blue-400 to-purple-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+                                                    </div>
+                                                </div>
+                                                <span className="text-xs text-gray-500 whitespace-nowrap">{joined}</span>
+                                                <div className="flex items-center">{advanceBtn}</div>
+                                                <div className="flex items-center pl-2">{deleteBtn}</div>
+                                            </div>
+
+                                            {/* Mobile card */}
+                                            <div onClick={() => openClientDetail(client)} className="md:hidden px-4 py-4 cursor-pointer">
+                                                <div className="flex items-start justify-between gap-3 mb-3">
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center gap-2">
+                                                            {hasUnread && <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse flex-shrink-0"></div>}
+                                                            <p className="text-sm font-semibold text-white truncate">{client.company_name}</p>
+                                                        </div>
+                                                        <p className="text-xs text-gray-500 truncate mt-0.5">{client.founder_name} · {client.email}</p>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                                                        {planSelect}
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-2 mb-3">
+                                                    <span className="text-xs uppercase tracking-widest text-purple-300 bg-purple-400/10 px-2 py-1 rounded-full">{client.funding_stage || '—'}</span>
+                                                    <span className={`text-xs uppercase tracking-widest px-2 py-1 rounded-full ${lcColor}`}>{lc}</span>
+                                                    <span className="text-xs text-gray-500">{client.daily_ai_credits} credits</span>
+                                                    <span className="text-xs text-gray-500">{joined}</span>
+                                                </div>
+                                                <div className="mb-3">
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <span className="text-xs text-gray-500">{isComplete ? 'Complete' : stepLabels[step]}</span>
+                                                        <span className="text-xs text-gray-500">{pct}%</span>
+                                                    </div>
+                                                    <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
+                                                        <div className="h-full bg-gradient-to-r from-blue-400 to-purple-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-2" onClick={e => e.stopPropagation()}>
+                                                    {advanceBtn}
+                                                    {deleteBtn}
                                                 </div>
                                             </div>
-                                            <span className="text-base text-gray-300">{client.founder_name}</span>
-                                            <span className="text-sm uppercase tracking-widest text-purple-300 bg-purple-400/10 px-2 py-1 rounded-full w-fit">{client.funding_stage || '—'}</span>
-                                            {(() => {
-                                                const p = client.plan ?? 'starter';
-                                                const color = p === 'growth' ? 'text-green-300 border-green-500/30 bg-green-500/10' : p === 'enterprise' ? 'text-purple-200 border-purple-500/30 bg-purple-500/10' : p === 'past_due' ? 'text-red-300 border-red-500/30 bg-red-500/10' : 'text-gray-500 border-white/10 bg-white/5';
-                                                return (
-                                                    <select
-                                                        value={p}
-                                                        onClick={e => e.stopPropagation()}
-                                                        onChange={e => { e.stopPropagation(); handleSetPlan(client.id, e.target.value); }}
-                                                        className={`text-xs uppercase tracking-widest px-2 py-1 rounded-full border cursor-pointer focus:outline-none appearance-none ${color}`}
-                                                    >
-                                                        <option value="starter">Free</option>
-                                                        <option value="growth">Growth</option>
-                                                        <option value="enterprise">Enterprise</option>
-                                                        <option value="past_due">Past Due</option>
-                                                    </select>
-                                                );
-                                            })()}
-                                            {(() => {
-                                                const lc = client.lifecycle ?? 'onboarding';
-                                                const palette = lc === 'active' ? 'text-green-300 bg-green-400/10' : lc === 'paused' ? 'text-yellow-300 bg-yellow-400/10' : lc === 'churned' ? 'text-red-300 bg-red-400/10' : lc === 'archived' ? 'text-gray-500 bg-white/5' : 'text-blue-300 bg-blue-400/10';
-                                                return <span className={`text-sm uppercase tracking-widest px-2 py-1 rounded-full w-fit ${palette}`}>{lc}</span>;
-                                            })()}
-                                            <span className="text-base text-gray-400">{client.daily_ai_credits}</span>
-                                            <div className="pr-4">
-                                                <div className="flex items-center justify-between mb-1">
-                                                    <span className="text-sm text-gray-500">{isComplete ? 'Complete' : stepLabels[step]}</span>
-                                                    <span className="text-sm text-gray-500">{pct}%</span>
-                                                </div>
-                                                <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
-                                                    <div className="h-full bg-gradient-to-r from-blue-400 to-purple-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
-                                                </div>
-                                            </div>
-                                            <span className="text-base text-gray-500">{joined}</span>
-                                            <button
-                                                onClick={(e) => { e.stopPropagation(); handleAdvanceStep(client.id, step); }}
-                                                disabled={isComplete || isAdvancing}
-                                                className="ml-4 px-3 py-1.5 text-sm font-bold uppercase tracking-widest rounded-lg border transition-all disabled:opacity-20 disabled:cursor-not-allowed border-purple-500/30 text-purple-300 hover:bg-purple-500/10 hover:border-purple-400/50"
-                                                title={isComplete ? 'All steps complete' : `Advance to: ${stepLabels[step + 1] || 'Complete'}`}
-                                            >
-                                                {isAdvancing ? '…' : isComplete ? '✓' : 'Advance'}
-                                            </button>
-                                            {armedDeleteId === client.id ? (
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); handleDeleteUser(client.id); }}
-                                                    disabled={deletingId === client.id}
-                                                    className="ml-2 px-3 py-1.5 text-sm font-bold uppercase tracking-widest rounded-lg border border-red-500/60 bg-red-500/20 text-red-200 hover:bg-red-500/30 transition-all disabled:opacity-40"
-                                                    title="Confirm permanent delete"
-                                                >
-                                                    {deletingId === client.id ? '…' : 'Confirm'}
-                                                </button>
-                                            ) : (
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); setArmedDeleteId(client.id); setDeleteError(''); }}
-                                                    className="ml-2 px-3 py-1.5 text-sm font-bold uppercase tracking-widest rounded-lg border border-white/10 text-gray-500 hover:border-red-500/40 hover:text-red-300 transition-all"
-                                                    title="Delete this client account"
-                                                >
-                                                    Delete
-                                                </button>
-                                            )}
                                         </div>
                                     );
                                 });
@@ -2576,44 +2663,55 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                     {/* Client detail panel */}
                     {selectedClient && (
                         <div className="mt-8 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-xl overflow-hidden animate-[fadeIn_0.3s_ease-out]">
-                            <div className="px-6 py-4 bg-white/[0.03] border-b border-white/5 grid grid-cols-2 md:grid-cols-4 gap-4 relative">
-                                <div className="absolute top-4 right-6 flex items-center gap-3">
-                                    <div className="flex flex-col items-end">
-                                        <span className={`text-sm uppercase tracking-widest ${selectedClient.share_ai_data ? 'text-green-400' : 'text-gray-500'}`}>
-                                            {selectedClient.share_ai_data ? 'AI Chat: Shared' : 'AI Chat: Private'}
-                                        </span>
-                                        <span className="text-sm text-gray-600">{selectedClient.daily_ai_credits} credits</span>
+                            {/* Detail header */}
+                            <div className="px-6 py-4 bg-white/[0.03] border-b border-white/5 flex flex-wrap items-center gap-x-4 gap-y-2">
+                                <div className="flex items-center gap-3 mr-auto min-w-0">
+                                    <div className="min-w-0">
+                                        <p className="text-base font-semibold text-white truncate">{selectedClient.company_name || selectedClient.founder_name}</p>
+                                        <p className="text-xs text-gray-500 truncate">{selectedClient.email}</p>
                                     </div>
-                                    <button onClick={handleBoostCredits} className="px-3 py-1 bg-blue-500/10 border border-blue-500/30 rounded-lg text-sm font-bold uppercase tracking-widest text-blue-300 hover:bg-blue-500/20 transition-all">
+                                </div>
+                                <div className="flex items-center gap-3 flex-wrap">
+                                    <div className="flex items-center gap-2">
+                                        <div className={`w-1.5 h-1.5 rounded-full ${selectedClient.share_ai_data ? 'bg-green-400' : 'bg-gray-600'}`}></div>
+                                        <span className={`text-xs uppercase tracking-widest ${selectedClient.share_ai_data ? 'text-green-400' : 'text-gray-500'}`}>
+                                            {selectedClient.share_ai_data ? 'AI Shared' : 'AI Private'}
+                                        </span>
+                                    </div>
+                                    <span className="text-xs text-gray-600 border border-white/10 rounded px-2 py-0.5">{selectedClient.daily_ai_credits} credits</span>
+                                    <button onClick={handleBoostCredits} className="px-3 py-1 bg-blue-500/10 border border-blue-500/30 rounded-lg text-xs font-bold uppercase tracking-widest text-blue-300 hover:bg-blue-500/20 transition-all">
                                         Boost
                                     </button>
-                                    <button onClick={() => setSelectedClient(null)} className="text-gray-500 hover:text-white transition-colors ml-2">
+                                    <button onClick={() => setSelectedClient(null)} className="text-gray-500 hover:text-white transition-colors ml-1">
                                         <i className="ph ph-x text-lg"></i>
                                     </button>
                                 </div>
+                            </div>
+                            {/* Detail data grid */}
+                            <div className="px-6 py-4 bg-white/[0.03] border-b border-white/5 grid grid-cols-2 md:grid-cols-4 gap-4">
                                 <div>
-                                    <p className="text-sm uppercase tracking-widest text-gray-500">Founder</p>
-                                    <p className="text-base text-gray-300">{selectedClient.founder_name}</p>
+                                    <p className="text-xs uppercase tracking-widest text-gray-500">Founder</p>
+                                    <p className="text-sm text-gray-300">{selectedClient.founder_name}</p>
                                 </div>
                                 <div>
-                                    <p className="text-sm uppercase tracking-widest text-gray-500">Jurisdiction</p>
-                                    <p className="text-base text-gray-300">{selectedClient.jurisdiction || selectedClient.country || 'Not set'}</p>
+                                    <p className="text-xs uppercase tracking-widest text-gray-500">Jurisdiction</p>
+                                    <p className="text-sm text-gray-300">{selectedClient.jurisdiction || selectedClient.country || 'Not set'}</p>
                                 </div>
                                 <div>
-                                    <p className="text-sm uppercase tracking-widest text-gray-500">Entity Type</p>
-                                    <p className="text-base text-purple-300">{selectedClient.entity_type || 'Not set'}</p>
+                                    <p className="text-xs uppercase tracking-widest text-gray-500">Entity Type</p>
+                                    <p className="text-sm text-purple-300">{selectedClient.entity_type || 'Not set'}</p>
                                 </div>
                                 <div>
-                                    <p className="text-sm uppercase tracking-widest text-gray-500">Funding Stage</p>
-                                    <p className="text-base text-purple-300">{selectedClient.funding_stage || 'Not set'}</p>
+                                    <p className="text-xs uppercase tracking-widest text-gray-500">Funding Stage</p>
+                                    <p className="text-sm text-purple-300">{selectedClient.funding_stage || 'Not set'}</p>
                                 </div>
                                 <div className="md:col-span-2">
-                                    <p className="text-sm uppercase tracking-widest text-gray-500">Business Intent</p>
-                                    <p className="text-base text-gray-300 leading-relaxed truncate" title={selectedClient.business_intent}>{selectedClient.business_intent || 'No intent provided'}</p>
+                                    <p className="text-xs uppercase tracking-widest text-gray-500">Business Intent</p>
+                                    <p className="text-sm text-gray-300 leading-relaxed truncate" title={selectedClient.business_intent}>{selectedClient.business_intent || 'No intent provided'}</p>
                                 </div>
                                 <div className="md:col-span-2">
-                                    <p className="text-sm uppercase tracking-widest text-gray-500">Target Market</p>
-                                    <p className="text-base text-gray-300">{selectedClient.sells_to || 'Not provided'}</p>
+                                    <p className="text-xs uppercase tracking-widest text-gray-500">Target Market</p>
+                                    <p className="text-sm text-gray-300">{selectedClient.sells_to || 'Not provided'}</p>
                                 </div>
                             </div>
 
@@ -2642,25 +2740,26 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                     </div>
 
                                     {/* Documents */}
-                                    <div className="p-6">
-                                        <div className="flex items-center justify-between mb-4">
-                                            <h4 className="text-sm uppercase tracking-widest text-gray-500">Documents</h4>
-                                            <div className="flex items-center gap-2">
-                                                <select
-                                                    value={deliverableStep}
-                                                    onChange={e => setDeliverableStep(e.target.value)}
-                                                    className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-sm uppercase tracking-widest text-gray-400 focus:outline-none focus:border-purple-500/50 appearance-none cursor-pointer"
-                                                >
-                                                    <option value="">General</option>
-                                                    {stepLabels.map((label, idx) => (
-                                                        <option key={idx} value={idx}>Step {idx + 1}: {label}</option>
-                                                    ))}
-                                                </select>
-                                                <label className="cursor-pointer text-sm uppercase tracking-widest text-purple-300 border border-purple-500/30 px-3 py-1 rounded-lg hover:bg-purple-500/10 transition-all">
+                                    <div className="p-6 overflow-hidden">
+                                        <div className="flex flex-col gap-2 mb-4">
+                                            <div className="flex items-center justify-between">
+                                                <h4 className="text-sm uppercase tracking-widest text-gray-500">Documents</h4>
+                                                <label className="cursor-pointer text-xs uppercase tracking-widest text-purple-300 border border-purple-500/30 px-2.5 py-1 rounded-lg hover:bg-purple-500/10 transition-all flex-shrink-0">
                                                     {uploadingDoc ? '…' : '+ Upload'}
                                                     <input type="file" className="hidden" onChange={handleAdminUpload} disabled={uploadingDoc} />
                                                 </label>
                                             </div>
+                                            <select
+                                                value={deliverableStep}
+                                                onChange={e => setDeliverableStep(e.target.value)}
+                                                className="w-full bg-black/60 border border-white/20 rounded-lg px-2 py-1.5 text-xs uppercase tracking-widest text-gray-200 focus:outline-none focus:border-purple-500/50 cursor-pointer"
+                                                style={{colorScheme:'dark'}}
+                                            >
+                                                <option value="">General</option>
+                                                {stepLabels.map((label, idx) => (
+                                                    <option key={idx} value={idx}>Step {idx + 1}: {label}</option>
+                                                ))}
+                                            </select>
                                         </div>
                                         {clientDocs.length === 0 ? (
                                             <p className="text-base text-gray-600 italic">No documents yet.</p>
@@ -2684,52 +2783,60 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
 
                                     {/* Messages */}
                                     <div className="p-6 flex flex-col">
-                                        <h4 className="text-sm uppercase tracking-widest text-gray-500 mb-4">Messages</h4>
-                                        <div className="flex-1 space-y-3 max-h-64 overflow-y-auto mb-4 pr-1">
-                                            {clientMessages.length === 0 ? (
-                                                <p className="text-base text-gray-600 italic">No messages yet.</p>
-                                            ) : (
-                                                clientMessages.map((msg, i) => (
+                                        {/* Tab switcher */}
+                                        <div className="flex gap-1 border-b border-white/5 mb-4 pb-px">
+                                            {[
+                                                { id: 'team', label: 'Team', count: clientMessages.filter(m => !m.is_ai_generated).length },
+                                                { id: 'ai', label: 'AI', count: clientMessages.filter(m => m.is_ai_generated).length },
+                                            ].map(t => (
+                                                <button key={t.id} onClick={() => setAdminMsgTab(t.id)}
+                                                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs uppercase tracking-widest transition-all ${adminMsgTab === t.id ? 'text-purple-200 border-b-2 border-purple-400 -mb-px' : 'text-gray-500 hover:text-gray-300'}`}>
+                                                    {t.label}
+                                                    {t.count > 0 && <span className="text-xs text-gray-600">{t.count}</span>}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <div className="flex-1 space-y-3 max-h-48 overflow-y-auto mb-4 pr-1">
+                                            {(() => {
+                                                const msgs = adminMsgTab === 'team'
+                                                    ? clientMessages.filter(m => !m.is_ai_generated)
+                                                    : clientMessages.filter(m => m.is_ai_generated);
+                                                if (msgs.length === 0) return <p className="text-sm text-gray-600 italic">{adminMsgTab === 'team' ? 'No team messages yet.' : 'No AI messages yet.'}</p>;
+                                                return msgs.map((msg, i) => (
                                                     <div key={i} className={`flex ${msg.is_admin_message ? 'justify-end' : 'justify-start'}`}>
-                                                        <div className={`max-w-[80%] px-3 py-2 rounded-xl text-base leading-relaxed ${msg.is_admin_message ? 'bg-purple-500/20 text-purple-100' : 'bg-white/5 text-gray-300'}`}>
+                                                        <div className={`max-w-[85%] px-3 py-2 rounded-xl text-sm leading-relaxed ${msg.is_admin_message ? 'bg-purple-500/20 text-purple-100' : 'bg-white/5 text-gray-300'}`}>
                                                             {msg.body}
+                                                            {msg.scheduled_at && !msg.sent_at && <span className="block text-xs text-blue-400/60 mt-1">Scheduled · {new Date(msg.scheduled_at).toLocaleDateString()}</span>}
                                                         </div>
                                                     </div>
-                                                ))
-                                            )}
+                                                ));
+                                            })()}
                                         </div>
-                                        <form onSubmit={handleAdminMessage} className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                value={messageInput}
-                                                onChange={e => setMessageInput(e.target.value)}
-                                                placeholder="Send a note…"
-                                                className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-base text-white focus:outline-none focus:border-purple-500/50 transition-all"
-                                            />
-                                            <button type="submit" disabled={sendingMessage || !messageInput.trim()} className="px-4 py-2 bg-purple-500/20 border border-purple-500/30 rounded-lg text-sm font-bold uppercase tracking-widest text-purple-300 hover:bg-purple-500/30 transition-all disabled:opacity-40">
-                                                {sendingMessage ? '…' : msgScheduled ? 'Schedule' : 'Send'}
-                                            </button>
-                                        </form>
-                                        {/* Scheduling options */}
-                                        <div className="flex flex-wrap items-center gap-3 px-1 pt-1">
-                                            <label className="flex items-center gap-1.5 cursor-pointer">
-                                                <input type="checkbox" checked={msgScheduled} onChange={e => setMsgScheduled(e.target.checked)} className="accent-purple-500" />
-                                                <span className="text-xs text-gray-500">Schedule</span>
-                                            </label>
-                                            {msgScheduled && (
-                                                <input type="datetime-local" value={msgScheduleAt} onChange={e => setMsgScheduleAt(e.target.value)}
-                                                    className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-purple-500/50" />
-                                            )}
-                                            <label className="flex items-center gap-1.5 cursor-pointer">
-                                                <input type="checkbox" checked={msgSendEmail} onChange={e => setMsgSendEmail(e.target.checked)} className="accent-purple-500" />
-                                                <span className="text-xs text-gray-500">Also email</span>
-                                            </label>
-                                            {msgSendEmail && (
-                                                <input type="text" value={msgEmailSubject} onChange={e => setMsgEmailSubject(e.target.value)}
+                                        {adminMsgTab === 'team' && <>
+                                            <form onSubmit={handleAdminMessage} className="flex gap-2">
+                                                <input type="text" value={messageInput} onChange={e => setMessageInput(e.target.value)}
+                                                    placeholder="Send a note…"
+                                                    className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500/50 transition-all" />
+                                                <button type="submit" disabled={sendingMessage || !messageInput.trim()} className="px-4 py-2 bg-purple-500/20 border border-purple-500/30 rounded-lg text-xs font-bold uppercase tracking-widest text-purple-300 hover:bg-purple-500/30 transition-all disabled:opacity-40">
+                                                    {sendingMessage ? '…' : msgScheduled ? 'Schedule' : 'Send'}
+                                                </button>
+                                            </form>
+                                            <div className="flex flex-wrap items-center gap-3 px-1 pt-2">
+                                                <label className="flex items-center gap-1.5 cursor-pointer">
+                                                    <input type="checkbox" checked={msgScheduled} onChange={e => setMsgScheduled(e.target.checked)} className="accent-purple-500" />
+                                                    <span className="text-xs text-gray-500">Schedule</span>
+                                                </label>
+                                                {msgScheduled && <input type="datetime-local" value={msgScheduleAt} onChange={e => setMsgScheduleAt(e.target.value)}
+                                                    className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-purple-500/50" />}
+                                                <label className="flex items-center gap-1.5 cursor-pointer">
+                                                    <input type="checkbox" checked={msgSendEmail} onChange={e => setMsgSendEmail(e.target.checked)} className="accent-purple-500" />
+                                                    <span className="text-xs text-gray-500">Also email</span>
+                                                </label>
+                                                {msgSendEmail && <input type="text" value={msgEmailSubject} onChange={e => setMsgEmailSubject(e.target.value)}
                                                     placeholder="Email subject…"
-                                                    className="flex-1 bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-purple-500/50 min-w-0" />
-                                            )}
-                                        </div>
+                                                    className="flex-1 bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-purple-500/50 min-w-0" />}
+                                            </div>
+                                        </>}
                                     </div>
                                 </div>
                             )}
@@ -2785,29 +2892,53 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                 </div>
                             )}
 
-                            {/*-- scaf --
-                              Audit Log : see migrations/_scaffold_audit_log.sql
-                              Query public.audit_log where client_id = selectedClient.id order by created_at desc.
-                              Show actor email + action + payload diff. Paginate at 25.
-                            */}
-                            <div className="px-6 py-4 border-t border-white/5">
-                                <div className="flex items-center justify-between mb-2">
-                                    <p className="text-sm uppercase tracking-widest text-gray-500">Audit Log</p>
-                                    <span className="text-sm uppercase tracking-widest text-purple-400/60 border border-purple-500/20 px-2 py-0.5 rounded-full">Scaffold</span>
+                            {/* Status Report */}
+                            <div className="px-6 py-5 border-t border-white/5">
+                                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                                    <div>
+                                        <p className="text-sm uppercase tracking-widest text-gray-500">Status Report</p>
+                                        <p className="text-xs text-gray-600 mt-0.5">AI-generated brief on this client. Saved per generation.</p>
+                                    </div>
+                                    <button
+                                        onClick={async () => {
+                                            if (!selectedClient || statusReportLoading) return;
+                                            setStatusReportLoading(true);
+                                            try {
+                                                const prompt = `You are an operations advisor at Onboardin, a business formation and automation platform. Generate a concise internal status report on the following client to help the admin understand their progress, blockers, and next best actions.\n\nClient: ${selectedClient.company_name || selectedClient.founder_name}\nFounder: ${selectedClient.founder_name}\nEmail: ${selectedClient.email}\nJurisdiction: ${selectedClient.jurisdiction || selectedClient.country || 'Not set'}\nEntity Type: ${selectedClient.entity_type || 'Not set'}\nFunding Stage: ${selectedClient.funding_stage || 'Not set'}\nBusiness Intent: ${selectedClient.business_intent || 'Not provided'}\nTarget Market: ${selectedClient.sells_to || 'Not provided'}\nPlan: ${selectedClient.plan || 'starter'}\nLifecycle: ${selectedClient.lifecycle || 'onboarding'}\nOnboarding Step: ${selectedClient.onboarding_step ?? 0} of 11\nAI Credits Remaining: ${selectedClient.daily_ai_credits}\nInternal Notes: ${selectedClient.internal_notes || 'None'}\n\nWrite a 3-5 sentence report covering: current status, what they have completed, any blockers or gaps, and what the admin should prioritize next. Be direct and specific. No fluff.`;
+                                                const res = await fetch('https://qatfiicpkunabpphwqee.supabase.co/functions/v1/agent-formation', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}` },
+                                                    body: JSON.stringify({ question: prompt, clientId: selectedClient.id, mode: 'admin-report' }),
+                                                });
+                                                const data = await res.json();
+                                                const report = data.answer || data.error || 'No response.';
+                                                setStatusReportCache(prev => ({ ...prev, [selectedClient.id]: report }));
+                                                await supabase.from('admin_status_reports').insert({
+                                                    client_id: selectedClient.id,
+                                                    admin_id: session.user.id,
+                                                    report,
+                                                    created_at: new Date().toISOString(),
+                                                });
+                                            } catch (e) {
+                                                setStatusReport('Failed to generate report. Try again.');
+                                            }
+                                            setStatusReportLoading(false);
+                                        }}
+                                        disabled={statusReportLoading}
+                                        className="px-4 py-2 bg-purple-500/10 border border-purple-500/30 rounded-lg text-xs font-bold uppercase tracking-widest text-purple-300 hover:bg-purple-500/20 transition-all disabled:opacity-40 flex items-center gap-2"
+                                    >
+                                        {statusReportLoading ? <><span className="animate-spin inline-block w-3 h-3 border border-purple-400/40 border-t-purple-300 rounded-full"></span> Generating…</> : <><i className="ph ph-sparkle"></i> Generate Report</>}
+                                    </button>
                                 </div>
-                                <p className="text-base text-gray-600 italic">Per-client change history (step advances, rollbacks, lifecycle changes, document uploads, admin notes) will appear here once the audit_log table is enabled.</p>
+                                {statusReportCache[selectedClient.id] && (
+                                    <div className="bg-purple-500/5 border border-purple-500/15 rounded-xl p-4 text-sm text-gray-300 leading-relaxed animate-[fadeIn_0.3s_ease-out]">
+                                        {statusReportCache[selectedClient.id]}
+                                    </div>
+                                )}
+                                {!statusReportCache[selectedClient.id] && !statusReportLoading && (
+                                    <p className="text-xs text-gray-600 italic">No report generated yet. Click Generate to create one.</p>
+                                )}
                             </div>
-
-                            {/*-- scaf --
-                              Message Templates : see migrations/_scaffold_message_templates.sql
-                              Dropdown above the message composer; selecting fills the textarea with body,
-                              substituting (founder_name), (company_name), (jurisdiction), (entity_type).
-                            */}
-                            {/*-- scaf --
-                              AI-Suggested Admin Reply
-                              Button next to Send. Calls a new edge function 'admin-reply-suggest' with the last N
-                              messages + client profile. Returns a draft for admin to edit before sending.
-                            */}
                         </div>
                     )}
                 </div>
@@ -2850,7 +2981,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                 </div>
                             </div>
                             <button
-                                onClick={() => { setShowJurisdictionSetup(true); setDashTab('vault'); }}
+                                onClick={() => { setShowJurisdictionSetup(true); switchTab('vault'); }}
                                 className="flex-shrink-0 px-4 py-2 bg-purple-500/20 border border-purple-500/30 rounded-lg text-sm font-bold uppercase tracking-widest text-purple-200 hover:bg-purple-500/30 transition-all"
                             >
                                 Quick Setup →
@@ -2887,7 +3018,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                             ].map(t => (
                                 <button
                                     key={t.id}
-                                    onClick={() => setDashTab(t.id)}
+                                    onClick={() => switchTab(t.id)}
                                     className={`relative flex items-center gap-1.5 px-3 md:px-4 py-2.5 text-xs md:text-sm uppercase tracking-widest whitespace-nowrap transition-all ${dashTab === t.id ? 'text-purple-200 border-b-2 border-purple-400 -mb-px' : 'text-gray-500 hover:text-gray-300'}`}
                                 >
                                     <i className={`ph ${t.icon} text-base`}></i>
@@ -2944,7 +3075,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         {/* Onboarding Progress — phased tabs with tier gating */}
                         {(() => {
                             const plan = clientProfile?.plan ?? 'starter';
-                            const isPaid = plan === 'growth';
+                            const isPaid = plan === 'growth' || plan === 'enterprise';
                             const phases = [
                                 { id: 'foundation', label: 'Foundation' },
                                 { id: 'operations', label: 'Operations' },
@@ -3036,7 +3167,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                     {/* Pipeline tab — full 11-step onboarding detail */}
                     {dashTab === 'pipeline' && (() => {
                         const plan = clientProfile?.plan ?? 'starter';
-                        const isPaid = plan === 'growth';
+                        const isPaid = plan === 'growth' || plan === 'enterprise';
                         const phases = [
                             { id: 'foundation', label: 'Foundation' },
                             { id: 'operations', label: 'Operations' },
@@ -3102,8 +3233,13 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                     {dashTab === 'overview' && <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
                             <div className="flex items-center gap-3">
-                                <div className="w-7 h-7 bg-purple-500/20 rounded-full flex items-center justify-center flex-shrink-0">
-                                    <i className="ph ph-robot text-purple-300 text-base"></i>
+                                <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0">
+                                    <svg viewBox="0 0 73 85.4" className="w-7 h-7">
+                                        <path d="M36.9 8.7c-44.4.8-44.4 66.8 0 67.6 44.4-.8 44.4-66.8 0-67.6" fill="#b6499b"/>
+                                        <path d="M1.3 41c.2 13.9 6.6 23.6 15.5 29.2C-3.3 53.8 3.4 13.9 36.9 13.3c31.9.5 39.5 36.8 22.8 54.3 7-5.8 11.8-14.7 12-26.7C70.9-5.3 2.1-5.3 1.3 41" fill="#1b8dcd"/>
+                                        <path d="M36.9 23c-35.4.6-35.4 53.3 0 53.9 35.4-.6 35.4-53.3 0-53.9" fill="#fefefe"/>
+                                        <path d="M36.9 33.1c-22.2.4-22.2 33.4 0 33.7 22.2-.4 22.2-33.4 0-33.7" fill="#b6499b"/>
+                                    </svg>
                                 </div>
                                 <div>
                                     <h3 className="text-sm uppercase tracking-widest text-gray-500">Assistant</h3>
@@ -3522,62 +3658,153 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                     })()}</>}
 
                     {/* Messages tab */}
-                    {dashTab === 'messages' && <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
-                        <h3 className="text-sm uppercase tracking-widest text-gray-500 mb-4">Messages</h3>
-                        <div className="space-y-3 max-h-48 overflow-y-auto mb-4 pr-1">
-                            {myMessagesLoading ? (
-                                <div className="w-full h-8 bg-white/5 rounded animate-pulse" />
-                            ) : myMessages.length === 0 ? (
-                                <p className="text-base text-gray-600 italic">Your Onboardin team will message you here.</p>
-                            ) : (
-                                    myMessages.map((msg, i) => (
+                    {dashTab === 'messages' && (() => {
+                        const plan = clientProfile?.plan ?? 'starter';
+                        const isPaid = plan === 'growth' || plan === 'enterprise';
+                        const defaultInbox = isPaid ? 'team' : 'assistant';
+                        const [msgInbox, setMsgInbox] = useState(defaultInbox);
+                        const navigatorUnlocked = (clientProfile?.onboarding_step ?? 0) >= 11;
+                        const teamMessages = myMessages.filter(m => !m.is_ai_generated);
+                        const assistantMessages = myMessages.filter(m => m.is_ai_generated);
+                        return (
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                            {/* Sub-tab nav */}
+                            <div className="flex gap-1 border-b border-white/5 mb-5 pb-px">
+                                {/* Assistant first */}
+                                {[
+                                    { id: 'assistant', icon: 'ph-sparkle', label: 'Assistant', badge: assistantMessages.filter(m => m.is_admin_message && !m.seen).length },
+                                ].map(t => (
+                                    <button key={t.id} onClick={() => setMsgInbox(t.id)}
+                                        className={`relative flex items-center gap-1.5 px-3 py-2 text-xs uppercase tracking-widest whitespace-nowrap transition-all ${msgInbox === t.id ? 'text-purple-200 border-b-2 border-purple-400 -mb-px' : 'text-gray-500 hover:text-gray-300'}`}>
+                                        <i className={`ph ${t.icon} text-base`}></i>
+                                        {t.label}
+                                        {t.badge > 0 && <span className="ml-1 w-4 h-4 bg-blue-500 rounded-full text-xs flex items-center justify-center text-white font-bold">{t.badge}</span>}
+                                    </button>
+                                ))}
+                                {/* Onboardin tab — greyed + disabled on free tier */}
+                                {(() => {
+                                    const badge = teamMessages.filter(m => m.is_admin_message && !m.seen).length;
+                                    const active = msgInbox === 'team';
+                                    return (
+                                        <button onClick={() => setMsgInbox('team')}
+                                            className={`relative flex items-center gap-0 px-3 py-2 whitespace-nowrap transition-all ${active ? 'text-purple-200 border-b-2 border-purple-400 -mb-px' : 'text-gray-500 hover:text-gray-300'}`}>
+                                            <svg viewBox="0 0 73 85.4" className="w-6 h-6 flex-shrink-0" style={{opacity: isPaid ? 1 : 0.25, marginBottom: '2px'}}>
+                                                <path d="M36.9 8.7c-44.4.8-44.4 66.8 0 67.6 44.4-.8 44.4-66.8 0-67.6" fill="#b6499b"/>
+                                                <path d="M1.3 41c.2 13.9 6.6 23.6 15.5 29.2C-3.3 53.8 3.4 13.9 36.9 13.3c31.9.5 39.5 36.8 22.8 54.3 7-5.8 11.8-14.7 12-26.7C70.9-5.3 2.1-5.3 1.3 41" fill="#1b8dcd"/>
+                                                <path d="M36.9 23c-35.4.6-35.4 53.3 0 53.9 35.4-.6 35.4-53.3 0-53.9" fill="#fefefe"/>
+                                                <path d="M36.9 33.1c-22.2.4-22.2 33.4 0 33.7 22.2-.4 22.2-33.4 0-33.7" fill="#b6499b"/>
+                                            </svg>
+                                            <span className="text-base tracking-widest" style={{fontWeight:400,letterSpacing:'0.08em',opacity: isPaid ? 1 : 0.25}}>nboardin</span>
+                                            {badge > 0 && <span className="ml-1 w-4 h-4 bg-blue-500 rounded-full text-xs flex items-center justify-center text-white font-bold">{badge}</span>}
+                                        </button>
+                                    );
+                                })()}
+                                {/* Navigator last */}
+                                {[
+                                    { id: 'navigator', icon: 'ph-compass', label: 'Navigator' },
+                                ].map(t => (
+                                    <button key={t.id} onClick={() => setMsgInbox(t.id)}
+                                        className={`relative flex items-center gap-1.5 px-3 py-2 text-xs uppercase tracking-widest whitespace-nowrap transition-all ${msgInbox === t.id ? 'text-purple-200 border-b-2 border-purple-400 -mb-px' : 'text-gray-500 hover:text-gray-300'}`}>
+                                        <i className={`ph ${t.icon} text-base`}></i>
+                                        {t.label}
+                                        {t.badge > 0 && <span className="ml-1 w-4 h-4 bg-blue-500 rounded-full text-xs flex items-center justify-center text-white font-bold">{t.badge}</span>}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Team inbox */}
+                            {msgInbox === 'team' && (
+                                !isPaid ? (
+                                    <div className="flex flex-col items-center justify-center py-10 gap-3 text-center">
+                                        <svg viewBox="0 0 73 85.4" className="w-10 h-10 opacity-20">
+                                            <path d="M36.9 8.7c-44.4.8-44.4 66.8 0 67.6 44.4-.8 44.4-66.8 0-67.6" fill="#b6499b"/>
+                                            <path d="M1.3 41c.2 13.9 6.6 23.6 15.5 29.2C-3.3 53.8 3.4 13.9 36.9 13.3c31.9.5 39.5 36.8 22.8 54.3 7-5.8 11.8-14.7 12-26.7C70.9-5.3 2.1-5.3 1.3 41" fill="#1b8dcd"/>
+                                            <path d="M36.9 23c-35.4.6-35.4 53.3 0 53.9 35.4-.6 35.4-53.3 0-53.9" fill="#fefefe"/>
+                                            <path d="M36.9 33.1c-22.2.4-22.2 33.4 0 33.7 22.2-.4 22.2-33.4 0-33.7" fill="#b6499b"/>
+                                        </svg>
+                                        <p className="text-sm uppercase tracking-widest text-gray-600">Direct access to your Onboardin team unlocks on the Growth plan.</p>
+                                        <button onClick={handleUpgrade} className="mt-1 text-sm uppercase tracking-widest text-purple-300 border border-purple-500/30 px-3 py-2 rounded-lg hover:bg-purple-500/10 transition-all">
+                                            Upgrade to Growth →
+                                        </button>
+                                    </div>
+                                ) : <>
+                                <div className="space-y-3 max-h-64 overflow-y-auto mb-4 pr-1">
+                                    {myMessagesLoading ? (
+                                        <div className="w-full h-8 bg-white/5 rounded animate-pulse" />
+                                    ) : teamMessages.length === 0 ? (
+                                        <p className="text-base text-gray-600 italic">Your Onboardin team will message you here.</p>
+                                    ) : teamMessages.map((msg, i) => (
                                         <div key={i} className={`flex ${msg.is_admin_message ? 'justify-start' : 'justify-end'}`}>
                                             <div className="max-w-[80%] flex flex-col gap-1">
                                                 <div className={`px-3 py-2 rounded-xl text-base leading-relaxed relative ${msg.scheduled_at && !msg.sent_at ? 'opacity-60 border border-dashed border-white/20' : ''} ${msg.is_admin_message ? 'bg-white/5 text-gray-300' : 'bg-purple-500/20 text-purple-100'}`}>
-                                                    {msg.is_ai_generated && <div className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-green-400 rounded-full" title="AI Assistant"></div>}
                                                     {msg.scheduled_at && !msg.sent_at && <div className="absolute -top-1 -left-1 w-1.5 h-1.5 bg-blue-400 rounded-full" title="Scheduled"></div>}
                                                     {msg.body}
                                                 </div>
-                                                <p className={`text-sm uppercase tracking-widest text-gray-600 ${msg.is_admin_message ? 'text-left' : 'text-right'}`}>
+                                                <p className={`text-xs uppercase tracking-widest text-gray-600 ${msg.is_admin_message ? 'text-left' : 'text-right'}`}>
                                                     {msg.scheduled_at && !msg.sent_at
                                                         ? `Scheduled · ${new Date(msg.scheduled_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
-                                                        : msg.is_admin_message ? (msg.is_ai_generated ? 'AI Assistant' : 'Onboardin Team') : 'You'}
+                                                        : msg.is_admin_message ? 'Onboardin Team' : 'You'}
                                                 </p>
                                             </div>
                                         </div>
-                                    ))
+                                    ))}
+                                </div>
+                                <form onSubmit={handleClientMessage} className="flex gap-2">
+                                    <input type="text" value={clientMessageInput} onChange={e => setClientMessageInput(e.target.value)}
+                                        placeholder="Message your team…"
+                                        className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-base text-white focus:outline-none focus:border-purple-500/50 transition-all" />
+                                    <button type="submit" disabled={sendingClientMessage || !clientMessageInput.trim()}
+                                        className="px-4 py-2 bg-purple-500/20 border border-purple-500/30 rounded-lg text-sm font-bold uppercase tracking-widest text-purple-300 hover:bg-purple-500/30 transition-all disabled:opacity-40">
+                                        {sendingClientMessage ? '…' : 'Send'}
+                                    </button>
+                                </form>
+                            </>)}
+
+                            {/* Assistant inbox */}
+                            {msgInbox === 'assistant' && <>
+                                <div className="space-y-3 max-h-64 overflow-y-auto mb-4 pr-1">
+                                    {myMessagesLoading ? (
+                                        <div className="w-full h-8 bg-white/5 rounded animate-pulse" />
+                                    ) : assistantMessages.length === 0 ? (
+                                        <p className="text-base text-gray-600 italic">Messages from the AI assistant will appear here.</p>
+                                    ) : assistantMessages.map((msg, i) => (
+                                        <div key={i} className={`flex ${msg.is_admin_message ? 'justify-start' : 'justify-end'}`}>
+                                            <div className="max-w-[80%] flex flex-col gap-1">
+                                                <div className={`px-3 py-2 rounded-xl text-base leading-relaxed relative ${msg.is_admin_message ? 'bg-white/5 text-gray-300' : 'bg-purple-500/20 text-purple-100'}`}>
+                                                    <div className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-green-400 rounded-full" title="AI Assistant"></div>
+                                                    {msg.body}
+                                                </div>
+                                                <p className={`text-xs uppercase tracking-widest text-gray-600 ${msg.is_admin_message ? 'text-left' : 'text-right'}`}>
+                                                    {msg.is_admin_message ? 'AI Assistant' : 'You'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </>}
+
+                            {/* Navigator inbox */}
+                            {msgInbox === 'navigator' && (
+                                navigatorUnlocked ? (
+                                    <div className="space-y-3">
+                                        <p className="text-base text-gray-400 leading-relaxed">Navigator routes you to vetted partners, capital sources, and channels matched to your profile once all onboarding steps are complete.</p>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center py-10 gap-3 text-center">
+                                        <i className="ph ph-compass text-4xl text-gray-700"></i>
+                                        <p className="text-sm uppercase tracking-widest text-gray-600">Navigator unlocks when all 11 pipeline steps are complete.</p>
+                                        <p className="text-sm text-gray-600">You are on step {clientProfile?.onboarding_step ?? 0} of 11.</p>
+                                    </div>
+                                )
                             )}
                         </div>
-                        <form onSubmit={handleClientMessage} className="space-y-2">
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    value={clientMessageInput}
-                                    onChange={e => setClientMessageInput(e.target.value)}
-                                    placeholder="Send a message…"
-                                    className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-base text-white focus:outline-none focus:border-purple-500/50 transition-all"
-                                />
-                                <button type="submit" disabled={sendingClientMessage || !clientMessageInput.trim()} className="px-4 py-2 bg-purple-500/20 border border-purple-500/30 rounded-lg text-sm font-bold uppercase tracking-widest text-purple-300 hover:bg-purple-500/30 transition-all disabled:opacity-40">
-                                    {sendingClientMessage ? '…' : clientMsgScheduled ? 'Schedule' : 'Send'}
-                                </button>
-                            </div>
-                            <div className="flex items-center gap-3">
-                                <label className="flex items-center gap-1.5 cursor-pointer">
-                                    <input type="checkbox" checked={clientMsgScheduled} onChange={e => setClientMsgScheduled(e.target.checked)} className="accent-purple-500" />
-                                    <span className="text-xs text-gray-500">Schedule send</span>
-                                </label>
-                                {clientMsgScheduled && (
-                                    <input type="datetime-local" value={clientMsgScheduleAt} onChange={e => setClientMsgScheduleAt(e.target.value)}
-                                        className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-purple-500/50" />
-                                )}
-                            </div>
-                        </form>
-                    </div>}
+                        );
+                    })()}
 
                     {/* Capital tab */}
                     {dashTab === 'capital' && (() => {
                         const plan = clientProfile?.plan ?? 'starter';
-                        const isPaid = plan === 'growth';
+                        const isPaid = plan === 'growth' || plan === 'enterprise';
 
                         /*--- scaf ---*/
                         // Readiness score : deterministic checks, each missing = -20
@@ -3666,7 +3893,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                     {/* Billing — overview tab only */}
                     {dashTab === 'overview' && (() => {
                         const plan = clientProfile?.plan ?? 'starter';
-                        const isPaid = plan === 'growth';
+                        const isPaid = plan === 'growth' || plan === 'enterprise';
                         const isPastDue = plan === 'past_due';
                         return (
                             <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
@@ -3985,6 +4212,118 @@ const GalaxyBackground = ({ visible }) => {
     );
 };
 
+// EarthBackground — midnight Caribbean: deep ocean blue base, warm gold fireflies, bioluminescent blue glows
+const EarthBackground = ({ visible }) => {
+    const canvasRef = useRef(null);
+    const stateRef = useRef(null);
+    const rafRef = useRef(null);
+
+    useEffect(() => {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        let W = canvas.width = window.innerWidth;
+        let H = canvas.height = window.innerHeight;
+        const resize = () => { W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight; };
+        window.addEventListener('resize', resize);
+        const rand = (a, b) => a + Math.random() * (b - a);
+
+        if (!stateRef.current) {
+            // particles — warm gold fireflies + cool bioluminescent blue/teal
+            const fireflies = Array.from({ length: 110 }, () => {
+                const kind = Math.random();
+                return {
+                    x: Math.random(), y: Math.random(),
+                    r: rand(0.6, 2.0),
+                    alpha: rand(0.15, 0.65),
+                    pulseSpeed: rand(0.015, 0.055),
+                    pulseOffset: Math.random() * Math.PI * 2,
+                    dx: rand(-0.00007, 0.00007),
+                    dy: rand(-0.00003, 0.00003),
+                    // gold firefly / blue-green bioluminescent / deep teal
+                    color: kind > 0.55 ? [201, 162, 42] : kind > 0.25 ? [30, 160, 220] : [20, 210, 180],
+                };
+            });
+            // ambient depth glows — ocean blue from below, warm amber from top (surface light)
+            const glows = [
+                { x: 0.50, y: 0.0,  r: 0.70, color: [180, 130, 40],  alpha: 0.06 }, // surface warmth top center
+                { x: 0.15, y: 0.05, r: 0.45, color: [160, 110, 25],  alpha: 0.05 }, // surface warmth top left
+                { x: 0.82, y: 0.08, r: 0.40, color: [140, 100, 20],  alpha: 0.04 }, // surface warmth top right
+                { x: 0.30, y: 0.60, r: 0.55, color: [15,  80, 160],  alpha: 0.07 }, // ocean depth blue
+                { x: 0.75, y: 0.70, r: 0.50, color: [10,  60, 140],  alpha: 0.08 }, // ocean depth blue
+                { x: 0.50, y: 0.90, r: 0.65, color: [5,   40, 100],  alpha: 0.09 }, // deep abyss
+                { x: 0.10, y: 0.80, r: 0.40, color: [20, 120, 160],  alpha: 0.05 }, // teal mid-depth
+                { x: 0.88, y: 0.45, r: 0.38, color: [20, 100, 180],  alpha: 0.05 }, // blue mid-depth
+            ];
+            stateRef.current = { fireflies, glows };
+        }
+
+        const { fireflies, glows } = stateRef.current;
+
+        const tick = (t) => {
+            const ctx = canvas.getContext('2d');
+
+            // base — warm amber at surface fading to deep midnight blue-black at the bottom
+            const bg = ctx.createLinearGradient(0, 0, 0, H);
+            bg.addColorStop(0,    'rgb(12, 18, 10)');  // dark warm green-black at top (shoreline)
+            bg.addColorStop(0.18, 'rgb(6,  14, 22)');  // transition into ocean
+            bg.addColorStop(0.50, 'rgb(3,  9,  22)');  // midnight blue
+            bg.addColorStop(0.80, 'rgb(2,  5,  18)');  // deep ocean
+            bg.addColorStop(1,    'rgb(1,  3,  12)');  // abyss
+            ctx.fillStyle = bg;
+            ctx.fillRect(0, 0, W, H);
+
+            // ambient depth glows
+            glows.forEach(n => {
+                const nx = n.x * W, ny = n.y * H, nr = n.r * Math.min(W, H);
+                const [r, g, b] = n.color;
+                const grd = ctx.createRadialGradient(nx, ny, 0, nx, ny, nr);
+                grd.addColorStop(0,   `rgba(${r},${g},${b},${n.alpha})`);
+                grd.addColorStop(0.45,`rgba(${r},${g},${b},${n.alpha * 0.35})`);
+                grd.addColorStop(1,   `rgba(${r},${g},${b},0)`);
+                ctx.beginPath();
+                ctx.arc(nx, ny, nr, 0, Math.PI * 2);
+                ctx.fillStyle = grd;
+                ctx.fill();
+            });
+
+            // fireflies / bioluminescent particles
+            const now = t / 1000;
+            fireflies.forEach(f => {
+                f.x += f.dx; f.y += f.dy;
+                if (f.x < 0) f.x = 1; if (f.x > 1) f.x = 0;
+                if (f.y < 0) f.y = 1; if (f.y > 1) f.y = 0;
+                const pulse = 0.5 + 0.5 * Math.sin(now * f.pulseSpeed * 60 + f.pulseOffset);
+                const a = f.alpha * (0.55 + 0.45 * pulse);
+                const [cr, cg, cb] = f.color;
+                const fx = f.x * W, fy = f.y * H;
+                const glow = ctx.createRadialGradient(fx, fy, 0, fx, fy, f.r * 7);
+                glow.addColorStop(0, `rgba(${cr},${cg},${cb},${a * 0.45})`);
+                glow.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+                ctx.beginPath();
+                ctx.arc(fx, fy, f.r * 7, 0, Math.PI * 2);
+                ctx.fillStyle = glow;
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(fx, fy, f.r, 0, Math.PI * 2);
+                ctx.fillStyle = `rgba(${cr},${cg},${cb},${a})`;
+                ctx.fill();
+            });
+
+            rafRef.current = requestAnimationFrame(tick);
+        };
+        rafRef.current = requestAnimationFrame(tick);
+        return () => { cancelAnimationFrame(rafRef.current); window.removeEventListener('resize', resize); };
+    }, []);
+
+    return (
+        <canvas
+            ref={canvasRef}
+            className="fixed inset-0 w-full h-full z-0 pointer-events-none"
+            style={{ opacity: visible ? 1 : 0, transition: 'opacity 2s ease' }}
+        />
+    );
+};
+
 const InquiryBanner = ({ onDismiss }) => {
     useEffect(() => {
         const t = setTimeout(onDismiss, 5000);
@@ -4024,6 +4363,8 @@ const BrandKitToast = ({ onDismiss }) => {
 };
 
 const App = () => {
+    const [theme, setTheme] = useState(() => { try { return localStorage.getItem('oq_theme') || 'space'; } catch { return 'space'; } });
+    const toggleTheme = () => setTheme(t => { const next = t === 'space' ? 'earth' : 'space'; try { localStorage.setItem('oq_theme', next); } catch {} return next; });
     const [currentView, setCurrentView] = useState('landing');
     const [visibleView, setVisibleView] = useState('landing');
     const [viewVisible, setViewVisible] = useState(true);
@@ -4091,8 +4432,8 @@ const App = () => {
     };
 
     return (
-        <div className="min-h-screen text-white relative font-sans selection:bg-purple-500/30 bg-[#03020a]">
-            <GalaxyBackground visible={true} />
+        <div className={`min-h-screen text-white relative font-sans selection:bg-purple-500/30 ${theme === 'earth' ? 'bg-[#01030c]' : 'bg-[#03020a]'}`}>
+            {theme === 'earth' ? <EarthBackground visible={true} /> : <GalaxyBackground visible={true} />}
 
             <nav className={`fixed top-0 left-0 w-full z-50 px-8 py-8 md:px-16 md:py-12 flex justify-center items-center transition-all duration-700 ${currentView !== 'landing' || navReady ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}>
                 {/* nav logo — muted, kept for reference */}
@@ -4112,10 +4453,17 @@ const App = () => {
 
                 {appSession ? (
                     /* Authenticated nav — identity + sign out */
-                    <div className="flex items-center gap-6 md:gap-8 text-sm md:text-base tracking-widest uppercase font-bold">
+                    <div className="flex items-center gap-4 md:gap-6 text-sm md:text-base tracking-widest uppercase font-bold">
                         <span className="nav-link text-purple-200 hidden sm:inline truncate max-w-[200px]" title={appProfile?.company_name || appSession.user.email}>
                             {appProfile?.is_admin ? 'Admin Console' : (appProfile?.company_name || appSession.user.email)}
                         </span>
+                        <button onClick={toggleTheme}
+                            className="nav-link text-gray-500 hover:text-white transition-colors flex items-center gap-1.5">
+                            {theme === 'space'
+                                ? <><i className="ph ph-leaf text-base"></i><span className="hidden sm:inline text-xs tracking-widest uppercase">Earth Strong</span></>
+                                : <><i className="ph ph-planet text-base"></i><span className="hidden sm:inline text-xs tracking-widest uppercase">Space is the Place</span></>
+                            }
+                        </button>
                         <button onClick={handleAppSignOut} className="nav-link text-gray-500 hover:text-white transition-colors">Sign Out</button>
                     </div>
                 ) : (
