@@ -1,0 +1,21 @@
+{
+  "name": "Onboardin Ai Automation Suite",
+  "short_name": "Onboardin",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#1a0b2e",
+  "theme_color": "#1a0b2e",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "Onboardin.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "Onboardin.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
