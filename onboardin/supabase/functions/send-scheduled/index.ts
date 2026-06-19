@@ -7,17 +7,17 @@ const SUPABASE_SERVICE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 serve(async () => {
   const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  const now = new Date().toISOString();
 
-  // Fetch all messages due for sending
-  const { data: due, error } = await supabase
+  const { data: pending, error } = await supabase
     .from('messages')
     .select('*, clients(email, company_name, founder_name)')
-    .not('scheduled_at', 'is', null)
-    .is('sent_at', null)
-    .lte('scheduled_at', new Date().toISOString());
+    .is('sent_at', null);
 
   if (error) return new Response(JSON.stringify({ error: error.message }), { status: 500 });
-  if (!due || due.length === 0) return new Response(JSON.stringify({ sent: 0 }), { status: 200 });
+
+  const due = (pending || []).filter((m) => !m.scheduled_at || m.scheduled_at <= now);
+  if (due.length === 0) return new Response(JSON.stringify({ sent: 0 }), { status: 200 });
 
   let sent = 0;
   const results = [];
@@ -25,13 +25,10 @@ serve(async () => {
   for (const msg of due) {
     const client = msg.clients;
     const toEmail = client?.email;
-    if (!toEmail) continue;
 
-    // Always insert into the messages thread (mark as delivered in-app)
-    await supabase.from('messages').update({ sent_at: new Date().toISOString() }).eq('id', msg.id);
+    await supabase.from('messages').update({ sent_at: now }).eq('id', msg.id);
 
-    // Send email if flagged
-    if (msg.send_email) {
+    if (msg.send_email && toEmail) {
       const subject = msg.email_subject || `Message from Onboardin`;
       const html = `
         <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#1a1a2e">
@@ -60,10 +57,11 @@ serve(async () => {
 
       const emailData = await emailRes.json();
       results.push({ id: msg.id, email: toEmail, resend_id: emailData.id, ok: emailRes.ok });
-      if (emailRes.ok) sent++;
     } else {
-      sent++;
+      results.push({ id: msg.id, email: null, ok: true });
     }
+
+    sent++;
   }
 
   return new Response(JSON.stringify({ sent, results }), { status: 200 });

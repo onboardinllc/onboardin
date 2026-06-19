@@ -1,6 +1,31 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+function resolveProcedureSlug(country: string, jurisdiction: string, entityType: string): string | null {
+  const isJamaica = country === 'Jamaica' || jurisdiction === 'Jamaica';
+  if (isJamaica) return 'jamaica-ltd';
+  if (jurisdiction === 'Wyoming' && (entityType === 'LLC' || entityType === 'S-Corp')) return 'us-wy-llc';
+  if (entityType === 'C-Corp' && (jurisdiction === 'Delaware' || country === 'United States')) return 'us-de-c-corp';
+  if ((entityType === 'LLC' || entityType === 'S-Corp') && jurisdiction === 'Wyoming') return 'us-wy-llc';
+  if ((entityType === 'LLC' || entityType === 'S-Corp') && (jurisdiction === 'Delaware' || country === 'United States')) return 'us-de-llc';
+  return null;
+}
+
+function blueprintToAgentContext(guide: { name: string; description?: string | null; blueprint: Record<string, unknown> }) {
+  const bp = guide.blueprint || {};
+  return [
+    `AUTHORITATIVE FORMATION PROCEDURE: ${guide.name}`,
+    guide.description ? `Summary: ${guide.description}` : '',
+    bp.estimated_total_cost ? `Estimated cost: ${bp.estimated_total_cost}` : '',
+    bp.estimated_total_time ? `Estimated time: ${bp.estimated_total_time}` : '',
+    '',
+    'Follow these jurisdiction-specific steps. Do not invent procedures outside this blueprint.',
+    'Prefer on-platform actions (templates, uploads, vault steps) before external portals.',
+    '',
+    JSON.stringify(bp, null, 2),
+  ].filter(Boolean).join('\n');
+}
+
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
 const DEEPSEEK_API_KEY = Deno.env.get('DEEPSEEK_API_KEY') ?? '';
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
@@ -35,17 +60,37 @@ serve(async (req) => {
     const { question, isWelcome } = await req.json();
 
     if (!isWelcome && currentCredits <= 0) {
-      // Log for tomorrow
       await supabase.from('messages').insert({
         client_id: user.id,
         sender_id: user.id,
         body: `[SYSTEM: Queued Inquiry] ${question}`,
-        is_admin_message: false
+        is_admin_message: false,
+        thread: 'assistant',
+        share_with_admin: profile?.share_ai_data ?? false,
+        sent_at: new Date().toISOString(),
       });
       return new Response(JSON.stringify({ 
         answer: "You've used your daily AI credits. I've logged your question for our team to review, and I'll have an answer for you here tomorrow morning when your credits refresh.",
         outOfCredits: true 
       }), { headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
+
+    let procedureContext = '';
+    const slug = resolveProcedureSlug(
+      profile?.country || 'United States',
+      profile?.jurisdiction || '',
+      profile?.entity_type || 'LLC',
+    );
+    if (slug) {
+      const { data: guide } = await supabase
+        .from('procedure_guides')
+        .select('name, description, blueprint')
+        .eq('slug', slug)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (guide?.blueprint) {
+        procedureContext = `\n\n${blueprintToAgentContext(guide as { name: string; description?: string | null; blueprint: Record<string, unknown> })}`;
+      }
     }
 
     const systemPrompt = `You are the Onboardin formation assistant. You are a guide to Onboardin's documented onboarding pipeline — not a generic legal/business advisor.
@@ -89,7 +134,7 @@ ${isWelcome ? `THIS IS A WELCOME MESSAGE. Format:
 3. State which pipeline step they're on right now (likely step 1: Entity Formation if just signed up).
 4. Tell them the next 2-3 steps in their current tier and which step is gated behind Growth (if Starter).
 5. End with "Your next action:" — one specific thing to do in the dashboard now (e.g. "complete your jurisdiction setup", "upload founder ID", etc.).
-Do NOT recommend things outside the 11-step pipeline. Do NOT promise IP templates, privacy policies, or banking integrations as if they're built today — they're on the roadmap; mention them only as upcoming pipeline steps.` : ''}`;
+Do NOT recommend things outside the 11-step pipeline. Do NOT promise IP templates, privacy policies, or banking integrations as if they're built today — they're on the roadmap; mention them only as upcoming pipeline steps.` : ''}${procedureContext}`;
 
     let answer = '';
 
@@ -112,7 +157,8 @@ Do NOT recommend things outside the 11-step pipeline. Do NOT promise IP template
         const result = await response.json();
         answer = result.content?.[0]?.text ?? '';
       } else {
-        throw new Error(`Anthropic error: ${await response.text()}`);
+        console.error('formation provider error', response.status);
+        throw new Error('provider_unavailable');
       }
     } else if ((PROVIDER === 'deepseek' && DEEPSEEK_API_KEY) || (PROVIDER === 'openai' && OPENAI_API_KEY)) {
       const isDeepSeek = PROVIDER === 'deepseek';
@@ -139,7 +185,8 @@ Do NOT recommend things outside the 11-step pipeline. Do NOT promise IP template
         const result = await response.json();
         answer = result.choices?.[0]?.message?.content ?? '';
       } else {
-        throw new Error(`${PROVIDER} error: ${await response.text()}`);
+        console.error('formation provider error', PROVIDER, response.status);
+        throw new Error('provider_unavailable');
       }
     } else {
       // Navigator Fallback: Log question for manual processing
@@ -147,11 +194,27 @@ Do NOT recommend things outside the 11-step pipeline. Do NOT promise IP template
           client_id: user.id,
           sender_id: user.id,
           body: isWelcome ? `[SYSTEM: Welcome Sent]` : `[SYSTEM: Assistant Inquiry] ${question}`,
-          is_admin_message: false
+          is_admin_message: false,
+          thread: 'assistant',
+          share_with_admin: profile?.share_ai_data ?? false,
+          sent_at: new Date().toISOString(),
       });
       answer = isWelcome 
         ? `Welcome to Onboardin, ${profile?.founder_name || 'Founder'}. We're reviewing your initial setup for ${profile?.company_name}. A specialist will post your custom roadmap here shortly.`
         : "I've passed your question to our formation specialists. They will review your profile and message you directly in the dashboard shortly.";
+    }
+
+    if (!isWelcome && question?.trim()) {
+      await supabase.from('messages').insert({
+        client_id: user.id,
+        sender_id: user.id,
+        body: question.trim(),
+        is_admin_message: false,
+        is_ai_generated: false,
+        thread: 'assistant',
+        share_with_admin: profile?.share_ai_data ?? false,
+        sent_at: new Date().toISOString(),
+      });
     }
 
     // Decrement credits and update last_refresh
@@ -162,22 +225,22 @@ Do NOT recommend things outside the 11-step pipeline. Do NOT promise IP template
       }).eq('id', user.id);
     }
 
-    // Persist AI response to messages thread.
-    // Welcome is always persisted (one-time onboarding artifact) so it never regenerates on re-login.
-    // Regular questions are persisted only if the client opted in via the AI data privacy toggle —
-    // the toggle controls whether admins can see future Q&A, not whether the welcome exists.
-    if (isWelcome || profile?.share_ai_data) {
+    if (answer) {
         await supabase.from('messages').insert({
             client_id: user.id,
             sender_id: user.id,
             body: answer,
             is_admin_message: true,
-            is_ai_generated: true
+            is_ai_generated: true,
+            thread: 'assistant',
+            share_with_admin: isWelcome ? true : (profile?.share_ai_data ?? false),
+            sent_at: new Date().toISOString(),
         });
     }
 
     return new Response(JSON.stringify({ answer, isAi: true }), { headers: { ...cors, 'Content-Type': 'application/json' } });
   } catch (err) {
-    return new Response(JSON.stringify({ error: String(err) }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
+    console.error('agent-formation', err);
+    return new Response(JSON.stringify({ error: 'Assistant temporarily unavailable. Try again shortly.' }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
   }
 });

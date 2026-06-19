@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <!-- Outer blue ring (matches Onboardin wordmark) -->
-  <circle cx="32" cy="32" r="28" fill="none" stroke="#3DAEDD" stroke-width="6"/>
-  <!-- Inner magenta solid circle -->
-  <circle cx="32" cy="32" r="16" fill="#B73698"/>
-</svg>

@@ -1,6 +1,36 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+function resolveProcedureSlug(country: string, jurisdiction: string, entityType: string): string | null {
+  const isJamaica = country === 'Jamaica' || jurisdiction === 'Jamaica';
+  if (isJamaica) return 'jamaica-ltd';
+  if (jurisdiction === 'Wyoming' && (entityType === 'LLC' || entityType === 'S-Corp')) return 'us-wy-llc';
+  if (entityType === 'C-Corp' && (jurisdiction === 'Delaware' || country === 'United States')) return 'us-de-c-corp';
+  if ((entityType === 'LLC' || entityType === 'S-Corp') && jurisdiction === 'Wyoming') return 'us-wy-llc';
+  if ((entityType === 'LLC' || entityType === 'S-Corp') && (jurisdiction === 'Delaware' || country === 'United States')) return 'us-de-llc';
+  return null;
+}
+
+function blueprintToClientPayload(blueprint: Record<string, unknown>) {
+  const steps = (Array.isArray(blueprint?.steps) ? blueprint.steps : []) as Array<{ id?: string; title?: string; description?: string }>;
+  const required_documents = steps.filter((s) => s.id && s.title).map((s) => ({
+    id: String(s.id),
+    label: String(s.title),
+    desc: String(s.description || ''),
+  }));
+  let starter_questions: string[] = Array.isArray(blueprint?.starter_questions)
+    ? (blueprint.starter_questions as string[]).filter(Boolean)
+    : steps.slice(0, 4).map((s) => `What do I need for ${s.title}?`);
+  const defaults = [
+    'What entity type should I form?',
+    'What are my first filing steps?',
+    'Do I need a tax ID before opening a bank account?',
+    'What documents do I need to collect first?',
+  ];
+  while (starter_questions.length < 4) starter_questions.push(defaults[starter_questions.length] || defaults[0]);
+  return { starter_questions: starter_questions.slice(0, 4), required_documents: required_documents.slice(0, 8) };
+}
+
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
 const DEEPSEEK_API_KEY = Deno.env.get('DEEPSEEK_API_KEY') ?? '';
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY') ?? '';
@@ -106,6 +136,22 @@ serve(async (req) => {
     const stage = profile?.funding_stage || 'Pre-Seed';
     const intent = profile?.business_intent || '';
     const sells = profile?.sells_to || '';
+
+    const slug = resolveProcedureSlug(country, jurisdiction, entity);
+    if (slug) {
+      const { data: guide } = await supabase
+        .from('procedure_guides')
+        .select('slug, name, blueprint')
+        .eq('slug', slug)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (guide?.blueprint) {
+        const payload = blueprintToClientPayload(guide.blueprint as Record<string, unknown>);
+        if (payload.required_documents.length) {
+          return new Response(JSON.stringify(payload), { headers: { ...cors, 'Content-Type': 'application/json' } });
+        }
+      }
+    }
 
     const systemPrompt = `You are the Onboardin formation planner. Given a founder's profile, produce a tailored set of (a) the 4 most useful starter questions they'd ask a formation expert right now, and (b) the document categories they specifically need to collect to form their entity in their jurisdiction. Be jurisdiction-accurate — Jamaica requires TRN and Companies Office filing, France requires SAS capital + Kbis, Delaware requires EIN + operating agreement, etc.
 

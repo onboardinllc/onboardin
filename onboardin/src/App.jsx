@@ -1,5 +1,6 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabase';
+import { getCategories as getProcedureCategories } from './lib/procedures';
 
 // GreenScreen : canvas chroma key video engine
 const GreenScreen = ({ videoUrl, onVideoEnd }) => {
@@ -751,7 +752,7 @@ const VaultUploadButton = ({ disabled, onFile, fullWidth }) => (
 );
 
 // Returns document categories required for a given entity type + country
-function getDocCategories(entityType, country, jurisdiction) {
+function getDocCategoriesInline(entityType, country, jurisdiction) {
     const isJamaica = country === 'Jamaica' || jurisdiction === 'Jamaica';
     const isUS = !isJamaica && (country === 'United States' || jurisdiction === 'Delaware' || jurisdiction === 'Wyoming');
     const isCA = country === 'Canada';
@@ -1340,6 +1341,12 @@ function getDocCategories(entityType, country, jurisdiction) {
     return base;
 }
 
+function getDocCategories(entityType, country, jurisdiction) {
+    const fromModule = getProcedureCategories(country, entityType, jurisdiction);
+    if (fromModule?.length) return fromModule;
+    return getDocCategoriesInline(entityType, country, jurisdiction);
+}
+
 // -- Signup --------------------------------------------------------------------
 
 const Signup = ({ setCurrentView }) => {
@@ -1751,6 +1758,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [msgSendEmail, setMsgSendEmail] = useState(false);
     const [msgEmailSubject, setMsgEmailSubject] = useState('');
     const [uploadingDoc, setUploadingDoc] = useState(false);
+    const [adminUploadError, setAdminUploadError] = useState('');
     const [myDocs, setMyDocs] = useState([]);
     const [myMessages, setMyMessages] = useState([]);
     const [myDocsLoading, setMyDocsLoading] = useState(false);
@@ -1783,7 +1791,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [setupEntity, setSetupEntity] = useState('');
     const [dashTab, setDashTab] = useState(() => {
         const h = window.location.hash.replace('#', '');
-        return ['overview','pipeline','vault','messages','capital'].includes(h) ? h : 'overview';
+        return ['overview','pipeline','vault','messages','capital','navigator'].includes(h) ? h : 'overview';
     });
     const switchTab = (id) => {
         setDashTab(id);
@@ -1808,6 +1816,8 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [statusReportCache, setStatusReportCache] = useState({});
     const [statusReportLoading, setStatusReportLoading] = useState(false);
     const fileInputRef = React.useRef(null);
+
+    const msgThread = (m) => m.thread || (m.is_ai_generated ? 'assistant' : 'team');
 
     useEffect(() => {
         if (!supabase) return;
@@ -1977,22 +1987,58 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         return () => { cancelled = true; };
     }, [session, clientProfile?.country, clientProfile?.entity_type, clientProfile?.funding_stage]);
 
-    useEffect(() => {
+    const refreshMyMessages = React.useCallback(() => {
         if (!session || !supabase || clientProfile?.is_admin) return;
-        setMyDocsLoading(true);
         setMyMessagesLoading(true);
-        supabase.from('documents').select('*').eq('client_id', session.user.id).order('created_at', { ascending: false })
-            .then(({ data }) => { setMyDocs(data || []); setMyDocsLoading(false); });
         supabase.from('messages').select('*').eq('client_id', session.user.id).order('created_at', { ascending: true })
             .then(({ data }) => {
                 setMyMessages(data || []);
                 setMyMessagesLoading(false);
                 if (clientProfile && data) {
-                    const unread = data.filter(m => m.is_admin_message && m.created_at > clientProfile.client_last_read_at).length;
+                    const unread = data.filter(m => m.is_admin_message && msgThread(m) === 'team' && m.sent_at && m.created_at > clientProfile.client_last_read_at).length;
                     setUnreadCount(unread);
                 }
             });
     }, [session, clientProfile]);
+
+    useEffect(() => {
+        if (!session || !supabase || clientProfile?.is_admin) return;
+        setMyDocsLoading(true);
+        supabase.from('documents').select('*').eq('client_id', session.user.id).order('created_at', { ascending: false })
+            .then(({ data }) => { setMyDocs(data || []); setMyDocsLoading(false); });
+        refreshMyMessages();
+    }, [session, clientProfile, refreshMyMessages]);
+
+    useEffect(() => {
+        if (!session || !supabase || clientProfile?.is_admin) return;
+        const channel = supabase
+            .channel('client-msgs-' + session.user.id)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'messages',
+                filter: `client_id=eq.${session.user.id}`,
+            }, () => { refreshMyMessages(); })
+            .subscribe();
+        return () => supabase.removeChannel(channel);
+    }, [session, clientProfile?.is_admin, refreshMyMessages]);
+
+    useEffect(() => {
+        if (!session || !supabase || !selectedClient) return;
+        const channel = supabase
+            .channel('admin-msgs-' + selectedClient.id)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'messages',
+                filter: `client_id=eq.${selectedClient.id}`,
+            }, () => {
+                supabase.from('messages').select('*').eq('client_id', selectedClient.id).order('created_at', { ascending: true })
+                    .then(({ data }) => setClientMessages(data || []));
+            })
+            .subscribe();
+        return () => supabase.removeChannel(channel);
+    }, [session, selectedClient?.id]);
 
     const handleClientUpload = async (e) => {
         const file = e.target.files?.[0];
@@ -2025,17 +2071,17 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
             sender_id: session.user.id,
             body: clientMessageInput.trim(),
             is_admin_message: false,
+            thread: 'team',
             scheduled_at: clientMsgScheduled && clientMsgScheduleAt ? new Date(clientMsgScheduleAt).toISOString() : null,
         };
         const { error } = await supabase.from('messages').insert(payload);
         if (!error) {
-            if (!clientMsgScheduled) {
-                setMyMessages(prev => [...prev, { ...payload, created_at: new Date().toISOString() }]);
-            } else if (clientMsgScheduleAt) {
+            await fireSendScheduled();
+            if (clientMsgScheduled && clientMsgScheduleAt) {
                 const delay = new Date(clientMsgScheduleAt).getTime() - Date.now();
                 if (delay > 0) setTimeout(() => fireSendScheduled(), delay);
-                else fireSendScheduled();
             }
+            refreshMyMessages();
             setClientMessageInput('');
             setClientMsgScheduled(false);
             setClientMsgScheduleAt('');
@@ -2045,6 +2091,13 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
 
     const openClientDetail = async (client) => {
         setSelectedClient(client);
+        setAdminMsgTab('team');
+        setMessageInput('');
+        setMsgScheduled(false);
+        setMsgScheduleAt('');
+        setMsgSendEmail(false);
+        setMsgEmailSubject('');
+        setAdminUploadError('');
         setAdminInternalNotes(client.internal_notes || '');
         setDetailLoading(true);
         setClientDocs([]);
@@ -2100,19 +2153,20 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
             sender_id: session.user.id,
             body: messageInput.trim(),
             is_admin_message: true,
+            thread: 'team',
             send_email: msgSendEmail,
             email_subject: msgSendEmail && msgEmailSubject.trim() ? msgEmailSubject.trim() : null,
             scheduled_at: msgScheduled && msgScheduleAt ? new Date(msgScheduleAt).toISOString() : null,
         };
         const { error } = await supabase.from('messages').insert(payload);
         if (!error) {
-            if (!msgScheduled) {
-                setClientMessages(prev => [...prev, { ...payload, created_at: new Date().toISOString() }]);
-            } else if (msgScheduleAt) {
+            await fireSendScheduled();
+            if (msgScheduled && msgScheduleAt) {
                 const delay = new Date(msgScheduleAt).getTime() - Date.now();
                 if (delay > 0) setTimeout(() => fireSendScheduled(), delay);
-                else fireSendScheduled();
             }
+            const { data: msgs } = await supabase.from('messages').select('*').eq('client_id', selectedClient.id).order('created_at', { ascending: true });
+            setClientMessages(msgs || []);
             setMessageInput('');
             setMsgScheduled(false);
             setMsgScheduleAt('');
@@ -2126,21 +2180,28 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         const file = e.target.files?.[0];
         if (!file || !supabase || !selectedClient) return;
         setUploadingDoc(true);
+        setAdminUploadError('');
         const path = `${selectedClient.id}/${Date.now()}-${file.name}`;
         const { error: uploadError } = await supabase.storage.from('client-documents').upload(path, file);
-        if (!uploadError) {
-            const { error: dbError } = await supabase.from('documents').insert({
-                client_id: selectedClient.id,
-                name: file.name,
-                path,
-                size: file.size,
-                uploaded_by: session.user.id,
-                step_index: deliverableStep !== '' ? parseInt(deliverableStep) : null
-            });
-            if (!dbError) {
-                setClientDocs(prev => [{ name: file.name, path, size: file.size, step_index: deliverableStep !== '' ? parseInt(deliverableStep) : null, created_at: new Date().toISOString() }, ...prev]);
-                setDeliverableStep('');
-            }
+        if (uploadError) {
+            setAdminUploadError(`Upload failed: ${uploadError.message}`);
+            setUploadingDoc(false);
+            e.target.value = '';
+            return;
+        }
+        const { error: dbError } = await supabase.from('documents').insert({
+            client_id: selectedClient.id,
+            name: file.name,
+            path,
+            size: file.size,
+            uploaded_by: session.user.id,
+            step_index: deliverableStep !== '' ? parseInt(deliverableStep) : null
+        });
+        if (dbError) {
+            setAdminUploadError(`Saved the file, but could not record it: ${dbError.message}`);
+        } else {
+            setClientDocs(prev => [{ name: file.name, path, size: file.size, step_index: deliverableStep !== '' ? parseInt(deliverableStep) : null, created_at: new Date().toISOString() }, ...prev]);
+            setDeliverableStep('');
         }
         setUploadingDoc(false);
         e.target.value = '';
@@ -2195,6 +2256,98 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         const newVal = !clientProfile.share_ai_data;
         const { error } = await supabase.from('clients').update({ share_ai_data: newVal }).eq('id', session.user.id);
         if (!error) setClientProfile(prev => ({ ...prev, share_ai_data: newVal }));
+    };
+
+    const PARTNER_REGISTRY = [
+        // Banking
+        { slug: 'sendana', name: 'Sendana', category: 'banking', icon: 'ph-bank', color: '#3daedd',
+          tagline: 'USD accounts, USDC wallet, Visa card. Open with local ID.',
+          url: 'https://usesendana.com',
+          jurisdictions: ['Jamaica','Barbados','Trinidad and Tobago','Guyana','Belize','Grenada','Saint Lucia','Antigua and Barbuda','Dominica','Saint Kitts and Nevis','Saint Vincent and the Grenadines','Suriname','Haiti','Bahamas','CARICOM'],
+          stages: ['Pre-Seed','Seed','Series A','Series B+','Bootstrapped'],
+          match_weight: 95,
+          why: (p) => `Jamaica and Caribbean-native banking platform. Pre-verified KYC from your Onboardin procedure means faster signup.`,
+        },
+        { slug: 'mercury', name: 'Mercury', category: 'banking', icon: 'ph-bank', color: '#60a5fa',
+          tagline: 'US business banking built for startups. No fees, API access.',
+          url: 'https://mercury.com',
+          jurisdictions: ['United States','Delaware','Wyoming','Florida','New York','California','Texas'],
+          stages: ['Pre-Seed','Seed','Series A','Series B+'],
+          match_weight: 90,
+          why: (p) => `Top-rated US startup bank. Works for ${p.entity_type || 'your entity type'} and integrates with Stripe, QuickBooks, and your cap table tools.`,
+        },
+        { slug: 'relay', name: 'Relay', category: 'banking', icon: 'ph-bank', color: '#34d399',
+          tagline: 'US business banking with 20 accounts and spend controls.',
+          url: 'https://relayfi.com',
+          jurisdictions: ['United States','Delaware','Wyoming','Florida'],
+          stages: ['Pre-Seed','Seed','Bootstrapped'],
+          match_weight: 75,
+          why: (p) => `Good fit for early-stage US ${p.entity_type || 'entities'} that need multiple accounts for revenue, payroll, and taxes.`,
+        },
+        // Accounting
+        { slug: 'wave', name: 'Wave', category: 'accounting', icon: 'ph-calculator', color: '#fbbf24',
+          tagline: 'Free accounting, invoicing, and receipt scanning.',
+          url: 'https://waveapps.com',
+          jurisdictions: ['United States','Canada','Jamaica','United Kingdom'],
+          stages: ['Pre-Seed','Seed','Bootstrapped'],
+          match_weight: 85,
+          why: (p) => `Free tier covers invoicing and books for early-stage ${p.entity_type || 'companies'}. On the Onboardin integration roadmap.`,
+        },
+        { slug: 'numeral', name: 'Numeral Tax', category: 'accounting', icon: 'ph-receipt', color: '#c084fc',
+          tagline: 'Jamaica GCT, corporate tax, and compliance filing.',
+          url: 'https://numeraltax.com',
+          jurisdictions: ['Jamaica'],
+          stages: ['Pre-Seed','Seed','Series A','Bootstrapped'],
+          match_weight: 92,
+          why: (p) => `Jamaica-specialist. Handles GCT, corporate income tax, and TAJ filings for ${p.entity_type || 'Jamaica companies'}.`,
+        },
+        // Legal / Compliance
+        { slug: 'termly', name: 'Termly', category: 'compliance', icon: 'ph-shield-check', color: '#f87171',
+          tagline: 'Privacy policy, cookie consent, and compliance documents.',
+          url: 'https://termly.io',
+          jurisdictions: ['United States','United Kingdom','Canada','Jamaica','European Union'],
+          stages: ['Pre-Seed','Seed','Series A','Bootstrapped'],
+          match_weight: 70,
+          why: (p) => `Generates GDPR, CCPA, and DPDPA-compliant privacy policies. Covers ${p.sells_to === 'Consumers' ? 'consumer-facing' : 'B2B'} use cases.`,
+        },
+        // Payments
+        { slug: 'stripe', name: 'Stripe', category: 'payments', icon: 'ph-credit-card', color: '#7c3aed',
+          tagline: 'Global payment processing with 135+ currencies.',
+          url: 'https://stripe.com',
+          jurisdictions: ['United States','Canada','United Kingdom','Jamaica'],
+          stages: ['Pre-Seed','Seed','Series A','Series B+','Bootstrapped'],
+          match_weight: 80,
+          why: (p) => `Supports ${p.entity_type || 'your entity'} in ${p.jurisdiction || 'your jurisdiction'}. Free to start, 2.9% + 30c per transaction.`,
+        },
+        // Domain / Infrastructure
+        { slug: 'namecheap', name: 'Namecheap', category: 'infrastructure', icon: 'ph-globe', color: '#2dd4bf',
+          tagline: 'Domain registration and email hosting from $9/yr.',
+          url: 'https://namecheap.com',
+          jurisdictions: ['*'],
+          stages: ['Pre-Seed','Seed','Series A','Series B+','Bootstrapped'],
+          match_weight: 65,
+          why: () => `Low-cost domains and email. Onboardin is a registered reseller — apply through the Infrastructure pipeline step.`,
+        },
+    ];
+
+    const getPartnerMatches = (profile) => {
+        if (!profile) return [];
+        const jurisdiction = profile.jurisdiction || profile.country || '';
+        const stage = profile.funding_stage || 'Pre-Seed';
+        const isCARICOM = ['Jamaica','Barbados','Trinidad and Tobago','Guyana','Belize','Grenada',
+            'Saint Lucia','Antigua and Barbuda','Dominica','Saint Kitts and Nevis',
+            'Saint Vincent and the Grenadines','Suriname','Haiti','Bahamas'].includes(jurisdiction);
+        const isUS = ['United States','Delaware','Wyoming','Florida','New York','California','Texas'].includes(jurisdiction);
+
+        return PARTNER_REGISTRY.map(p => {
+            const jFit = p.jurisdictions.includes('*') || p.jurisdictions.includes(jurisdiction) || (isCARICOM && p.jurisdictions.includes('CARICOM'));
+            const sFit = p.stages.includes(stage);
+            const baseWeight = p.match_weight;
+            const score = (jFit ? 50 : 0) + (sFit ? 30 : 0) + (baseWeight / 100 * 20);
+            return { ...p, score, jFit, sFit, why: p.why(profile) };
+        })
+        .filter(p => p.score > 40)
+        .sort((a, b) => b.score - a.score);
     };
 
     const handleRequestCapitalIntro = async () => {
@@ -2761,6 +2914,15 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                                 ))}
                                             </select>
                                         </div>
+                                        {adminUploadError && (
+                                            <div className="flex items-center gap-2 p-3 mb-4 rounded-lg border border-red-500/30 bg-red-500/10 text-sm text-red-300">
+                                                <i className="ph ph-warning-circle text-base flex-shrink-0"></i>
+                                                <span className="flex-1">{adminUploadError}</span>
+                                                <button type="button" onClick={() => setAdminUploadError('')} className="text-red-400/70 hover:text-red-300 transition-colors">
+                                                    <i className="ph ph-x text-base"></i>
+                                                </button>
+                                            </div>
+                                        )}
                                         {clientDocs.length === 0 ? (
                                             <p className="text-base text-gray-600 italic">No documents yet.</p>
                                         ) : (
@@ -2782,25 +2944,25 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                     </div>
 
                                     {/* Messages */}
-                                    <div className="p-6 flex flex-col">
+                                    <div className="p-6 flex flex-col min-h-0">
                                         {/* Tab switcher */}
                                         <div className="flex gap-1 border-b border-white/5 mb-4 pb-px">
                                             {[
-                                                { id: 'team', label: 'Team', count: clientMessages.filter(m => !m.is_ai_generated).length },
-                                                { id: 'ai', label: 'AI', count: clientMessages.filter(m => m.is_ai_generated).length },
+                                                { id: 'team', label: 'Team', count: clientMessages.filter(m => msgThread(m) === 'team').length },
+                                                { id: 'ai', label: 'AI', count: clientMessages.filter(m => msgThread(m) === 'assistant' && m.share_with_admin !== false).length },
                                             ].map(t => (
-                                                <button key={t.id} onClick={() => setAdminMsgTab(t.id)}
+                                                <button key={t.id} type="button" onClick={() => setAdminMsgTab(t.id)}
                                                     className={`flex items-center gap-1.5 px-3 py-1.5 text-xs uppercase tracking-widest transition-all ${adminMsgTab === t.id ? 'text-purple-200 border-b-2 border-purple-400 -mb-px' : 'text-gray-500 hover:text-gray-300'}`}>
                                                     {t.label}
                                                     {t.count > 0 && <span className="text-xs text-gray-600">{t.count}</span>}
                                                 </button>
                                             ))}
                                         </div>
-                                        <div className="flex-1 space-y-3 max-h-48 overflow-y-auto mb-4 pr-1">
+                                        <div className="space-y-3 max-h-40 overflow-y-auto mb-4 pr-1 shrink-0">
                                             {(() => {
                                                 const msgs = adminMsgTab === 'team'
-                                                    ? clientMessages.filter(m => !m.is_ai_generated)
-                                                    : clientMessages.filter(m => m.is_ai_generated);
+                                                    ? clientMessages.filter(m => msgThread(m) === 'team')
+                                                    : clientMessages.filter(m => msgThread(m) === 'assistant' && m.share_with_admin !== false);
                                                 if (msgs.length === 0) return <p className="text-sm text-gray-600 italic">{adminMsgTab === 'team' ? 'No team messages yet.' : 'No AI messages yet.'}</p>;
                                                 return msgs.map((msg, i) => (
                                                     <div key={i} className={`flex ${msg.is_admin_message ? 'justify-end' : 'justify-start'}`}>
@@ -2813,29 +2975,35 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                             })()}
                                         </div>
                                         {adminMsgTab === 'team' && <>
-                                            <form onSubmit={handleAdminMessage} className="flex gap-2">
+                                            <div className="flex flex-wrap items-center gap-2 mb-3" onClick={e => e.stopPropagation()}>
+                                                <button type="button" data-admin-msg-opt="schedule" onClick={() => setMsgScheduled(v => !v)}
+                                                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs uppercase tracking-widest transition-all ${msgScheduled ? 'border-blue-400/50 bg-blue-500/15 text-blue-200' : 'border-white/10 text-gray-500 hover:border-white/20 hover:text-gray-300'}`}>
+                                                    <i className={`ph ${msgScheduled ? 'ph-calendar-check' : 'ph-calendar'} text-sm`}></i>
+                                                    Schedule
+                                                </button>
+                                                <button type="button" data-admin-msg-opt="email" onClick={() => setMsgSendEmail(v => !v)}
+                                                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs uppercase tracking-widest transition-all ${msgSendEmail ? 'border-purple-400/50 bg-purple-500/15 text-purple-200' : 'border-white/10 text-gray-500 hover:border-white/20 hover:text-gray-300'}`}>
+                                                    <i className={`ph ${msgSendEmail ? 'ph-envelope-simple-open' : 'ph-envelope-simple'} text-sm`}></i>
+                                                    Also email
+                                                </button>
+                                            </div>
+                                            {msgScheduled && (
+                                                <input type="datetime-local" value={msgScheduleAt} onChange={e => setMsgScheduleAt(e.target.value)}
+                                                    className="w-full mb-3 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500/50" />
+                                            )}
+                                            {msgSendEmail && (
+                                                <input type="text" value={msgEmailSubject} onChange={e => setMsgEmailSubject(e.target.value)}
+                                                    placeholder="Email subject (optional)…"
+                                                    className="w-full mb-3 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500/50" />
+                                            )}
+                                            <form onSubmit={handleAdminMessage} className="flex gap-2 mt-auto">
                                                 <input type="text" value={messageInput} onChange={e => setMessageInput(e.target.value)}
                                                     placeholder="Send a note…"
                                                     className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500/50 transition-all" />
                                                 <button type="submit" disabled={sendingMessage || !messageInput.trim()} className="px-4 py-2 bg-purple-500/20 border border-purple-500/30 rounded-lg text-xs font-bold uppercase tracking-widest text-purple-300 hover:bg-purple-500/30 transition-all disabled:opacity-40">
-                                                    {sendingMessage ? '…' : msgScheduled ? 'Schedule' : 'Send'}
+                                                    {sendingMessage ? '…' : msgScheduled ? 'Queue' : 'Send'}
                                                 </button>
                                             </form>
-                                            <div className="flex flex-wrap items-center gap-3 px-1 pt-2">
-                                                <label className="flex items-center gap-1.5 cursor-pointer">
-                                                    <input type="checkbox" checked={msgScheduled} onChange={e => setMsgScheduled(e.target.checked)} className="accent-purple-500" />
-                                                    <span className="text-xs text-gray-500">Schedule</span>
-                                                </label>
-                                                {msgScheduled && <input type="datetime-local" value={msgScheduleAt} onChange={e => setMsgScheduleAt(e.target.value)}
-                                                    className="bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-purple-500/50" />}
-                                                <label className="flex items-center gap-1.5 cursor-pointer">
-                                                    <input type="checkbox" checked={msgSendEmail} onChange={e => setMsgSendEmail(e.target.checked)} className="accent-purple-500" />
-                                                    <span className="text-xs text-gray-500">Also email</span>
-                                                </label>
-                                                {msgSendEmail && <input type="text" value={msgEmailSubject} onChange={e => setMsgEmailSubject(e.target.value)}
-                                                    placeholder="Email subject…"
-                                                    className="flex-1 bg-black/40 border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-purple-500/50 min-w-0" />}
-                                            </div>
                                         </>}
                                     </div>
                                 </div>
@@ -3015,6 +3183,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                 { id: 'vault',     icon: 'ph-folder-open',    label: 'Vault' },
                                 { id: 'messages',  icon: 'ph-chat-text',      label: 'Messages', badge: myMessages.filter(m => m.is_admin_message && !m.seen).length },
                                 { id: 'capital',   icon: 'ph-chart-line-up',  label: 'Capital' },
+                                { id: 'navigator', icon: 'ph-compass',          label: 'Navigator' },
                             ].map(t => (
                                 <button
                                     key={t.id}
@@ -3664,8 +3833,8 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         const defaultInbox = isPaid ? 'team' : 'assistant';
                         const [msgInbox, setMsgInbox] = useState(defaultInbox);
                         const navigatorUnlocked = (clientProfile?.onboarding_step ?? 0) >= 11;
-                        const teamMessages = myMessages.filter(m => !m.is_ai_generated);
-                        const assistantMessages = myMessages.filter(m => m.is_ai_generated);
+                        const teamMessages = myMessages.filter(m => msgThread(m) === 'team' && (!m.is_admin_message || m.sent_at || !m.scheduled_at));
+                        const assistantMessages = myMessages.filter(m => msgThread(m) === 'assistant');
                         return (
                         <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
                             {/* Sub-tab nav */}
@@ -3886,6 +4055,120 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                         </>
                                     )}
                                 </div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* Navigator tab */}
+                    {dashTab === 'navigator' && (() => {
+                        const plan = clientProfile?.plan ?? 'starter';
+                        const isPaid = plan === 'growth' || plan === 'enterprise';
+                        const matches = getPartnerMatches(clientProfile);
+
+                        const categories = [
+                            { id: 'banking',        label: 'Banking',        icon: 'ph-bank' },
+                            { id: 'accounting',     label: 'Accounting',     icon: 'ph-calculator' },
+                            { id: 'payments',       label: 'Payments',       icon: 'ph-credit-card' },
+                            { id: 'compliance',     label: 'Compliance',     icon: 'ph-shield-check' },
+                            { id: 'infrastructure', label: 'Infrastructure', icon: 'ph-globe' },
+                        ];
+
+                        return (
+                            <div className="space-y-6">
+                                {/* Header */}
+                                <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div>
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <i className="ph ph-compass text-blue-300 text-xl"></i>
+                                                <h3 className="text-sm uppercase tracking-widest text-gray-400">Lead Navigator</h3>
+                                            </div>
+                                            <p className="text-base text-gray-400 leading-relaxed max-w-lg">Partners matched to your jurisdiction, entity type, and stage. Every match includes a reason. No generic recommendations.</p>
+                                        </div>
+                                        {!isPaid && (
+                                            <span className="text-xs uppercase tracking-widest text-purple-300 bg-purple-400/10 border border-purple-400/20 px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0">Growth unlocks all</span>
+                                        )}
+                                    </div>
+                                    {clientProfile?.jurisdiction && (
+                                        <div className="flex flex-wrap gap-2 mt-4">
+                                            <span className="text-xs text-gray-500 border border-white/10 px-2 py-1 rounded-full">{clientProfile.jurisdiction}</span>
+                                            {clientProfile.entity_type && <span className="text-xs text-gray-500 border border-white/10 px-2 py-1 rounded-full">{clientProfile.entity_type}</span>}
+                                            {clientProfile.funding_stage && <span className="text-xs text-gray-500 border border-white/10 px-2 py-1 rounded-full">{clientProfile.funding_stage}</span>}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Partner categories */}
+                                {categories.map(cat => {
+                                    const catMatches = matches.filter(m => m.category === cat.id);
+                                    if (catMatches.length === 0) return null;
+                                    return (
+                                        <div key={cat.id}>
+                                            <div className="flex items-center gap-2 mb-3">
+                                                <i className={`ph ${cat.icon} text-gray-500 text-base`}></i>
+                                                <p className="text-xs uppercase tracking-widest text-gray-500">{cat.label}</p>
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                {catMatches.map((partner, idx) => {
+                                                    const isTopMatch = idx === 0;
+                                                    const isLocked = !isPaid && idx > 0;
+                                                    return (
+                                                        <div
+                                                            key={partner.slug}
+                                                            className={`relative bg-white/5 border rounded-2xl p-5 backdrop-blur-xl transition-all ${isTopMatch ? 'border-blue-400/25' : 'border-white/10'} ${isLocked ? 'opacity-60' : ''}`}
+                                                        >
+                                                            {isTopMatch && (
+                                                                <span className="absolute top-3 right-3 text-xs uppercase tracking-widest text-blue-300 bg-blue-400/10 border border-blue-400/20 px-2 py-0.5 rounded-full">Top match</span>
+                                                            )}
+                                                            {isLocked && (
+                                                                <span className="absolute top-3 right-3 text-xs uppercase tracking-widest text-purple-300 bg-purple-400/10 border border-purple-400/20 px-2 py-0.5 rounded-full">Growth</span>
+                                                            )}
+                                                            <div className="flex items-start gap-3 mb-3">
+                                                                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: partner.color + '20', border: `1px solid ${partner.color}40` }}>
+                                                                    <i className={`ph ${partner.icon} text-base`} style={{ color: partner.color }}></i>
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <p className="text-base font-semibold text-white leading-tight">{partner.name}</p>
+                                                                    <p className="text-sm text-gray-500 mt-0.5 leading-snug">{partner.tagline}</p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="bg-black/20 border border-white/5 rounded-xl px-4 py-3 mb-4">
+                                                                <p className="text-sm text-gray-400 leading-relaxed">
+                                                                    <i className="ph ph-info text-blue-400 mr-1.5 text-sm"></i>
+                                                                    {partner.why}
+                                                                </p>
+                                                            </div>
+                                                            {isLocked ? (
+                                                                <button onClick={handleUpgrade} className="w-full py-2 text-xs uppercase tracking-widest text-purple-300 border border-purple-500/30 rounded-lg hover:bg-purple-500/10 transition-all">
+                                                                    Upgrade to unlock →
+                                                                </button>
+                                                            ) : (
+                                                                <a
+                                                                    href={partner.url}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="flex items-center justify-center gap-1.5 w-full py-2 text-xs uppercase tracking-widest text-blue-300 border border-blue-400/25 rounded-lg hover:bg-blue-400/10 transition-all"
+                                                                >
+                                                                    Visit {partner.name}
+                                                                    <i className="ph ph-arrow-up-right text-xs"></i>
+                                                                </a>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+
+                                {/* No matches state */}
+                                {matches.length === 0 && (
+                                    <div className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl text-center">
+                                        <i className="ph ph-compass text-gray-600 text-3xl mb-3 block"></i>
+                                        <p className="text-sm uppercase tracking-widest text-gray-500 mb-2">Set your jurisdiction first</p>
+                                        <p className="text-base text-gray-500">Complete your profile in Overview to see matched partners.</p>
+                                    </div>
+                                )}
                             </div>
                         );
                     })()}
