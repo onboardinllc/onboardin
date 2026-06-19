@@ -1793,6 +1793,9 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         const h = window.location.hash.replace('#', '');
         return ['overview','pipeline','vault','messages','capital','navigator'].includes(h) ? h : 'overview';
     });
+    const [msgInbox, setMsgInbox] = useState('assistant');
+    const msgInboxDefaulted = React.useRef(false);
+    const myMessagesLoadedRef = React.useRef(false);
     const switchTab = (id) => {
         setDashTab(id);
         history.replaceState(null, '', '#' + id);
@@ -1891,12 +1894,24 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     }, [session]);
 
     useEffect(() => {
-        if (!session || !supabase || clientProfile?.is_admin) return;
-        // Update client last read when profile is loaded
+        if (!session || !supabase || clientProfile?.is_admin || dashTab !== 'messages') return;
         supabase.from('clients').update({ client_last_read_at: new Date().toISOString() }).eq('id', session.user.id).then(() => {
             setUnreadCount(0);
         });
-    }, [session, clientProfile]);
+    }, [session?.user?.id, dashTab, clientProfile?.is_admin]);
+
+    useEffect(() => {
+        msgInboxDefaulted.current = false;
+        myMessagesLoadedRef.current = false;
+    }, [session?.user?.id]);
+
+    useEffect(() => {
+        if (!clientProfile || msgInboxDefaulted.current) return;
+        const plan = clientProfile.plan ?? 'starter';
+        const isPaid = plan === 'growth' || plan === 'enterprise';
+        setMsgInbox(isPaid ? 'team' : 'assistant');
+        msgInboxDefaulted.current = true;
+    }, [clientProfile?.id, clientProfile?.plan]);
 
     // Seed jurisdiction setup form from saved profile so editing pre-fills instead of starting blank
     useEffect(() => {
@@ -1987,27 +2002,37 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         return () => { cancelled = true; };
     }, [session, clientProfile?.country, clientProfile?.entity_type, clientProfile?.funding_stage]);
 
-    const refreshMyMessages = React.useCallback(() => {
+    const refreshMyMessages = React.useCallback((opts = {}) => {
         if (!session || !supabase || clientProfile?.is_admin) return;
-        setMyMessagesLoading(true);
+        const silent = opts.silent ?? false;
+        if (!silent || !myMessagesLoadedRef.current) {
+            setMyMessagesLoading(true);
+        }
         supabase.from('messages').select('*').eq('client_id', session.user.id).order('created_at', { ascending: true })
             .then(({ data }) => {
                 setMyMessages(data || []);
                 setMyMessagesLoading(false);
-                if (clientProfile && data) {
-                    const unread = data.filter(m => m.is_admin_message && msgThread(m) === 'team' && m.sent_at && m.created_at > clientProfile.client_last_read_at).length;
-                    setUnreadCount(unread);
-                }
+                myMessagesLoadedRef.current = true;
             });
-    }, [session, clientProfile]);
+    }, [session?.user?.id, clientProfile?.is_admin]);
 
     useEffect(() => {
-        if (!session || !supabase || clientProfile?.is_admin) return;
+        if (!clientProfile || clientProfile.is_admin) return;
+        const unread = myMessages.filter(m =>
+            m.is_admin_message && msgThread(m) === 'team' && m.sent_at &&
+            m.created_at > (clientProfile.client_last_read_at || '')
+        ).length;
+        setUnreadCount(unread);
+    }, [myMessages, clientProfile?.client_last_read_at, clientProfile?.is_admin]);
+
+    useEffect(() => {
+        if (!session || !supabase || !clientProfile || clientProfile.is_admin) return;
         setMyDocsLoading(true);
         supabase.from('documents').select('*').eq('client_id', session.user.id).order('created_at', { ascending: false })
             .then(({ data }) => { setMyDocs(data || []); setMyDocsLoading(false); });
+        myMessagesLoadedRef.current = false;
         refreshMyMessages();
-    }, [session, clientProfile, refreshMyMessages]);
+    }, [session?.user?.id, clientProfile?.id, clientProfile?.is_admin, refreshMyMessages]);
 
     useEffect(() => {
         if (!session || !supabase || clientProfile?.is_admin) return;
@@ -2018,10 +2043,10 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                 schema: 'public',
                 table: 'messages',
                 filter: `client_id=eq.${session.user.id}`,
-            }, () => { refreshMyMessages(); })
+            }, () => { refreshMyMessages({ silent: true }); })
             .subscribe();
         return () => supabase.removeChannel(channel);
-    }, [session, clientProfile?.is_admin, refreshMyMessages]);
+    }, [session?.user?.id, clientProfile?.is_admin, refreshMyMessages]);
 
     useEffect(() => {
         if (!session || !supabase || !selectedClient) return;
@@ -2081,7 +2106,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                 const delay = new Date(clientMsgScheduleAt).getTime() - Date.now();
                 if (delay > 0) setTimeout(() => fireSendScheduled(), delay);
             }
-            refreshMyMessages();
+            refreshMyMessages({ silent: true });
             setClientMessageInput('');
             setClientMsgScheduled(false);
             setClientMsgScheduleAt('');
@@ -3830,8 +3855,6 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                     {dashTab === 'messages' && (() => {
                         const plan = clientProfile?.plan ?? 'starter';
                         const isPaid = plan === 'growth' || plan === 'enterprise';
-                        const defaultInbox = isPaid ? 'team' : 'assistant';
-                        const [msgInbox, setMsgInbox] = useState(defaultInbox);
                         const navigatorUnlocked = (clientProfile?.onboarding_step ?? 0) >= 11;
                         const teamMessages = myMessages.filter(m => msgThread(m) === 'team' && (!m.is_admin_message || m.sent_at || !m.scheduled_at));
                         const assistantMessages = myMessages.filter(m => msgThread(m) === 'assistant');
@@ -3898,12 +3921,12 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                     </div>
                                 ) : <>
                                 <div className="space-y-3 max-h-64 overflow-y-auto mb-4 pr-1">
-                                    {myMessagesLoading ? (
+                                    {myMessagesLoading && teamMessages.length === 0 ? (
                                         <div className="w-full h-8 bg-white/5 rounded animate-pulse" />
                                     ) : teamMessages.length === 0 ? (
                                         <p className="text-base text-gray-600 italic">Your Onboardin team will message you here.</p>
-                                    ) : teamMessages.map((msg, i) => (
-                                        <div key={i} className={`flex ${msg.is_admin_message ? 'justify-start' : 'justify-end'}`}>
+                                    ) : teamMessages.map((msg) => (
+                                        <div key={msg.id} className={`flex ${msg.is_admin_message ? 'justify-start' : 'justify-end'}`}>
                                             <div className="max-w-[80%] flex flex-col gap-1">
                                                 <div className={`px-3 py-2 rounded-xl text-base leading-relaxed relative ${msg.scheduled_at && !msg.sent_at ? 'opacity-60 border border-dashed border-white/20' : ''} ${msg.is_admin_message ? 'bg-white/5 text-gray-300' : 'bg-purple-500/20 text-purple-100'}`}>
                                                     {msg.scheduled_at && !msg.sent_at && <div className="absolute -top-1 -left-1 w-1.5 h-1.5 bg-blue-400 rounded-full" title="Scheduled"></div>}
@@ -3932,12 +3955,12 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                             {/* Assistant inbox */}
                             {msgInbox === 'assistant' && <>
                                 <div className="space-y-3 max-h-64 overflow-y-auto mb-4 pr-1">
-                                    {myMessagesLoading ? (
+                                    {myMessagesLoading && assistantMessages.length === 0 ? (
                                         <div className="w-full h-8 bg-white/5 rounded animate-pulse" />
                                     ) : assistantMessages.length === 0 ? (
                                         <p className="text-base text-gray-600 italic">Messages from the AI assistant will appear here.</p>
-                                    ) : assistantMessages.map((msg, i) => (
-                                        <div key={i} className={`flex ${msg.is_admin_message ? 'justify-start' : 'justify-end'}`}>
+                                    ) : assistantMessages.map((msg) => (
+                                        <div key={msg.id} className={`flex ${msg.is_admin_message ? 'justify-start' : 'justify-end'}`}>
                                             <div className="max-w-[80%] flex flex-col gap-1">
                                                 <div className={`px-3 py-2 rounded-xl text-base leading-relaxed relative ${msg.is_admin_message ? 'bg-white/5 text-gray-300' : 'bg-purple-500/20 text-purple-100'}`}>
                                                     <div className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-green-400 rounded-full" title="AI Assistant"></div>
