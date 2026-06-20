@@ -1,13 +1,39 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabase';
 import { getCategories as getProcedureCategories } from './lib/procedures';
+import {
+    buildIntakeAnswers,
+    evaluateAcceptCriteria,
+    getComplianceVaultCategories,
+    mergeProfileIntoIntake,
+    resolveComplianceSlug,
+} from './lib/compliance';
+import Step06Panel from './components/Step06Panel';
+import ComplianceCalendar from './components/ComplianceCalendar';
+import AdminObligationsPanel from './components/AdminObligationsPanel';
+import { canAccessComplianceCalendar, enrichObligation, obligationStats } from './lib/compliance-obligations';
 
-// GreenScreen : canvas chroma key video engine
+const LOGO_PNG = '/Onboardin.png';
+const LOGO_SVG = '/favicon.svg';
+
+// GreenScreen : chroma-key video first; PNG/SVG fades up only if MP4 cannot play
 const GreenScreen = ({ videoUrl, onVideoEnd }) => {
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
     const [isPlaying, setIsPlaying] = useState(false);
-    const [showFallback, setShowFallback] = useState(false);
+    const [useLogo, setUseLogo] = useState(false);
+    const [logoEntered, setLogoEntered] = useState(false);
+
+    const failToLogo = () => setUseLogo(true);
+
+    useEffect(() => {
+        if (!useLogo) {
+            setLogoEntered(false);
+            return;
+        }
+        const id = requestAnimationFrame(() => setLogoEntered(true));
+        return () => cancelAnimationFrame(id);
+    }, [useLogo]);
 
     useEffect(() => {
         let animationFrameId;
@@ -76,22 +102,38 @@ const GreenScreen = ({ videoUrl, onVideoEnd }) => {
                 .then(() => setIsPlaying(true))
                 .catch(e => {
                     console.error("Autoplay failed", e);
-                    setShowFallback(true);
+                    failToLogo();
                 });
         }
     };
 
     useEffect(() => {
         const timer = setTimeout(() => {
-            if (!isPlaying) {
-                setShowFallback(true);
-            }
+            if (!isPlaying) failToLogo();
         }, 2000);
         return () => clearTimeout(timer);
     }, [isPlaying]);
 
     return (
         <div className="relative flex justify-center items-center w-full max-w-xl h-[35vh] md:h-[45vh]">
+            {useLogo ? (
+                <img
+                    src={LOGO_PNG}
+                    alt="Onboardin"
+                    className={`w-full h-full object-contain drop-shadow-[0_0_20px_rgba(255,255,255,0.15)] transition-all duration-[1500ms] ease-out ${
+                        logoEntered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+                    }`}
+                    onError={(e) => {
+                        if (!e.currentTarget.src.endsWith('favicon.svg')) e.currentTarget.src = LOGO_SVG;
+                    }}
+                />
+            ) : (
+                <canvas
+                    ref={canvasRef}
+                    className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(255,255,255,0.15)] transition-opacity duration-1000"
+                    style={{ opacity: isPlaying ? 1 : 0 }}
+                />
+            )}
             <video
                 ref={videoRef}
                 src={videoUrl}
@@ -101,22 +143,8 @@ const GreenScreen = ({ videoUrl, onVideoEnd }) => {
                 crossOrigin="anonymous"
                 onLoadedData={handlePlay}
                 onEnded={onVideoEnd}
-                onError={() => setShowFallback(true)}
+                onError={failToLogo}
             />
-
-            {!showFallback ? (
-                <canvas
-                    ref={canvasRef}
-                    className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(255,255,255,0.15)] transition-opacity duration-1000"
-                    style={{ opacity: isPlaying ? 1 : 0 }}
-                />
-            ) : (
-                <div className="text-center">
-                    <h1 className="text-6xl md:text-8xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500 uppercase">
-                        Onboardin
-                    </h1>
-                </div>
-            )}
         </div>
     );
 };
@@ -1776,6 +1804,12 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [agentError, setAgentError] = useState('');
     // Jurisdiction-tailored blueprint (starter questions + required docs)
     const [blueprint, setBlueprint] = useState(null);
+    const [complianceBlueprint, setComplianceBlueprint] = useState(null);
+    const [complianceArtifacts, setComplianceArtifacts] = useState([]);
+    const [complianceIntake, setComplianceIntake] = useState({});
+    const [completingStep06, setCompletingStep06] = useState(false);
+    const [step06Error, setStep06Error] = useState('');
+    const [advanceStepError, setAdvanceStepError] = useState('');
     // Questions the user has already asked — persisted in localStorage per user
     const [answeredQuestions, setAnsweredQuestions] = useState([]);
     // Capital readiness — partner intro request state
@@ -1791,7 +1825,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [setupEntity, setSetupEntity] = useState('');
     const [dashTab, setDashTab] = useState(() => {
         const h = window.location.hash.replace('#', '');
-        return ['overview','pipeline','vault','messages','capital','navigator'].includes(h) ? h : 'overview';
+        return ['overview','pipeline','vault','compliance','messages','capital','navigator'].includes(h) ? h : 'overview';
     });
     const [msgInbox, setMsgInbox] = useState('assistant');
     const msgInboxDefaulted = React.useRef(false);
@@ -1815,6 +1849,13 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [adminInternalNotes, setAdminInternalNotes] = useState('');
     const [savingNotes, setSavingNotes] = useState(false);
     const [deliverableStep, setDeliverableStep] = useState('');
+    const [clientComplianceArtifacts, setClientComplianceArtifacts] = useState([]);
+    const [clientObligations, setClientObligations] = useState([]);
+    const [clientObligationsLoading, setClientObligationsLoading] = useState(false);
+    const [clientObligationsError, setClientObligationsError] = useState('');
+    const [adminClientObligations, setAdminClientObligations] = useState([]);
+    const [adminObligationsLoading, setAdminObligationsLoading] = useState(false);
+    const [overdueQueue, setOverdueQueue] = useState([]);
     const [adminMsgTab, setAdminMsgTab] = useState('team');
     const [statusReportCache, setStatusReportCache] = useState({});
     const [statusReportLoading, setStatusReportLoading] = useState(false);
@@ -1864,14 +1905,14 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
 
                     if (data?.is_admin) {
                         setAdminLoading(true);
-                        supabase
-                            .from('clients')
-                            .select('*')
-                            .order('created_at', { ascending: false })
-                            .then(({ data: clients }) => {
-                                setAdminLoading(false);
-                                setAllClients(clients || []);
-                            });
+                        Promise.all([
+                            supabase.from('clients').select('*').order('created_at', { ascending: false }),
+                            supabase.from('overdue_obligations').select('*'),
+                        ]).then(([{ data: clients }, { data: overdue }]) => {
+                            setAdminLoading(false);
+                            setAllClients(clients || []);
+                            setOverdueQueue(overdue || []);
+                        });
                     }
                 }
             });
@@ -2002,6 +2043,108 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         return () => { cancelled = true; };
     }, [session, clientProfile?.country, clientProfile?.entity_type, clientProfile?.funding_stage]);
 
+    const refreshComplianceArtifacts = React.useCallback(() => {
+        if (!session || !supabase || clientProfile?.is_admin) return Promise.resolve();
+        return supabase.from('compliance_artifacts').select('*').eq('client_id', session.user.id).order('created_at', { ascending: false })
+            .then(({ data }) => {
+                const rows = data || [];
+                setComplianceArtifacts(rows);
+                const intakeRow = rows.find((a) => a.kind === 'compliance_intake');
+                if (intakeRow) setComplianceIntake(buildIntakeAnswers(intakeRow));
+            });
+    }, [session?.user?.id, clientProfile?.is_admin]);
+
+    const refreshClientObligations = React.useCallback(() => {
+        if (!session || !supabase || clientProfile?.is_admin) return Promise.resolve();
+        setClientObligationsLoading(true);
+        setClientObligationsError('');
+        return supabase
+            .from('compliance_obligations')
+            .select('*')
+            .eq('client_id', session.user.id)
+            .order('due_date', { ascending: true, nullsFirst: false })
+            .then(({ data, error }) => {
+                if (error) {
+                    setClientObligationsError(error.message);
+                    setClientObligations([]);
+                } else {
+                    setClientObligations(data || []);
+                }
+            })
+            .finally(() => setClientObligationsLoading(false));
+    }, [session?.user?.id, clientProfile?.is_admin]);
+
+    const refreshAdminClientObligations = React.useCallback((clientId) => {
+        if (!supabase || !clientId) return Promise.resolve();
+        setAdminObligationsLoading(true);
+        return supabase
+            .from('compliance_obligations')
+            .select('*')
+            .eq('client_id', clientId)
+            .order('due_date', { ascending: true, nullsFirst: false })
+            .then(({ data, error }) => {
+                if (!error) setAdminClientObligations(data || []);
+            })
+            .finally(() => setAdminObligationsLoading(false));
+    }, []);
+
+    const refreshOverdueQueue = React.useCallback(() => {
+        if (!supabase) return Promise.resolve();
+        return supabase
+            .from('overdue_obligations')
+            .select('*')
+            .then(({ data }) => setOverdueQueue(data || []));
+    }, []);
+
+    useEffect(() => {
+        if (!session || !supabase || !clientProfile || clientProfile.is_admin) return;
+        refreshComplianceArtifacts();
+    }, [session?.user?.id, clientProfile?.id, clientProfile?.is_admin, refreshComplianceArtifacts]);
+
+    useEffect(() => {
+        if (!session || !supabase || !clientProfile || clientProfile.is_admin) return;
+        const access = canAccessComplianceCalendar(clientProfile);
+        if (access.access) refreshClientObligations();
+    }, [session?.user?.id, clientProfile?.id, clientProfile?.lifecycle, clientProfile?.onboarding_step, clientProfile?.plan, clientProfile?.is_admin, refreshClientObligations]);
+
+    useEffect(() => {
+        if (!session || !supabase || !clientProfile || clientProfile.is_admin) return;
+        const step = clientProfile.onboarding_step ?? 0;
+        if (step < 5) return;
+        const slug = resolveComplianceSlug(clientProfile.country || 'United States', clientProfile.jurisdiction || '', clientProfile.entity_type || '');
+        if (!slug) return;
+        let cancelled = false;
+        (async () => {
+            let fromEdge = false;
+            try {
+                const { data: { session: authSession } } = await supabase.auth.getSession();
+                if (authSession?.access_token) {
+                    try {
+                        const res = await fetch('https://qatfiicpkunabpphwqee.supabase.co/functions/v1/client-blueprint', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${authSession.access_token}`,
+                                'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhdGZpaWNwa3VuYWJwcGh3cWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzgyOTEsImV4cCI6MjA5NTkxNDI5MX0.00A9OEwex4Yeb4EXCy8vUtRXpCVPXmZDyXVHxl6XiVA',
+                            },
+                            body: JSON.stringify({ mode: 'compliance' }),
+                        });
+                        const json = await res.json();
+                        if (!cancelled && json.procedure_kind === 'compliance') {
+                            setComplianceBlueprint(json);
+                            fromEdge = true;
+                        }
+                    } catch { /* edge unavailable — fall through to DB */ }
+                }
+                if (!cancelled && !fromEdge) {
+                    const { data: row } = await supabase.from('procedure_guides').select('blueprint').eq('slug', slug).maybeSingle();
+                    if (!cancelled && row?.blueprint?.procedure_kind === 'compliance') setComplianceBlueprint(row.blueprint);
+                }
+            } catch { /* concierge-only jurisdictions */ }
+        })();
+        return () => { cancelled = true; };
+    }, [session, clientProfile?.id, clientProfile?.onboarding_step, clientProfile?.country, clientProfile?.jurisdiction, clientProfile?.entity_type]);
+
     const refreshMyMessages = React.useCallback((opts = {}) => {
         if (!session || !supabase || clientProfile?.is_admin) return;
         const silent = opts.silent ?? false;
@@ -2127,13 +2270,21 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         setDetailLoading(true);
         setClientDocs([]);
         setClientMessages([]);
-        const [{ data: docs }, { data: msgs }] = await Promise.all([
+        setClientComplianceArtifacts([]);
+        setAdminClientObligations([]);
+        setAdminObligationsLoading(true);
+        const [{ data: docs }, { data: msgs }, { data: compliance }, { data: obligations }] = await Promise.all([
             supabase.from('documents').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
             supabase.from('messages').select('*').eq('client_id', client.id).order('created_at', { ascending: true }),
+            supabase.from('compliance_artifacts').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
+            supabase.from('compliance_obligations').select('*').eq('client_id', client.id).order('due_date', { ascending: true, nullsFirst: false }),
             supabase.from('clients').update({ admin_last_read_at: new Date().toISOString() }).eq('id', client.id)
         ]);
         setClientDocs(docs || []);
         setClientMessages(msgs || []);
+        setClientComplianceArtifacts(compliance || []);
+        setAdminClientObligations(obligations || []);
+        setAdminObligationsLoading(false);
         setDetailLoading(false);
     };
 
@@ -2486,17 +2637,110 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     ];
     const currentStep = clientProfile?.onboarding_step ?? 0;
 
+    const checkStep06Gate = async (clientId) => {
+        const client = allClients.find((c) => c.id === clientId) || selectedClient;
+        if (!client || !supabase) return { pass: false, missing: ['Client not found'] };
+        const slug = resolveComplianceSlug(client.country || 'United States', client.jurisdiction || '', client.entity_type || '');
+        if (!slug) return { pass: false, missing: ['No compliance procedure for this jurisdiction (concierge required)'] };
+        const [{ data: artifacts }, { data: docs }, { data: guide }] = await Promise.all([
+            supabase.from('compliance_artifacts').select('*').eq('client_id', clientId),
+            supabase.from('documents').select('*').eq('client_id', clientId),
+            supabase.from('procedure_guides').select('blueprint').eq('slug', slug).eq('is_active', true).maybeSingle(),
+        ]);
+        const bp = guide?.blueprint;
+        if (!bp) return { pass: false, missing: ['Compliance procedure guide not found'] };
+        const intakeRow = (artifacts || []).find((a) => a.kind === 'compliance_intake');
+        const intake = mergeProfileIntoIntake(buildIntakeAnswers(intakeRow), client, bp.intake_questions || []);
+        if (!intakeRow?.artifact_path) {
+            return { pass: false, missing: ['Compliance intake not saved — client must complete Step 06 from dashboard'] };
+        }
+        return evaluateAcceptCriteria(bp, intake, artifacts || [], docs || []);
+    };
+
     const handleAdvanceStep = async (clientId, currentStep) => {
         if (currentStep >= 11 || !supabase) return;
         setAdvancingId(clientId);
+        setAdvanceStepError('');
+        if (currentStep === 5) {
+            const gate = await checkStep06Gate(clientId);
+            if (!gate.pass) {
+                setAdvanceStepError(`Step 06 incomplete: ${gate.missing.join(', ')}`);
+                setAdvancingId(null);
+                return;
+            }
+        }
         const { error } = await supabase
             .from('clients')
             .update({ onboarding_step: currentStep + 1, updated_at: new Date().toISOString() })
             .eq('id', clientId);
         if (!error) {
             setAllClients(prev => prev.map(c => c.id === clientId ? { ...c, onboarding_step: currentStep + 1 } : c));
+            if (selectedClient?.id === clientId) setSelectedClient(prev => ({ ...prev, onboarding_step: currentStep + 1 }));
         }
         setAdvancingId(null);
+    };
+
+    const handleClientCompleteStep06 = async () => {
+        if (!supabase || !session || !clientProfile) return;
+        setCompletingStep06(true);
+        setStep06Error('');
+        const plan = clientProfile.plan ?? 'starter';
+        const isPaid = plan === 'growth' || plan === 'enterprise';
+        if (!isPaid) {
+            setStep06Error('Growth plan required to complete this step.');
+            setCompletingStep06(false);
+            return;
+        }
+        if (!complianceBlueprint) {
+            setStep06Error('Compliance procedure not loaded. Refresh or try again in a moment.');
+            setCompletingStep06(false);
+            return;
+        }
+        const intakeRow = complianceArtifacts.find((a) => a.kind === 'compliance_intake');
+        const merged = mergeProfileIntoIntake(
+            { ...buildIntakeAnswers(intakeRow), ...complianceIntake },
+            clientProfile,
+            complianceBlueprint.intake_questions || [],
+        );
+        const { pass, missing } = evaluateAcceptCriteria(complianceBlueprint, merged, complianceArtifacts, myDocs);
+        if (!pass) {
+            setStep06Error(`Complete checklist first: ${missing.join(', ')}`);
+            setCompletingStep06(false);
+            return;
+        }
+        const intakePayload = {
+            client_id: session.user.id,
+            kind: 'compliance_intake',
+            label: 'Compliance intake',
+            jurisdiction: complianceBlueprint.jurisdiction || 'multi',
+            artifact_path: JSON.stringify(merged),
+            status: 'active',
+            source: 'upload',
+            procedure_version: `${complianceBlueprint.id}@${complianceBlueprint.last_researched || 'v1'}`,
+        };
+        const { error: intakeErr } = intakeRow
+            ? await supabase.from('compliance_artifacts').update(intakePayload).eq('id', intakeRow.id)
+            : await supabase.from('compliance_artifacts').insert(intakePayload);
+        if (intakeErr) {
+            setStep06Error(intakeErr.message);
+            setCompletingStep06(false);
+            return;
+        }
+        const step = clientProfile.onboarding_step ?? 0;
+        if (step !== 5) {
+            setCompletingStep06(false);
+            return;
+        }
+        const { error } = await supabase
+            .from('clients')
+            .update({ onboarding_step: 6, updated_at: new Date().toISOString() })
+            .eq('id', session.user.id);
+        if (error) {
+            setStep06Error(error.message);
+        } else {
+            setClientProfile((prev) => ({ ...prev, onboarding_step: 6 }));
+        }
+        setCompletingStep06(false);
     };
 
     const handleRollbackStep = async (clientId, currentStep) => {
@@ -2521,6 +2765,11 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         if (!error) {
             setAllClients(prev => prev.map(c => c.id === clientId ? { ...c, lifecycle: newLifecycle } : c));
             if (selectedClient?.id === clientId) setSelectedClient(prev => ({ ...prev, lifecycle: newLifecycle }));
+            if (newLifecycle === 'active') {
+                await supabase.rpc('seed_obligations_for_client', { p_client_id: clientId });
+                if (selectedClient?.id === clientId) await refreshAdminClientObligations(clientId);
+                refreshOverdueQueue();
+            }
         }
         setUpdatingLifecycleId(null);
     };
@@ -2625,8 +2874,8 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                             const ageDays = (Date.now() - updated.getTime()) / 86400000;
                             return ageDays > 7;
                         });
-                        const capitalReq = nonAdmin.filter(c => c.last_message_at > c.admin_last_read_at);
-                        const total = unread.length + stale.length;
+                        const overdueClients = [...new Set((overdueQueue || []).map((o) => o.client_id))];
+                        const total = unread.length + stale.length + overdueClients.length;
                         if (total === 0 || adminLoading) return null;
                         return (
                             <div className="mb-6 bg-gradient-to-br from-purple-500/10 to-blue-500/10 border border-purple-500/20 rounded-2xl p-5 backdrop-blur-xl">
@@ -2661,6 +2910,25 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                                     <button key={c.id} onClick={() => openClientDetail(c)} className="block w-full text-left text-base text-gray-300 hover:text-white transition-colors">→ {c.company_name} <span className="text-gray-600">· step {c.onboarding_step}</span></button>
                                                 ))}
                                                 {stale.length > 3 && <p className="text-sm text-gray-600">+ {stale.length - 3} more</p>}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {overdueClients.length > 0 && (
+                                        <div className="bg-black/30 rounded-xl p-3 md:col-span-2">
+                                            <p className="text-sm uppercase tracking-widest text-red-300 mb-2">Overdue obligations · {overdueClients.length} client{overdueClients.length !== 1 ? 's' : ''}</p>
+                                            <div className="space-y-1">
+                                                {overdueClients.slice(0, 5).map((clientId) => {
+                                                    const c = nonAdmin.find((x) => x.id === clientId);
+                                                    const items = overdueQueue.filter((o) => o.client_id === clientId);
+                                                    const top = items[0];
+                                                    return (
+                                                        <button key={clientId} onClick={() => c && openClientDetail(c)} className="block w-full text-left text-base text-gray-300 hover:text-white transition-colors">
+                                                            → {c?.company_name || top?.company_name || 'Client'}
+                                                            <span className="text-gray-600"> · {items.length} due · {top?.title}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                                {overdueClients.length > 5 && <p className="text-sm text-gray-600">+ {overdueClients.length - 5} more</p>}
                                             </div>
                                         </div>
                                     )}
@@ -3067,23 +3335,50 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                         </button>
                                         <span className="text-base text-gray-400">Step {selectedClient.onboarding_step ?? 0} of 11 · {stepLabels[selectedClient.onboarding_step ?? 0] || 'Complete'}</span>
                                     </div>
+                                    {advanceStepError && (
+                                        <p className="text-xs text-red-400 mt-2">{advanceStepError}</p>
+                                    )}
                                 </div>
                             </div>
 
-                            {/*-- scaf --
-                              Recurring Obligations : see migrations/_scaffold_recurring_obligations.sql
-                              Implement when client.lifecycle === 'active'. Query public.obligations for this client.
-                              Show upcoming/due/overdue with due_at; allow admin to mark filed + attach proof.
-                            */}
-                            {(selectedClient.lifecycle ?? 'onboarding') === 'active' && (
+                            {(selectedClient.onboarding_step ?? 0) >= 5 && (
                                 <div className="px-6 py-4 border-t border-white/5">
-                                    <div className="flex items-center justify-between mb-2">
-                                        <p className="text-sm uppercase tracking-widest text-gray-500">Recurring Obligations</p>
-                                        <span className="text-sm uppercase tracking-widest text-purple-400/60 border border-purple-500/20 px-2 py-0.5 rounded-full">Scaffold</span>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <p className="text-sm uppercase tracking-widest text-gray-500">Step 06 — Compliance Artifacts</p>
+                                        <span className="text-xs uppercase tracking-widest text-purple-400/60 border border-purple-500/20 px-2 py-0.5 rounded-full">{clientComplianceArtifacts.length} rows</span>
                                     </div>
-                                    <p className="text-base text-gray-600 italic">Annual report, franchise tax, BOI/CTA, registered agent renewal tracking will appear here once obligations are seeded for this client's jurisdiction.</p>
+                                    {clientComplianceArtifacts.length === 0 ? (
+                                        <p className="text-sm text-gray-600 italic">No compliance artifacts yet.</p>
+                                    ) : (
+                                        <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                            {clientComplianceArtifacts.map((a) => (
+                                                <div key={a.id} className="flex items-center gap-3 py-2 px-3 bg-white/5 rounded-lg">
+                                                    <i className="ph ph-shield-check text-gray-500 flex-shrink-0"></i>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm text-gray-300 truncate">{a.label}</p>
+                                                        <p className="text-xs text-gray-600 truncate">{a.kind}{a.hosted_url ? ` · ${a.hosted_url}` : ''}</p>
+                                                    </div>
+                                                    <span className={`text-xs uppercase tracking-widest border px-2 py-0.5 rounded-full flex-shrink-0 ${a.status === 'active' ? 'text-green-300 bg-green-400/10 border-green-400/20' : a.status === 'draft' ? 'text-yellow-300 bg-yellow-400/10 border-yellow-400/20' : 'text-gray-400 bg-white/5 border-white/10'}`}>{a.status}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <p className="text-xs text-gray-600 mt-3 italic">Upload deliverables to Step 6 (Privacy & Compliance) via Documents above.</p>
                                 </div>
                             )}
+
+                            {/* Ticket #08 — Recurring obligations (compliance_obligations). Not Step 06. */}
+                            <AdminObligationsPanel
+                                client={selectedClient}
+                                obligations={adminClientObligations}
+                                loading={adminObligationsLoading}
+                                onRefresh={async () => {
+                                    await refreshAdminClientObligations(selectedClient.id);
+                                    refreshOverdueQueue();
+                                }}
+                                supabase={supabase}
+                                session={session}
+                            />
 
                             {/* Status Report */}
                             <div className="px-6 py-5 border-t border-white/5">
@@ -3183,6 +3478,24 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                     )}
 
                     {/* Alert strip — past_due or other urgent states */}
+                    {!profileLoading && !alertDismissed && clientProfile && canAccessComplianceCalendar(clientProfile).access && (() => {
+                        const enriched = clientObligations.map(enrichObligation);
+                        const overdueItems = enriched.filter((o) => o.effectiveStatus === 'overdue');
+                        if (overdueItems.length === 0) return null;
+                        const top = overdueItems[0];
+                        return (
+                            <div className="flex items-center gap-3 bg-red-500/6 border border-red-500/20 rounded-xl px-4 py-3 animate-[fadeIn_0.3s_ease-out] mb-4">
+                                <i className="ph ph-warning-circle text-red-400 text-xl flex-shrink-0"></i>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-semibold text-red-300">{top.title} overdue</p>
+                                    <p className="text-xs text-gray-500 mt-0.5 truncate">{top.penalty_note || top.description || 'Action required to stay in good standing.'}</p>
+                                </div>
+                                <button onClick={() => switchTab('compliance')} className="flex-shrink-0 px-3 py-1.5 bg-red-500/15 border border-red-500/30 rounded-lg text-xs font-bold uppercase tracking-widest text-red-300 hover:bg-red-500/25 transition-all">View</button>
+                                <button onClick={() => setAlertDismissed(true)} className="flex-shrink-0 text-gray-600 hover:text-gray-400 transition-colors ml-1"><i className="ph ph-x text-sm"></i></button>
+                            </div>
+                        );
+                    })()}
+
                     {!profileLoading && !alertDismissed && clientProfile && (() => {
                         const plan = clientProfile.plan ?? 'starter';
                         if (plan === 'past_due') return (
@@ -3202,14 +3515,20 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                     {/* Tab nav */}
                     {!profileLoading && (
                         <div className="flex gap-1 mb-6 border-b border-white/5 overflow-x-auto pb-px scrollbar-hide" style={{scrollbarWidth:'none',msOverflowStyle:'none'}}>
-                            {[
+                            {(() => {
+                                const complianceBadge = canAccessComplianceCalendar(clientProfile)
+                                    ? obligationStats(clientObligations.map(enrichObligation)).overdue
+                                    : 0;
+                                return [
                                 { id: 'overview',  icon: 'ph-squares-four',   label: 'Overview' },
                                 { id: 'pipeline',  icon: 'ph-list-checks',    label: 'Pipeline' },
                                 { id: 'vault',     icon: 'ph-folder-open',    label: 'Vault' },
+                                { id: 'compliance', icon: 'ph-calendar-check', label: 'Compliance', badge: complianceBadge, badgeRed: complianceBadge > 0 },
                                 { id: 'messages',  icon: 'ph-chat-text',      label: 'Messages', badge: myMessages.filter(m => m.is_admin_message && !m.seen).length },
                                 { id: 'capital',   icon: 'ph-chart-line-up',  label: 'Capital' },
                                 { id: 'navigator', icon: 'ph-compass',          label: 'Navigator' },
-                            ].map(t => (
+                            ];
+                            })().map(t => (
                                 <button
                                     key={t.id}
                                     onClick={() => switchTab(t.id)}
@@ -3217,7 +3536,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                 >
                                     <i className={`ph ${t.icon} text-base`}></i>
                                     {t.label}
-                                    {t.badge > 0 && <span className="ml-1 w-4 h-4 bg-blue-500 rounded-full text-sm flex items-center justify-center text-white font-bold">{t.badge}</span>}
+                                    {t.badge > 0 && <span className={`ml-1 w-4 h-4 rounded-full text-sm flex items-center justify-center text-white font-bold ${t.badgeRed ? 'bg-red-500' : 'bg-blue-500'}`}>{t.badge}</span>}
                                 </button>
                             ))}
                         </div>
@@ -3353,6 +3672,26 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                         {activePhaseTab === 'infrastructure' && !isPaid && 'Infrastructure covers your landing page, repo, CRM, analytics, and first AI agent. Unlock with Growth.'}
                                         {activePhaseTab === 'infrastructure' && isPaid && 'Your digital infrastructure — built and configured to your business profile.'}
                                     </p>
+                                    {activePhaseTab === 'operations' && currentStep >= 5 && (
+                                        <Step06Panel
+                                            locked={!isPaid}
+                                            onUpgrade={handleUpgrade}
+                                            blueprint={complianceBlueprint}
+                                            intake={complianceIntake}
+                                            setIntake={setComplianceIntake}
+                                            artifacts={complianceArtifacts}
+                                            docs={myDocs}
+                                            clientProfile={clientProfile}
+                                            supabase={supabase}
+                                            session={session}
+                                            onRefreshArtifacts={refreshComplianceArtifacts}
+                                            onRefreshDocs={() => supabase.from('documents').select('*').eq('client_id', session.user.id).order('created_at', { ascending: false }).then(({ data }) => setMyDocs(data || []))}
+                                            onCompleteStep={handleClientCompleteStep06}
+                                            completingStep={completingStep06}
+                                            stepError={step06Error}
+                                            currentStep={currentStep}
+                                        />
+                                    )}
                                 </div>
                             );
                         })()}
@@ -3419,6 +3758,26 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                         );
                                     })}
                                 </div>
+                                {activePhaseTab === 'operations' && currentStep >= 5 && (
+                                    <Step06Panel
+                                        locked={!isPaid}
+                                        onUpgrade={handleUpgrade}
+                                        blueprint={complianceBlueprint}
+                                        intake={complianceIntake}
+                                        setIntake={setComplianceIntake}
+                                        artifacts={complianceArtifacts}
+                                        docs={myDocs}
+                                        clientProfile={clientProfile}
+                                        supabase={supabase}
+                                        session={session}
+                                        onRefreshArtifacts={refreshComplianceArtifacts}
+                                        onRefreshDocs={() => supabase.from('documents').select('*').eq('client_id', session.user.id).order('created_at', { ascending: false }).then(({ data }) => setMyDocs(data || []))}
+                                        onCompleteStep={handleClientCompleteStep06}
+                                        completingStep={completingStep06}
+                                        stepError={step06Error}
+                                        currentStep={currentStep}
+                                    />
+                                )}
                             </div>
                         );
                     })()}
@@ -3518,7 +3877,10 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         const aiExtras = (blueprint?.required_documents || [])
                             .filter(d => d.id && !baseIds.has(d.id))
                             .map(d => ({ id: d.id, label: d.label, icon: 'ph-sparkle', desc: d.desc, required: false, suggested: true }));
-                        const categories = [...baseCategories, ...aiExtras];
+                        const complianceExtras = ((clientProfile?.onboarding_step ?? 0) >= 5 && complianceBlueprint)
+                            ? getComplianceVaultCategories(complianceBlueprint).filter((c) => !baseIds.has(c.id))
+                            : [];
+                        const categories = [...baseCategories, ...aiExtras, ...complianceExtras];
                         // Group uploaded docs by category tag
                         const docsByCategory = {};
                         myDocs.forEach(doc => {
@@ -3850,6 +4212,20 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                             </>
                         );
                     })()}</>}
+
+                    {/* Compliance tab — Ticket #08 recurring obligations (not Step 06) */}
+                    {dashTab === 'compliance' && (
+                        <ComplianceCalendar
+                            clientProfile={clientProfile}
+                            obligations={clientObligations}
+                            loading={clientObligationsLoading}
+                            error={clientObligationsError}
+                            onRefresh={refreshClientObligations}
+                            supabase={supabase}
+                            session={session}
+                            onUpgrade={handleUpgrade}
+                        />
+                    )}
 
                     {/* Messages tab */}
                     {dashTab === 'messages' && (() => {

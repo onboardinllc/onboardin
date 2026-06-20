@@ -11,6 +11,19 @@ function resolveProcedureSlug(country: string, jurisdiction: string, entityType:
   return null;
 }
 
+const COMPLIANCE_SLUG_SUFFIX: Record<string, string> = {
+  'jamaica-ltd': 'jamaica-ltd-privacy',
+  'us-de-c-corp': 'us-de-c-corp-privacy',
+  'us-de-llc': 'us-de-llc-privacy',
+  'us-wy-llc': 'us-wy-llc-privacy',
+};
+
+function resolveComplianceSlug(country: string, jurisdiction: string, entityType: string): string | null {
+  const formation = resolveProcedureSlug(country, jurisdiction, entityType);
+  if (!formation) return null;
+  return COMPLIANCE_SLUG_SUFFIX[formation] ?? null;
+}
+
 function blueprintToClientPayload(blueprint: Record<string, unknown>) {
   const steps = (Array.isArray(blueprint?.steps) ? blueprint.steps : []) as Array<{ id?: string; title?: string; description?: string }>;
   const required_documents = steps.filter((s) => s.id && s.title).map((s) => ({
@@ -130,12 +143,38 @@ serve(async (req) => {
 
     const { data: profile } = await supabase.from('clients').select('*').eq('id', user.id).single();
 
+    let body: { mode?: string } = {};
+    try {
+      const raw = await req.text();
+      if (raw) body = JSON.parse(raw);
+    } catch { /* empty body ok */ }
+
     const country = profile?.country || 'United States';
     const jurisdiction = profile?.jurisdiction || '';
     const entity = profile?.entity_type || 'LLC';
     const stage = profile?.funding_stage || 'Pre-Seed';
     const intent = profile?.business_intent || '';
     const sells = profile?.sells_to || '';
+    const onboardingStep = profile?.onboarding_step ?? 0;
+
+    if (body.mode === 'compliance') {
+      if (onboardingStep < 5) {
+        return new Response(JSON.stringify({ error: 'Compliance blueprint available from pipeline step 6 onward' }), { status: 403, headers: { ...cors, 'Content-Type': 'application/json' } });
+      }
+      const complianceSlug = resolveComplianceSlug(country, jurisdiction, entity);
+      if (complianceSlug) {
+        const { data: guide } = await supabase
+          .from('procedure_guides')
+          .select('slug, name, blueprint')
+          .eq('slug', complianceSlug)
+          .eq('is_active', true)
+          .maybeSingle();
+        if (guide?.blueprint) {
+          return new Response(JSON.stringify(guide.blueprint), { headers: { ...cors, 'Content-Type': 'application/json' } });
+        }
+      }
+      return new Response(JSON.stringify({ error: 'No compliance procedure for this jurisdiction', concierge_only: true }), { status: 404, headers: { ...cors, 'Content-Type': 'application/json' } });
+    }
 
     const slug = resolveProcedureSlug(country, jurisdiction, entity);
     if (slug) {

@@ -1,10 +1,25 @@
 import React, { useEffect, useRef, useState } from 'react';
 
+const LOGO_PNG = '/Onboardin.png';
+const LOGO_SVG = '/favicon.svg';
+
 const GreenScreen = ({ videoUrl, onVideoEnd }) => {
     const videoRef = useRef(null);
     const canvasRef = useRef(null);
     const [isPlaying, setIsPlaying] = useState(false);
-    const [error, setError] = useState(false);
+    const [useLogo, setUseLogo] = useState(false);
+    const [logoEntered, setLogoEntered] = useState(false);
+
+    const failToLogo = () => setUseLogo(true);
+
+    useEffect(() => {
+        if (!useLogo) {
+            setLogoEntered(false);
+            return;
+        }
+        const id = requestAnimationFrame(() => setLogoEntered(true));
+        return () => cancelAnimationFrame(id);
+    }, [useLogo]);
 
     useEffect(() => {
         let animationFrameId;
@@ -18,42 +33,34 @@ const GreenScreen = ({ videoUrl, onVideoEnd }) => {
             const width = video.videoWidth;
             const height = video.videoHeight;
 
-            // Define crop area to remove "Ai" from the top right
-            // We reduce the source width slightly to cut off the right side
-            const cropRight = 0.0; // Percent to cut from right (adjust this to trim "Ai")
+            const cropRight = 0.0;
             const sourceWidth = width * (1 - cropRight);
-            
+
             if (canvas.width !== sourceWidth) canvas.width = sourceWidth;
             if (canvas.height !== height) canvas.height = height;
 
-            // Draw the cropped video frame
             ctx.drawImage(video, 0, 0, sourceWidth, height, 0, 0, sourceWidth, height);
-            
+
             const frame = ctx.getImageData(0, 0, sourceWidth, height);
             const data = frame.data;
 
-            // Chroma Key Settings for Smoothing
-            const similarityThreshold = 0.4; // How close to green to start fading
-            const smoothnessThreshold = 0.08; // The range over which we fade alpha
+            const similarityThreshold = 0.4;
+            const smoothnessThreshold = 0.08;
 
             for (let i = 0; i < data.length; i += 4) {
                 const r = data[i + 0];
                 const g = data[i + 1];
                 const b = data[i + 2];
 
-                // Calculate "Greenness" relative to other channels
                 const maxRB = Math.max(r, b);
                 const greenness = (g - maxRB) / 255;
 
                 if (greenness > similarityThreshold) {
-                    // Calculate soft alpha based on similarity
                     const diff = greenness - similarityThreshold;
                     if (diff < smoothnessThreshold) {
-                        // Blend edge pixels for smoothness
                         const alpha = 1 - (diff / smoothnessThreshold);
                         data[i + 3] = alpha * 255;
                     } else {
-                        // Fully transparent
                         data[i + 3] = 0;
                     }
                 }
@@ -71,41 +78,54 @@ const GreenScreen = ({ videoUrl, onVideoEnd }) => {
     }, [isPlaying]);
 
     const handlePlay = () => {
-        if(videoRef.current) {
+        if (videoRef.current) {
             videoRef.current.play()
                 .then(() => setIsPlaying(true))
-                .catch(e => {
-                    console.error("Autoplay failed", e);
-                    setError(true);
+                .catch((e) => {
+                    console.error('Autoplay failed', e);
+                    failToLogo();
                 });
         }
     };
 
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            if (!isPlaying) failToLogo();
+        }, 2000);
+        return () => clearTimeout(timer);
+    }, [isPlaying]);
+
     return (
         <div className="relative flex justify-center items-center w-full max-w-2xl h-[40vh] md:h-[50vh]">
-            <video 
+            {useLogo ? (
+                <img
+                    src={LOGO_PNG}
+                    alt="Onboardin"
+                    className={`w-full h-full object-contain drop-shadow-[0_0_15px_rgba(255,255,255,0.1)] transition-all duration-[1500ms] ease-out ${
+                        logoEntered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+                    }`}
+                    onError={(e) => {
+                        if (!e.currentTarget.src.endsWith('favicon.svg')) e.currentTarget.src = LOGO_SVG;
+                    }}
+                />
+            ) : (
+                <canvas
+                    ref={canvasRef}
+                    className="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(255,255,255,0.1)] transition-opacity duration-700"
+                    style={{ opacity: isPlaying ? 1 : 0 }}
+                />
+            )}
+            <video
                 ref={videoRef}
                 src={videoUrl}
                 className="hidden"
                 muted
                 playsInline
-                crossOrigin="anonymous" 
+                crossOrigin="anonymous"
                 onLoadedData={handlePlay}
                 onEnded={onVideoEnd}
+                onError={failToLogo}
             />
-
-            {!error ? (
-                <canvas 
-                    ref={canvasRef} 
-                    className="w-full h-full object-contain drop-shadow-[0_0_15px_rgba(255,255,255,0.1)] transition-all duration-700" 
-                />
-            ) : (
-                <div className="text-center animate-pulse">
-                     <h1 className="text-6xl md:text-8xl font-bold tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
-                        Onboardin
-                    </h1>
-                </div>
-            )}
         </div>
     );
 };

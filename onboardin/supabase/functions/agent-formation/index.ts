@@ -11,16 +11,46 @@ function resolveProcedureSlug(country: string, jurisdiction: string, entityType:
   return null;
 }
 
-function blueprintToAgentContext(guide: { name: string; description?: string | null; blueprint: Record<string, unknown> }) {
+const COMPLIANCE_SLUG_SUFFIX: Record<string, string> = {
+  'jamaica-ltd': 'jamaica-ltd-privacy',
+  'us-de-c-corp': 'us-de-c-corp-privacy',
+  'us-de-llc': 'us-de-llc-privacy',
+  'us-wy-llc': 'us-wy-llc-privacy',
+};
+
+function resolveComplianceSlug(country: string, jurisdiction: string, entityType: string): string | null {
+  const formation = resolveProcedureSlug(country, jurisdiction, entityType);
+  if (!formation) return null;
+  return COMPLIANCE_SLUG_SUFFIX[formation] ?? null;
+}
+
+function isComplianceQuestion(text: string): boolean {
+  const q = (text || '').toLowerCase();
+  return /privacy|compliance|cookie|dpa|oic|fincen|boi|data protection|gdpr|ccpa|termly/.test(q);
+}
+
+function blueprintToAgentContext(guide: { name: string; description?: string | null; blueprint: Record<string, unknown> }, kind: 'formation' | 'compliance' = 'formation') {
   const bp = guide.blueprint || {};
+  const label = kind === 'compliance' ? 'AUTHORITATIVE COMPLIANCE PROCEDURE' : 'AUTHORITATIVE FORMATION PROCEDURE';
+  const extra = kind === 'compliance'
+    ? [
+      'COMPLIANCE ADDENDUM (v1):',
+      '- Do not promise automated Termly, OIC, or FinCEN filings — v1 is guided procedure with proof upload.',
+      '- Do not generate legal policy text for the client. Termly manual or counsel path only.',
+      '- Step 06 guides document prep and filing steps; it does not provide legal advice.',
+      '- Cite compliance procedure step titles only; do not invent obligations outside this blueprint.',
+    ]
+    : [
+      'Follow these jurisdiction-specific steps. Do not invent procedures outside this blueprint.',
+      'Prefer on-platform actions (templates, uploads, vault steps) before external portals.',
+    ];
   return [
-    `AUTHORITATIVE FORMATION PROCEDURE: ${guide.name}`,
+    `${label}: ${guide.name}`,
     guide.description ? `Summary: ${guide.description}` : '',
     bp.estimated_total_cost ? `Estimated cost: ${bp.estimated_total_cost}` : '',
     bp.estimated_total_time ? `Estimated time: ${bp.estimated_total_time}` : '',
     '',
-    'Follow these jurisdiction-specific steps. Do not invent procedures outside this blueprint.',
-    'Prefer on-platform actions (templates, uploads, vault steps) before external portals.',
+    ...extra,
     '',
     JSON.stringify(bp, null, 2),
   ].filter(Boolean).join('\n');
@@ -76,20 +106,38 @@ serve(async (req) => {
     }
 
     let procedureContext = '';
-    const slug = resolveProcedureSlug(
+    const onboardingStep = profile?.onboarding_step ?? 0;
+    const useCompliance = onboardingStep >= 5 || isComplianceQuestion(question || '');
+    const complianceSlug = resolveComplianceSlug(
       profile?.country || 'United States',
       profile?.jurisdiction || '',
       profile?.entity_type || 'LLC',
     );
-    if (slug) {
+    const formationSlug = resolveProcedureSlug(
+      profile?.country || 'United States',
+      profile?.jurisdiction || '',
+      profile?.entity_type || 'LLC',
+    );
+
+    if (useCompliance && complianceSlug) {
       const { data: guide } = await supabase
         .from('procedure_guides')
         .select('name, description, blueprint')
-        .eq('slug', slug)
+        .eq('slug', complianceSlug)
         .eq('is_active', true)
         .maybeSingle();
       if (guide?.blueprint) {
-        procedureContext = `\n\n${blueprintToAgentContext(guide as { name: string; description?: string | null; blueprint: Record<string, unknown> })}`;
+        procedureContext = `\n\n${blueprintToAgentContext(guide as { name: string; description?: string | null; blueprint: Record<string, unknown> }, 'compliance')}`;
+      }
+    } else if (formationSlug) {
+      const { data: guide } = await supabase
+        .from('procedure_guides')
+        .select('name, description, blueprint')
+        .eq('slug', formationSlug)
+        .eq('is_active', true)
+        .maybeSingle();
+      if (guide?.blueprint) {
+        procedureContext = `\n\n${blueprintToAgentContext(guide as { name: string; description?: string | null; blueprint: Record<string, unknown> }, 'formation')}`;
       }
     }
 
