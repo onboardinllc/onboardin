@@ -1,3 +1,5 @@
+import { legalTemplateUrl } from './template-urls.js';
+
 /**
  * Onboardin Procedure Library v1
  *
@@ -247,7 +249,7 @@ export const JAMAICA_LTD = [
         icon: 'ph-handshake',
         desc: 'Private agreement defining share transfers, reserved matters, and founder rights.',
         required: false,
-        templateUrl: 'https://onboardin.llc/templates/jm-shareholders-agreement.pdf',
+        templateUrl: legalTemplateUrl('jm_shareholders_agreement'),
         fillEnabled: true,
         process: {
             title: 'Draft your Shareholders Agreement',
@@ -258,7 +260,7 @@ export const JAMAICA_LTD = [
                     time: '1 to 3 days',
                     cost: 'Free (template). Attorney review: J$50,000 to 150,000.',
                     steps: [
-                        { action: 'Download the Onboardin Shareholders Agreement template.', url: 'https://onboardin.llc/templates/jm-shareholders-agreement.pdf', cta: 'Download template' },
+                        { action: 'Download the Onboardin Shareholders Agreement template.', url: legalTemplateUrl('jm_shareholders_agreement'), cta: 'Download template' },
                         { action: 'Include a Right of First Refusal clause: shares cannot be sold to outside parties without offering existing shareholders first at the same price.' },
                         { action: 'List your Reserved Matters. Decisions requiring 75% or 100% shareholder approval: taking on debt over a threshold, issuing new shares, selling the company.' },
                         { action: 'Add drag-along rights (majority can force minority to sell) and tag-along rights (minority can join any sale on the same terms).' },
@@ -328,7 +330,7 @@ export const JAMAICA_LTD = [
         icon: 'ph-user-list',
         desc: 'Signed founder agreement covering equity, vesting, IP assignment, and dispute resolution.',
         required: true,
-        templateUrl: 'https://onboardin.llc/templates/founder-agreement-v1.pdf',
+        templateUrl: legalTemplateUrl('founder_agreement'),
         fillEnabled: true,
         process: {
             title: 'Draft and sign your Founder Agreement',
@@ -339,7 +341,7 @@ export const JAMAICA_LTD = [
                     time: '1 to 2 days',
                     cost: 'Free',
                     steps: [
-                        { action: 'Download the Onboardin Founder Agreement template.', url: 'https://onboardin.llc/templates/founder-agreement-v1.pdf', cta: 'Download template' },
+                        { action: 'Download the Onboardin Founder Agreement template.', url: legalTemplateUrl('founder_agreement'), cta: 'Download template' },
                         { action: 'Fill in: each founder\'s full legal name, equity percentage, vesting schedule (4-year / 1-year cliff is standard), and role.' },
                         { action: 'Review the IP assignment clause. It must state that all work done for the company belongs to the company, not the individual.' },
                         { action: 'Add a shotgun clause for dispute resolution. This lets any founder buy out the other at a set price to break deadlocks.' },
@@ -433,7 +435,7 @@ export const US_DE_LLC = [
         icon: 'ph-handshake',
         desc: 'Internal governance document. Not filed with the state but required for banking.',
         required: true,
-        templateUrl: 'https://onboardin.llc/templates/llc-operating-agreement.pdf',
+        templateUrl: legalTemplateUrl('llc_operating_agreement'),
         fillEnabled: true,
         process: {
             title: 'Draft your LLC Operating Agreement',
@@ -444,7 +446,7 @@ export const US_DE_LLC = [
                     time: '1 to 2 days',
                     cost: 'Free',
                     steps: [
-                        { action: 'Download the Onboardin LLC Operating Agreement template.', url: 'https://onboardin.llc/templates/llc-operating-agreement.pdf', cta: 'Download template' },
+                        { action: 'Download the Onboardin LLC Operating Agreement template.', url: legalTemplateUrl('llc_operating_agreement'), cta: 'Download template' },
                         { action: 'Fill in: member names, ownership percentages, voting rules (majority or unanimous), management structure (member-managed or manager-managed), and capital contributions.' },
                         { action: 'Add a buyout clause defining what happens if a member wants to leave or dies.' },
                         { action: 'All members sign the agreement. This is a private document. Do not file it with Delaware.' },
@@ -592,7 +594,7 @@ export const US_DE_LLC = [
         icon: 'ph-user-list',
         desc: 'Signed founder agreement covering equity, vesting, IP assignment.',
         required: true,
-        templateUrl: 'https://onboardin.llc/templates/founder-agreement-v1.pdf',
+        templateUrl: legalTemplateUrl('founder_agreement'),
         fillEnabled: true,
         process: {
             title: 'Draft and sign your Founder Agreement',
@@ -603,7 +605,7 @@ export const US_DE_LLC = [
                     time: '1 to 2 days',
                     cost: 'Free',
                     steps: [
-                        { action: 'Download the Onboardin Founder Agreement template.', url: 'https://onboardin.llc/templates/founder-agreement-v1.pdf', cta: 'Download template' },
+                        { action: 'Download the Onboardin Founder Agreement template.', url: legalTemplateUrl('founder_agreement'), cta: 'Download template' },
                         { action: 'Fill in: each founder\'s full legal name, equity percentage, vesting schedule (4-year / 1-year cliff is standard), and role.' },
                         { action: 'Review the IP assignment clause. All work done for the company belongs to the company.' },
                         { action: 'All founders sign. If co-founders are in multiple countries, DocuSign is sufficient.' },
@@ -694,7 +696,7 @@ export const US_DE_CCORP = [
         icon: 'ph-scroll',
         desc: 'Corporate bylaws and initial board resolutions. Not filed with the state.',
         required: true,
-        templateUrl: 'https://onboardin.llc/templates/corp-bylaws.pdf',
+        templateUrl: legalTemplateUrl('corp_bylaws'),
         fillEnabled: true,
         process: {
             title: 'Adopt Bylaws and Initial Board Consent',
@@ -705,7 +707,7 @@ export const US_DE_CCORP = [
                     time: '1 to 2 days',
                     cost: 'Free',
                     steps: [
-                        { action: 'Download the Onboardin Corporate Bylaws template.', url: 'https://onboardin.llc/templates/corp-bylaws.pdf', cta: 'Download Bylaws' },
+                        { action: 'Download the Onboardin Corporate Bylaws template.', url: legalTemplateUrl('corp_bylaws'), cta: 'Download Bylaws' },
                         { action: 'Customize: number of directors, quorum rules, meeting procedures, officer titles.' },
                         { action: 'Draft the Initial Board Consent (Organizational Minutes). This adopts the bylaws, elects officers, authorizes bank account opening, and authorizes issuance of stock.' },
                         { action: 'Directors sign the Board Consent. File in your corporate records book.' },
@@ -721,7 +723,7 @@ export const US_DE_CCORP = [
         icon: 'ph-chart-pie',
         desc: 'Stock Purchase Agreements and stock certificates for founding team.',
         required: true,
-        templateUrl: 'https://onboardin.llc/templates/stock-purchase-agreement.pdf',
+        templateUrl: legalTemplateUrl('stock_purchase_agreement'),
         fillEnabled: true,
         process: {
             title: 'Issue founder stock',
@@ -732,7 +734,7 @@ export const US_DE_CCORP = [
                     time: '1 to 3 days',
                     cost: 'Free (template). Attorneys typically charge $1,500 to 5,000 for this.',
                     steps: [
-                        { action: 'Download the Stock Purchase Agreement template.', url: 'https://onboardin.llc/templates/stock-purchase-agreement.pdf', cta: 'Download SPA' },
+                        { action: 'Download the Stock Purchase Agreement template.', url: legalTemplateUrl('stock_purchase_agreement'), cta: 'Download SPA' },
                         { action: 'Founders purchase stock at par value ($0.0001/share is standard). A founder buying 5,000,000 shares pays $500 total.' },
                         { action: 'Attach a 4-year vesting schedule with 1-year cliff. This means 25% vests after year one, then monthly thereafter. Standard for investor expectations.' },
                         { action: 'Attach IP assignment language. Confirm all prior work done for the company is assigned in the agreement.' },
@@ -862,7 +864,7 @@ export const US_DE_CCORP = [
         icon: 'ph-user-list',
         desc: 'Signed founder agreement covering vesting, IP assignment, and co-founder terms.',
         required: true,
-        templateUrl: 'https://onboardin.llc/templates/founder-agreement-v1.pdf',
+        templateUrl: legalTemplateUrl('founder_agreement'),
         fillEnabled: true,
         process: {
             title: 'Draft and sign your Founder Agreement',
@@ -873,7 +875,7 @@ export const US_DE_CCORP = [
                     time: '1 to 2 days',
                     cost: 'Free',
                     steps: [
-                        { action: 'Download the Onboardin Founder Agreement template.', url: 'https://onboardin.llc/templates/founder-agreement-v1.pdf', cta: 'Download template' },
+                        { action: 'Download the Onboardin Founder Agreement template.', url: legalTemplateUrl('founder_agreement'), cta: 'Download template' },
                         { action: 'Coordinate with your Stock Purchase Agreement. The vesting terms must match.' },
                         { action: 'Ensure IP assignment covers all prior work and inventions related to the company\'s business.' },
                         { action: 'All founders sign. Upload here.' },
@@ -955,7 +957,7 @@ export const US_WY_LLC = [
         icon: 'ph-handshake',
         desc: 'Internal governance document. Required for banking.',
         required: true,
-        templateUrl: 'https://onboardin.llc/templates/llc-operating-agreement.pdf',
+        templateUrl: legalTemplateUrl('llc_operating_agreement'),
         fillEnabled: true,
         process: {
             title: 'Draft your Wyoming LLC Operating Agreement',
@@ -966,7 +968,7 @@ export const US_WY_LLC = [
                     time: '1 to 2 days',
                     cost: 'Free',
                     steps: [
-                        { action: 'Download the Onboardin LLC Operating Agreement template.', url: 'https://onboardin.llc/templates/llc-operating-agreement.pdf', cta: 'Download template' },
+                        { action: 'Download the Onboardin LLC Operating Agreement template.', url: legalTemplateUrl('llc_operating_agreement'), cta: 'Download template' },
                         { action: 'Fill in: member names, ownership percentages, voting rules, and management structure.' },
                         { action: 'All members sign. Do not file with Wyoming. This is a private document.' },
                         { action: 'Upload a signed copy here for your records.' },
@@ -1091,7 +1093,7 @@ export const US_WY_LLC = [
         icon: 'ph-user-list',
         desc: 'Signed founder agreement covering equity, vesting, and IP assignment.',
         required: true,
-        templateUrl: 'https://onboardin.llc/templates/founder-agreement-v1.pdf',
+        templateUrl: legalTemplateUrl('founder_agreement'),
         fillEnabled: true,
         process: {
             title: 'Draft and sign your Founder Agreement',
@@ -1102,7 +1104,7 @@ export const US_WY_LLC = [
                     time: '1 to 2 days',
                     cost: 'Free',
                     steps: [
-                        { action: 'Download the template.', url: 'https://onboardin.llc/templates/founder-agreement-v1.pdf', cta: 'Download template' },
+                        { action: 'Download the template.', url: legalTemplateUrl('founder_agreement'), cta: 'Download template' },
                         { action: 'Fill in: equity splits, vesting schedule, IP assignment, and role definitions.' },
                         { action: 'All founders sign. Upload here.' },
                     ],

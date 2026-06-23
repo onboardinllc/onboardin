@@ -108,7 +108,7 @@ values
     'founder_agreement',
     'Founder Agreement',
     'founder_docs',
-    'https://onboardin.llc/templates/founder-agreement-v1.pdf',
+    'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/templates/founder-agreement-v1.pdf',
     '{
       "company_name":    {"source": "clients.company_name"},
       "founder_name":    {"source": "clients.founder_name"},
@@ -129,7 +129,7 @@ values
     'operating_agreement',
     'Operating Agreement',
     'operating_agreement',
-    'https://onboardin.llc/templates/llc-operating-agreement.pdf',
+    'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/templates/llc-operating-agreement.pdf',
     '{
       "company_name":   {"source": "clients.company_name"},
       "founder_name":   {"source": "clients.founder_name"},
@@ -149,7 +149,7 @@ values
     'operating_agreement',
     'Operating Agreement',
     'operating_agreement',
-    'https://onboardin.llc/templates/llc-operating-agreement.pdf',
+    'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/templates/llc-operating-agreement.pdf',
     '{
       "company_name":   {"source": "clients.company_name"},
       "founder_name":   {"source": "clients.founder_name"},
@@ -169,7 +169,7 @@ values
     'corp_bylaws',
     'Corporate Bylaws',
     'operating_agreement',
-    'https://onboardin.llc/templates/corp-bylaws.pdf',
+    'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/templates/corp-bylaws.pdf',
     '{
       "company_name":   {"source": "clients.company_name"},
       "founder_name":   {"source": "clients.founder_name"},
@@ -189,7 +189,7 @@ values
     'jm_shareholders_agreement',
     'Shareholders Agreement',
     'operating_agreement',
-    'https://onboardin.llc/templates/jm-shareholders-agreement.pdf',
+    'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/templates/jm-shareholders-agreement.pdf',
     '{
       "company_name":   {"source": "clients.company_name"},
       "founder_name":   {"source": "clients.founder_name"},
@@ -199,6 +199,26 @@ values
       "founder_signature": {"page": 0, "x": 72, "y": 120, "w": 200, "h": 48, "type": "signature"},
       "effective_date":    {"page": 0, "x": 72, "y": 200, "w": 120, "h": 24, "type": "date"},
       "company_name":      {"page": 0, "x": 72, "y": 680, "w": 300, "h": 24, "type": "text"}
+    }'::jsonb
+  ),
+  (
+    'all',
+    'C-Corp',
+    'stock_purchase_agreement',
+    'Founder Stock Purchase Agreement',
+    'founder_stock',
+    'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/templates/stock-purchase-agreement.pdf',
+    '{
+      "company_name":   {"source": "clients.company_name"},
+      "founder_name":   {"source": "clients.founder_name"},
+      "effective_date": {"source": "computed.today"},
+      "state":          {"source": "clients.jurisdiction"}
+    }'::jsonb,
+    '{
+      "founder_signature": {"page": 0, "x": 72, "y": 120, "w": 200, "h": 48, "type": "signature"},
+      "effective_date":    {"page": 0, "x": 72, "y": 200, "w": 120, "h": 24, "type": "date"},
+      "company_name":      {"page": 0, "x": 72, "y": 680, "w": 300, "h": 24, "type": "text"},
+      "state":             {"page": 0, "x": 72, "y": 656, "w": 300, "h": 24, "type": "text"}
     }'::jsonb
   )
 on conflict (vault_card_id, kind, entity_type, jurisdiction) do nothing;

@@ -14,6 +14,7 @@ import AdminObligationsPanel from './components/AdminObligationsPanel';
 import DocumentFillPanel from './components/DocumentFillPanel';
 import { canAccessComplianceCalendar, enrichObligation, obligationStats } from './lib/compliance-obligations';
 import { buildDraftPayload, buildActivePayload, serializeIntake } from './lib/compliance-intake-persist';
+import { legalTemplateUrl, isFillableTemplateUrl } from './lib/template-urls.js';
 
 const LOGO_PNG = '/Onboardin.png';
 const LOGO_SVG = '/favicon.svg';
@@ -837,7 +838,7 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
             icon: 'ph-user-list',
             desc: 'Signed founder agreement covering equity, vesting, IP, and dispute resolution.',
             required: true,
-            templateUrl: 'https://onboardin.llc/templates/founder-agreement-v1.pdf',
+            templateUrl: legalTemplateUrl('founder_agreement'),
             fillEnabled: true,
             process: {
                 title: 'Draft and sign your Founder Agreement',
@@ -848,7 +849,7 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
                         time: '1 to 2 days',
                         cost: 'Free',
                         steps: [
-                            { action: 'Download the Onboardin Founder Agreement template.', url: 'https://onboardin.llc/templates/founder-agreement-v1.pdf', cta: 'Download template' },
+                            { action: 'Download the Onboardin Founder Agreement template.', url: legalTemplateUrl('founder_agreement'), cta: 'Download template' },
                             { action: 'Fill in: each founder\'s full legal name, equity percentage, vesting schedule (4-year / 1-year cliff recommended), and role.' },
                             { action: 'Review the IP assignment clause. It must state all work done for the company belongs to the company.' },
                             { action: isJM ? 'Add a shotgun clause for dispute resolution. This lets any founder buy out the other at a set price to break deadlocks.' : 'Add a buyout or deadlock clause so disputes have a defined resolution path.' },
@@ -910,7 +911,7 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
             icon: 'ph-handshake',
             desc: isJM ? 'Private shareholders agreement defining transfer restrictions and reserved matters.' : 'Internal governance document outlining ownership and management structure.',
             required: false,
-            templateUrl: entityType === 'LLC' ? 'https://onboardin.llc/templates/llc-operating-agreement.pdf' : 'https://onboardin.llc/templates/corp-bylaws.pdf',
+            templateUrl: isJM ? legalTemplateUrl('jm_shareholders_agreement') : (entityType === 'LLC' ? legalTemplateUrl('llc_operating_agreement') : legalTemplateUrl('corp_bylaws')),
             fillEnabled: true,
             process: isJM ? {
                 title: 'Draft your Shareholders Agreement',
@@ -921,7 +922,7 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
                         time: '1 to 3 days',
                         cost: 'Free (template) or $50,000+ JMD with an attorney',
                         steps: [
-                            { action: 'Download the Onboardin Shareholders Agreement template.', url: 'https://onboardin.llc/templates/llc-operating-agreement.pdf', cta: 'Download template' },
+                            { action: 'Download the Onboardin Shareholders Agreement template.', url: legalTemplateUrl('jm_shareholders_agreement'), cta: 'Download template' },
                             { action: 'Define transfer restrictions: include a Right of First Refusal so shares cannot be sold to outside parties without offering existing shareholders first.' },
                             { action: 'List your Reserved Matters. Decisions requiring 75% or 100% board approval, such as taking on debt, issuing new shares, or selling the company.' },
                             { action: 'Add drag-along and tag-along rights to protect minority shareholders in an acquisition.' },
@@ -938,7 +939,7 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
                         time: '1 to 2 days',
                         cost: 'Free',
                         steps: [
-                            { action: 'Download and complete the template.', url: entityType === 'LLC' ? 'https://onboardin.llc/templates/llc-operating-agreement.pdf' : 'https://onboardin.llc/templates/corp-bylaws.pdf', cta: 'Download template' },
+                            { action: 'Download and complete the template.', url: entityType === 'LLC' ? legalTemplateUrl('llc_operating_agreement') : legalTemplateUrl('corp_bylaws'), cta: 'Download template' },
                             { action: 'Fill in member names, ownership percentages, voting rules, and management structure.' },
                             { action: 'All members/directors sign the document.' },
                         ],
@@ -4123,7 +4124,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                                     </div>
                                                     {/* Card body */}
                                                     <p className="text-sm text-gray-500 leading-relaxed">{cat.desc}</p>
-                                                    {cat.fillEnabled && cat.templateUrl?.includes('onboardin.llc/templates') && (
+                                                    {cat.fillEnabled && isFillableTemplateUrl(cat.templateUrl) && (
                                                         <button
                                                             type="button"
                                                             onClick={() => { setVaultProcess(null); setVaultFillCat(cat); }}
