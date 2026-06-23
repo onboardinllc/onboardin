@@ -248,6 +248,7 @@ export const JAMAICA_LTD = [
         desc: 'Private agreement defining share transfers, reserved matters, and founder rights.',
         required: false,
         templateUrl: 'https://onboardin.llc/templates/jm-shareholders-agreement.pdf',
+        fillEnabled: true,
         process: {
             title: 'Draft your Shareholders Agreement',
             pick: null,
@@ -328,6 +329,7 @@ export const JAMAICA_LTD = [
         desc: 'Signed founder agreement covering equity, vesting, IP assignment, and dispute resolution.',
         required: true,
         templateUrl: 'https://onboardin.llc/templates/founder-agreement-v1.pdf',
+        fillEnabled: true,
         process: {
             title: 'Draft and sign your Founder Agreement',
             pick: null,
@@ -432,6 +434,7 @@ export const US_DE_LLC = [
         desc: 'Internal governance document. Not filed with the state but required for banking.',
         required: true,
         templateUrl: 'https://onboardin.llc/templates/llc-operating-agreement.pdf',
+        fillEnabled: true,
         process: {
             title: 'Draft your LLC Operating Agreement',
             pick: null,
@@ -590,6 +593,7 @@ export const US_DE_LLC = [
         desc: 'Signed founder agreement covering equity, vesting, IP assignment.',
         required: true,
         templateUrl: 'https://onboardin.llc/templates/founder-agreement-v1.pdf',
+        fillEnabled: true,
         process: {
             title: 'Draft and sign your Founder Agreement',
             pick: null,
@@ -691,6 +695,7 @@ export const US_DE_CCORP = [
         desc: 'Corporate bylaws and initial board resolutions. Not filed with the state.',
         required: true,
         templateUrl: 'https://onboardin.llc/templates/corp-bylaws.pdf',
+        fillEnabled: true,
         process: {
             title: 'Adopt Bylaws and Initial Board Consent',
             pick: null,
@@ -717,6 +722,7 @@ export const US_DE_CCORP = [
         desc: 'Stock Purchase Agreements and stock certificates for founding team.',
         required: true,
         templateUrl: 'https://onboardin.llc/templates/stock-purchase-agreement.pdf',
+        fillEnabled: true,
         process: {
             title: 'Issue founder stock',
             pick: null,
@@ -857,6 +863,7 @@ export const US_DE_CCORP = [
         desc: 'Signed founder agreement covering vesting, IP assignment, and co-founder terms.',
         required: true,
         templateUrl: 'https://onboardin.llc/templates/founder-agreement-v1.pdf',
+        fillEnabled: true,
         process: {
             title: 'Draft and sign your Founder Agreement',
             pick: null,
@@ -949,6 +956,7 @@ export const US_WY_LLC = [
         desc: 'Internal governance document. Required for banking.',
         required: true,
         templateUrl: 'https://onboardin.llc/templates/llc-operating-agreement.pdf',
+        fillEnabled: true,
         process: {
             title: 'Draft your Wyoming LLC Operating Agreement',
             pick: null,
@@ -1084,6 +1092,7 @@ export const US_WY_LLC = [
         desc: 'Signed founder agreement covering equity, vesting, and IP assignment.',
         required: true,
         templateUrl: 'https://onboardin.llc/templates/founder-agreement-v1.pdf',
+        fillEnabled: true,
         process: {
             title: 'Draft and sign your Founder Agreement',
             pick: null,
