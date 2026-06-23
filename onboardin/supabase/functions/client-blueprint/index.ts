@@ -192,7 +192,7 @@ serve(async (req) => {
       }
     }
 
-    const systemPrompt = `You are the Onboardin formation planner. Given a founder's profile, produce a tailored set of (a) the 4 most useful starter questions they'd ask a formation expert right now, and (b) the document categories they specifically need to collect to form their entity in their jurisdiction. Be jurisdiction-accurate — Jamaica requires TRN and Companies Office filing, France requires SAS capital + Kbis, Delaware requires EIN + operating agreement, etc.
+    const systemPrompt = `You are the Onboardin formation planner. Given a founder's profile, produce a tailored set of (a) the 4 most useful starter questions they'd ask a formation expert right now, and (b) the document categories they specifically need to collect to form their entity in their jurisdiction. Be jurisdiction-accurate: Jamaica requires TRN and Companies Office filing, France requires SAS capital + Kbis, Delaware requires EIN + operating agreement, etc.
 
 Return ONLY a JSON object, no prose, in this exact shape:
 {

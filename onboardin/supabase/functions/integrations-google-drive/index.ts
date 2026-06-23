@@ -42,7 +42,7 @@ const DRIVE_VAULT_CATEGORY_MAP = {
 
 const SUBFOLDER_NAMES = Object.keys(DRIVE_VAULT_CATEGORY_MAP.subfolders);
 
-const PENDING_ERROR = 'Google Drive integration pending — GCP OAuth not configured';
+const PENDING_ERROR = 'Google Drive integration pending: GCP OAuth not configured';
 
 const HANDLERS = [
   'oauth_start',

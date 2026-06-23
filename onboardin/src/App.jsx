@@ -391,7 +391,7 @@ const MindMapCanvas = ({ active }) => {
     );
 };
 
-// Landing — public marketing page
+// Landing. Public marketing page
 const Landing = ({ onNavigate, uiVisible, setUiVisible, onBrandKit, onElementsReady }) => {
     const [hovered, setHovered] = useState(false);
     const [showBrandPanel, setShowBrandPanel] = useState(false);
@@ -417,9 +417,8 @@ const Landing = ({ onNavigate, uiVisible, setUiVisible, onBrandKit, onElementsRe
         setShowBrandPanel(v => !v);
     };
 
-    return (
-        <div className="flex flex-col items-center justify-center min-h-screen px-4 overflow-hidden relative z-10">
-            {/* Center logo — clickable for brand kit */}
+    return (<div className="flex flex-col items-center justify-center min-h-screen px-4 overflow-hidden relative z-10">
+            {/* Center logo. Clickable for brand kit */}
             <div
                 className={`transition-all duration-[1500ms] ease-in-out cursor-pointer relative z-30 ${uiVisible ? 'scale-[0.65] opacity-90' : 'scale-100 opacity-100'}`}
                 style={{ marginBottom: uiVisible ? '-4rem' : '0' }}
@@ -429,7 +428,7 @@ const Landing = ({ onNavigate, uiVisible, setUiVisible, onBrandKit, onElementsRe
                 <GreenScreen videoUrl="/Onboardin-Ongreen.mp4" onVideoEnd={handleVideoEnd} />
             </div>
 
-            {/* Brand kit panel — slides in below logo, pushes button down */}
+            {/* Brand kit panel, slides in below logo, pushes button down */}
             <div className={`transition-all duration-500 ease-in-out overflow-hidden ${uiVisible && showBrandPanel ? 'max-h-32 opacity-100 mb-3' : 'max-h-0 opacity-0 mb-0'}`}>
                 <div className="flex items-center gap-4 bg-white/5 border border-white/10 backdrop-blur-xl rounded-2xl px-6 py-4 mt-2">
                     <i className="ph ph-download-simple text-blue-400 text-lg flex-shrink-0"></i>
@@ -473,7 +472,7 @@ const Landing = ({ onNavigate, uiVisible, setUiVisible, onBrandKit, onElementsRe
     );
 };
 
-// Features — service overview grid
+// Features. Service overview grid
 const Features = ({ onDismiss, visible }) => {
     const features = [
         { icon: "ph-megaphone", title: "Marketing Automation", desc: "Marketing that never sleeps. We handle the campaign scheduling and cross-platform shipping while you focus on the product." },
@@ -488,9 +487,8 @@ const Features = ({ onDismiss, visible }) => {
     ];
 
     const ease = 'cubic-bezier(0.22, 1, 0.36, 1)';
-    return (
-        <>
-            {/* Backdrop — full screen, click to dismiss */}
+    return (<>
+            {/* Backdrop, full screen, click to dismiss */}
             <div
                 className={`fixed inset-0 z-20 ${visible ? '' : 'pointer-events-none'}`}
                 style={{
@@ -502,7 +500,7 @@ const Features = ({ onDismiss, visible }) => {
                 }}
                 onClick={onDismiss}
             />
-            {/* Scrollable content — pointer-events-none on wrapper so backdrop stays clickable at sides */}
+            {/* Scrollable content. Pointer-events-none on wrapper so backdrop stays clickable at sides */}
             <div
                 className={`fixed inset-0 z-30 overflow-y-auto pointer-events-none ${visible ? '' : 'invisible'}`}
                 style={{
@@ -541,7 +539,7 @@ const Features = ({ onDismiss, visible }) => {
     );
 };
 
-// Pricing — tiered plans
+// Pricing. Tiered plans
 const Pricing = ({ onContact, onDismiss, visible, onUpgrade, checkoutLoading }) => {
     const ease = 'cubic-bezier(0.22, 1, 0.36, 1)';
     const [yearly, setYearly] = React.useState(false);
@@ -612,7 +610,7 @@ const Pricing = ({ onContact, onDismiss, visible, onUpgrade, checkoutLoading }) 
                             <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-purple-500 text-white text-[10px] font-bold uppercase tracking-widest px-4 py-1 rounded-full whitespace-nowrap">Most Popular</div>
                             <h3 className="text-sm font-bold uppercase tracking-widest text-purple-300 mb-2">Growth</h3>
                             <div className="text-4xl font-bold mb-1">${price} <span className="text-sm text-gray-500 font-normal">/mo</span></div>
-                            {yearly && <p className="text-xs text-green-400 mb-5">Billed ${yearlyTotal}/yr — save ${(monthlyPrice - yearlyMonthly) * 12}/yr</p>}
+                            {yearly && <p className="text-xs text-green-400 mb-5">Billed ${yearlyTotal}/yr. Save ${(monthlyPrice - yearlyMonthly) * 12}/yr</p>}
                             {!yearly && <div className="mb-5" />}
                             <ul className="space-y-3 mb-8 text-sm text-gray-300 flex-1">
                                 <li className="flex items-center gap-3"><i className="ph ph-check text-green-400"></i> Automated state filings</li>
@@ -769,7 +767,7 @@ function recommendEntity(fundingStage, businessIntent, sellsTo, country) {
     return { entity: 'LLC', reason: 'LLCs are the most common structure for early-stage startups: simple, flexible, founder-friendly.' };
 }
 
-// Upload button for vault cards — label activation, matching the admin upload pattern.
+// Upload button for vault cards. Label activation, matching the admin upload pattern.
 const VaultUploadButton = ({ disabled, onFile, fullWidth }) => (
     <label className={`transition-colors ${disabled ? 'text-gray-600 cursor-not-allowed pointer-events-none' : 'cursor-pointer'} ${fullWidth ? 'inline-flex items-center gap-2 w-full px-3 py-2 bg-white/5 border border-white/10 rounded-lg text-xs text-gray-400 hover:text-purple-300 hover:border-purple-500/30' : 'inline-flex text-gray-400 hover:text-purple-300'}`}>
         <i className="ph ph-upload-simple text-base"></i>
@@ -811,13 +809,13 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
                     },
                     {
                         label: "Voter's ID (free, slower)",
-                        time: '3–6 months',
+                        time: '3 to 6 months',
                         cost: 'Free',
                         steps: [
                             { action: 'Register online at the Electoral Office of Jamaica portal or visit your parish office.', url: 'https://www.eoj.com.jm', cta: 'Open EOJ website' },
                             { action: 'Bring: birth certificate and proof of address (utility bill or bank statement).' },
-                            { action: 'Complete the registration form. ID is mailed to your address within 3–6 months.' },
-                            { action: 'Apply immediately — this takes time. Use your passport if you need ID sooner.' },
+                            { action: 'Complete the registration form. ID is mailed to your address within 3 to 6 months.' },
+                            { action: 'Apply immediately. This takes time. Use your passport if you need ID sooner.' },
                         ],
                     },
                 ],
@@ -844,12 +842,12 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
                 tracks: [
                     {
                         label: 'Using our template',
-                        time: '1–2 days',
+                        time: '1 to 2 days',
                         cost: 'Free',
                         steps: [
                             { action: 'Download the Onboardin Founder Agreement template.', url: 'https://onboardin.llc/templates/founder-agreement-v1.pdf', cta: 'Download template' },
                             { action: 'Fill in: each founder\'s full legal name, equity percentage, vesting schedule (4-year / 1-year cliff recommended), and role.' },
-                            { action: 'Review the IP assignment clause — it must state all work done for the company belongs to the company.' },
+                            { action: 'Review the IP assignment clause. It must state all work done for the company belongs to the company.' },
                             { action: isJM ? 'Add a shotgun clause for dispute resolution. This lets any founder buy out the other at a set price to break deadlocks.' : 'Add a buyout or deadlock clause so disputes have a defined resolution path.' },
                             { action: 'All founders sign the document. Have signatures witnessed if possible.' },
                         ],
@@ -871,16 +869,16 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
                 pick: null,
                 tracks: [
                     {
-                        label: 'COJ Standard (4–6 days)',
-                        time: '4–6 working days',
+                        label: 'COJ Standard (4 to 6 days)',
+                        time: '4 to 6 working days',
                         cost: '~$28,000 JMD (registration + stamp duty)',
                         steps: [
                             { action: 'Search your proposed company name at the COJ to confirm availability. Reserve it using Form 6 (J$3,000 JMD, holds name 90 days).', url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/form-6.pdf', cta: 'Download Form 6', portalUrl: 'https://www.orcjamaica.com', portalCta: 'COJ portal' },
                             { action: 'Download and complete the BRF1 "Super Form". This single form registers your company AND handles NIS and GCT registration automatically.', url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/brf1.pdf', cta: 'Download BRF1', portalUrl: 'https://www.orcjamaica.com/Forms.aspx', portalCta: 'COJ forms portal' },
                             { action: 'Gather: TRN for all directors and shareholders, valid ID for each, proof of registered address, and the completed Form 1A (Articles of Incorporation).', url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/form-1a.pdf', cta: 'Download Form 1A' },
-                            { action: 'Submit the Beneficial Ownership Return (BOR) forms — Form A for individuals, Form B for corporate shareholders. Required by law.', url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/form-a.pdf', cta: 'Download Form A (BOR)' },
+                            { action: 'Submit the Beneficial Ownership Return (BOR) forms: Form A for individuals, Form B for corporate shareholders. Required by law.', url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/form-a.pdf', cta: 'Download Form A (BOR)' },
                             { action: 'Submit all forms at the COJ office (14 Camp Road, Kingston) or via their online portal. Pay the fee at the counter. Same-day processing if submitted before 11 AM.' },
-                            { action: 'Receive your Certificate of Incorporation (typically 4–6 days standard). Upload it here.' },
+                            { action: 'Receive your Certificate of Incorporation (typically 4 to 6 days standard). Upload it here.' },
                         ],
                     },
                 ],
@@ -916,14 +914,14 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
                 tracks: [
                     {
                         label: 'Using our template',
-                        time: '1–3 days',
+                        time: '1 to 3 days',
                         cost: 'Free (template) or $50,000+ JMD with an attorney',
                         steps: [
                             { action: 'Download the Onboardin Shareholders Agreement template.', url: 'https://onboardin.llc/templates/llc-operating-agreement.pdf', cta: 'Download template' },
                             { action: 'Define transfer restrictions: include a Right of First Refusal so shares cannot be sold to outside parties without offering existing shareholders first.' },
-                            { action: 'List your Reserved Matters — decisions requiring 75% or 100% board approval, such as taking on debt, issuing new shares, or selling the company.' },
+                            { action: 'List your Reserved Matters. Decisions requiring 75% or 100% board approval, such as taking on debt, issuing new shares, or selling the company.' },
                             { action: 'Add drag-along and tag-along rights to protect minority shareholders in an acquisition.' },
-                            { action: 'All shareholders sign the agreement. This document is private — do not file it with the COJ.' },
+                            { action: 'All shareholders sign the agreement. This document is private. Do not file it with the COJ.' },
                         ],
                     },
                 ],
@@ -933,7 +931,7 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
                 tracks: [
                     {
                         label: 'Using our template',
-                        time: '1–2 days',
+                        time: '1 to 2 days',
                         cost: 'Free',
                         steps: [
                             { action: 'Download and complete the template.', url: entityType === 'LLC' ? 'https://onboardin.llc/templates/llc-operating-agreement.pdf' : 'https://onboardin.llc/templates/corp-bylaws.pdf', cta: 'Download template' },
@@ -974,19 +972,19 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
                         steps: [
                             { action: 'Go to any Tax Administration Jamaica office. Locate the TRN desk.', url: 'https://www.jamaicatax.gov.jm', cta: 'Find TAJ offices' },
                             { action: 'Bring: valid Passport OR Driver\'s License. If you have neither: Voter\'s ID plus Birth Certificate.' },
-                            { action: 'Complete Form 1 (Application for Taxpayer Registration — Individuals). Provided at the counter at no charge.' },
-                            { action: 'Your TRN is issued the same day. Record it — every subsequent step requires it.' },
+                            { action: 'Complete Form 1 (Application for Taxpayer Registration, Individuals). Provided at the counter at no charge.' },
+                            { action: 'Your TRN is issued the same day. Record it. Every subsequent step requires it.' },
                         ],
                     },
                     {
-                        label: 'Overseas / by mail (2–5 weeks)',
-                        time: '2–5 weeks',
+                        label: 'Overseas / by mail (2 to 5 weeks)',
+                        time: '2 to 5 weeks',
                         cost: 'Free',
                         steps: [
                             { action: 'Download Form 1 from the TAJ website.', url: 'https://www.jamaicatax.gov.jm/documents/10181/11382/form1.pdf', cta: 'Download Form 1' },
                             { action: 'Complete the form. Have your ID notarized by a Notary Public in your country.' },
                             { action: 'Mail the notarized package to: Tax Administration Jamaica, TRN Unit, 101 Old Hope Road, Kingston 6.' },
-                            { action: 'TRN is mailed back within 2–5 weeks.' },
+                            { action: 'TRN is mailed back within 2 to 5 weeks.' },
                         ],
                     },
                 ],
@@ -1009,19 +1007,19 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
                         cost: 'Included in COJ incorporation fee (~J$28,000)',
                         steps: [
                             { action: 'Your BRC and initial 90-day TCC are issued automatically when COJ processes your BRF1 Super Form. No separate application.' },
-                            { action: 'Find your company TRN on the COJ confirmation letter. Record it — required for banking and all tax filings.' },
+                            { action: 'Find your company TRN on the COJ confirmation letter. Record it. Required for banking and all tax filings.' },
                             { action: 'Upload your BRC or Certificate of Incorporation here.' },
                         ],
                     },
                     {
                         label: 'TCC renewal (every 90 days, free)',
-                        time: 'Same day online / 2–7 days in person',
+                        time: 'Same day online / 2 to 7 days in person',
                         cost: 'Free',
                         steps: [
                             { action: 'Log in to the TAJ eServices portal with your company TRN.', url: 'https://www.jamaicatax.gov.jm', cta: 'Open TAJ portal' },
                             { action: 'TAJ now auto-renews TCCs electronically for compliant taxpayers. Check if renewal happened automatically before visiting in person.' },
-                            { action: 'If auto-renewal failed: ensure all statutory deductions (NIS, NHT, HEART) are paid and filed. TAJ verifies electronically — no clearance letters required since 2024.' },
-                            { action: 'Submit digital TCC renewal if auto-renewal did not trigger. Same-day online, or 2–7 days via branch.' },
+                            { action: 'If auto-renewal failed: ensure all statutory deductions (NIS, NHT, HEART) are paid and filed. TAJ verifies electronically. No clearance letters required since 2024.' },
+                            { action: 'Submit digital TCC renewal if auto-renewal did not trigger. Same-day online, or 2 to 7 days via branch.' },
                             { action: 'Download your renewed TCC and upload it here. Banks require a current TCC.' },
                         ],
                     },
@@ -1041,7 +1039,7 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
                     {
                         label: 'Via BRF1 Super Form (if incorporating now)',
                         time: 'Included with COJ filing',
-                        cost: 'Free — part of COJ process',
+                        cost: 'Free. Part of COJ process',
                         steps: [
                             { action: 'The BRF1 Super Form handles NIS, NHT, and HEART registration simultaneously when you incorporate at COJ. No separate applications needed.' },
                             { action: 'Confirm your NIS Employer Reference Number appears in your COJ confirmation documents. If missing, contact MLSS.', url: 'https://www.mlss.gov.jm', cta: 'MLSS contact' },
@@ -1051,7 +1049,7 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
                     },
                     {
                         label: 'Separate registration (existing company or missed in BRF1)',
-                        time: '2–5 working days per agency',
+                        time: '2 to 5 working days per agency',
                         cost: 'Free',
                         steps: [
                             { action: 'NIS: Complete Form R1 (Employer/Business Registration). Bring Certificate of Incorporation, company TRN, valid ID for all directors.', url: 'https://www.mlss.gov.jm', cta: 'Download Form R1' },
@@ -1098,13 +1096,13 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
                 tracks: [
                     {
                         label: 'Online or in person at COJ',
-                        time: '~10 working days standard / same-day for extra J$1,500–4,000',
+                        time: '~10 working days standard / same-day for extra J$1,500 to 4,000',
                         cost: 'J$5,000 standard. Late fee: J$100/day up to J$10,000 maximum.',
                         steps: [
                             { action: 'File within 42 days of your company financial year end. Failure triggers J$100/day in penalties, capped at J$10,000.' },
                             { action: 'Complete Form 19A (Profit-Making Company Annual Return).', url: 'https://www.orcjamaica.com', cta: 'COJ portal' },
                             { action: 'Attach an updated Beneficial Ownership Return (BOR). Use Form A for individuals, Form B for corporate shareholders. Required every year since 2023.' },
-                            { action: 'Pay J$5,000 at the COJ counter or online. Request same-day processing for an additional J$1,500–4,000 if you need the stamped return quickly.' },
+                            { action: 'Pay J$5,000 at the COJ counter or online. Request same-day processing for an additional J$1,500 to 4,000 if you need the stamped return quickly.' },
                             { action: 'Retain the COJ-stamped Form 19A. Banks and government agencies may request it.' },
                         ],
                     },
@@ -1135,7 +1133,7 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
                         ],
                     },
                     {
-                        label: 'ZenBusiness ($199/yr — includes filing)',
+                        label: 'ZenBusiness ($199/yr, includes filing)',
                         time: 'Instant',
                         cost: '$199/year',
                         steps: [
@@ -1149,7 +1147,7 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
             id: 'tax_id',
             label: isUS ? 'EIN Confirmation' : 'Business Number (CRA)',
             icon: 'ph-receipt',
-            desc: isUS ? 'IRS Employer Identification Number — required for banking and tax filings.' : 'Canada Revenue Agency business number confirmation.',
+            desc: isUS ? 'IRS Employer Identification Number. Required for banking and tax filings.' : 'Canada Revenue Agency business number confirmation.',
             required: true,
             templateUrl: isUS ? 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/irs/fss4.pdf' : 'https://www.canada.ca/en/revenue-agency/services/tax/businesses/topics/registering-your-business/bro-how-register.html',
             process: isUS ? {
@@ -1157,35 +1155,35 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
                 pick: 'Choose your method:',
                 tracks: [
                     {
-                        label: 'Online (US persons with SSN — instant)',
+                        label: 'Online (US persons with SSN, instant)',
                         time: 'Immediate',
                         cost: 'Free',
                         steps: [
-                            { action: 'Go to the IRS EIN Assistant. Available Monday–Friday 7am–10pm ET.', url: 'https://www.irs.gov/businesses/small-businesses-self-employed/apply-for-an-employer-identification-number-ein-online', cta: 'IRS EIN Assistant' },
+                            { action: 'Go to the IRS EIN Assistant. Available Monday to Friday 7am to 10pm ET.', url: 'https://www.irs.gov/businesses/small-businesses-self-employed/apply-for-an-employer-identification-number-ein-online', cta: 'IRS EIN Assistant' },
                             { action: 'Select your entity type (LLC or Corporation) and state of formation.' },
                             { action: 'Enter the responsible party\'s SSN or ITIN and complete the form. EIN displayed immediately.' },
                             { action: 'Download the CP 575 confirmation letter and upload it here.' },
                         ],
                     },
                     {
-                        label: 'By fax (international founders — 4 business days)',
+                        label: 'By fax (international founders, 4 business days)',
                         time: '4 business days',
                         cost: 'Free',
                         steps: [
                             { action: 'Download Form SS-4 (Rev. Dec 2025 or later).', url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/irs/fss4.pdf', cta: 'Download Form SS-4' },
                             { action: 'On Line 7b write "Foreign" (no SSN). Line 7a must be a natural person\'s name as the Responsible Party.' },
                             { action: 'Fax the completed form to: +1-304-707-9471 (International fax line). Include a return fax number on your cover sheet.' },
-                            { action: 'EIN arrives by fax within 4 business days. Physical CP 575 letter arrives by mail in 4–6 weeks. Upload whichever you receive first.' },
+                            { action: 'EIN arrives by fax within 4 business days. Physical CP 575 letter arrives by mail in 4 to 6 weeks. Upload whichever you receive first.' },
                         ],
                     },
                     {
-                        label: 'By phone (international founders — immediate)',
+                        label: 'By phone (international founders, immediate)',
                         time: 'Immediate during the call',
                         cost: 'Free',
                         steps: [
-                            { action: 'Call the IRS international EIN line: +1-267-941-1099. Monday–Friday 6am–11pm ET.' },
+                            { action: 'Call the IRS international EIN line: +1-267-941-1099. Monday to Friday 6am to 11pm ET.' },
                             { action: 'Have your completed Form SS-4 in front of you. The agent will ask for information on the form and issue your EIN verbally.' },
-                            { action: 'Write down the EIN immediately. CP 575 confirmation arrives by mail in 4–6 weeks.' },
+                            { action: 'Write down the EIN immediately. CP 575 confirmation arrives by mail in 4 to 6 weeks.' },
                         ],
                     },
                 ],
@@ -1195,14 +1193,14 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
             id: 'boi_report',
             label: 'BOI Report (FinCEN)',
             icon: 'ph-shield-check',
-            desc: 'Beneficial Ownership Information — domestic U.S.-formed entities exempt under March 2025 IFR.',
+            desc: 'Beneficial Ownership Information. Domestic U.S.-formed entities exempt under March 2025 IFR.',
             required: false,
             process: isUS ? {
                 title: 'Beneficial Ownership Information (BOI) Report',
                 pick: null,
                 tracks: [
                     {
-                        label: 'March 2025 IFR — domestic US entities not reporting companies',
+                        label: 'March 2025 IFR. Domestic US entities not reporting companies',
                         time: 'N/A for domestic entities',
                         cost: 'Free',
                         steps: [
@@ -1240,7 +1238,7 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
                             time: 'Due June 1 annually',
                             cost: '$300/year flat. Increasing to $400 for 2026 tax year (payable 2027).',
                             steps: [
-                                { action: 'Delaware LLCs pay a flat annual tax. No annual report form — payment only.' },
+                                { action: 'Delaware LLCs pay a flat annual tax. No annual report form. Payment only.' },
                                 { action: 'Pay by June 1 each year at the Delaware payment portal.', url: 'https://corp.delaware.gov/paytaxes/', cta: 'Pay Delaware taxes' },
                                 { action: 'Late payments incur a $200 penalty plus 1.5% monthly interest.' },
                             ],
@@ -1266,7 +1264,7 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
                             cost: 'Min $175 tax (Authorized Shares) or $400 (Assumed Par Value) + $50 mandatory Annual Report fee.',
                             steps: [
                                 { action: 'Delaware offers two calculation methods. Pay whichever is lower.' },
-                                { action: 'Authorized Shares Method: $175 for 1–5,000 shares. $250 for 5,001–10,000. $85 per additional 10,000 above that.' },
+                                { action: 'Authorized Shares Method: $175 for 1 to 5,000 shares. $250 for 5,001 to 10,000. $85 per additional 10,000 above that.' },
                                 { action: 'Assumed Par Value Method: divide gross assets by issued shares to get assumed par value. Multiply authorized shares × assumed par × 0.004%. Minimum $400.' },
                                 { action: 'Most startups with 10M shares at $0.0001 par and under $1M in assets pay the minimum ($175 or $400 depending on method). Calculate both.' },
                                 { action: 'Pay online plus the mandatory $50 Annual Report fee.', url: 'https://corp.delaware.gov/paytaxes/', cta: 'Pay Delaware taxes' },
@@ -1283,7 +1281,7 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
         id: 'banking',
         label: 'Banking Details',
         icon: 'ph-bank',
-        desc: isJamaica ? 'Business bank account letter or voided cheque from your Jamaican bank.' : isUS ? 'US business bank account — required for accepting payments and filing taxes.' : 'Voided cheque or bank letter confirming your business account.',
+        desc: isJamaica ? 'Business bank account letter or voided cheque from your Jamaican bank.' : isUS ? 'US business bank account, required for accepting payments and filing taxes.' : 'Voided cheque or bank letter confirming your business account.',
         required: false,
         process: isJamaica ? {
             title: 'Open a business bank account',
@@ -1291,40 +1289,40 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
             tracks: [
                 {
                     label: 'NCB SME On-The-Go (lowest cost)',
-                    time: '5–7 working days',
+                    time: '5 to 7 working days',
                     cost: 'J$2,000 minimum deposit',
                     steps: [
                         { action: 'Prepare a 12-month Cash Flow Projection and a Board Resolution. The Board Resolution must explicitly state: (1) authorisation to open the account, (2) names of authorised signatories, (3) signing mandate e.g. "any two to sign", and (4) specific authority for NCB e-Link online banking access.', url: 'https://www.jncb.com/Business/SME-Corner/SME-On-The-Go', cta: 'NCB SME page' },
                         { action: 'Submit the online application via the NCB portal and upload digital copies of your BRC, TCC, and IDs for all directors.' },
                         { action: 'Attend an in-branch appointment to sign the Signature Card, FATCA forms, and have original documents physically verified. Bring all originals.' },
                         { action: 'If requested by the branch manager, provide professional reference letters from an Attorney, JP, or Chartered Accountant.' },
-                        { action: 'Account number issued in 1–3 days. NCB Business Online access takes an additional 3–5 days. Download your bank letter and upload it here.' },
+                        { action: 'Account number issued in 1 to 3 days. NCB Business Online access takes an additional 3 to 5 days. Download your bank letter and upload it here.' },
                     ],
                 },
                 {
                     label: 'JMMB Business (better for SaaS / ACH)',
-                    time: '3–5 working days (plus mandatory site visit)',
+                    time: '3 to 5 working days (plus mandatory site visit)',
                     cost: 'J$1,000 minimum deposit. Monthly fee: J$1,035.',
                     steps: [
-                        { action: 'Gather Form 23 (List of Directors — from COJ) and prepare a 3-year Cash Flow Projection. JMMB requires this for startup accounts.', url: 'https://jm.jmmb.com/business-banking', cta: 'JMMB Business' },
+                        { action: 'Gather Form 23 (List of Directors, from COJ) and prepare a 3-year Cash Flow Projection. JMMB requires this for startup accounts.', url: 'https://jm.jmmb.com/business-banking', cta: 'JMMB Business' },
                         { action: 'Draft a Board Resolution authorising the JMMB relationship. Must include: all authorised signers with specimen signatures, and the Company Seal or Stamp.' },
                         { action: 'Obtain two character references for each director. Eligible referees: Justice of the Peace, Notary Public, Minister of Religion, Lawyer, Medical Doctor, or a JMMB client of over 2 years. No family members.' },
                         { action: 'Complete Business Account Opening Form AOB-032023. Attach BRC, TCC, Articles of Incorporation, Certificate of Incorporation, and proof of address for all signatories.' },
                         { action: 'A JMMB representative will conduct a mandatory physical site visit to your business premises. Schedule this in advance.' },
-                        { action: 'Account approval and JMMB Moneyline online banking credentials arrive within 24–48 hours of the site visit. Download your bank letter and upload it here.' },
+                        { action: 'Account approval and JMMB Moneyline online banking credentials arrive within 24 to 48 hours of the site visit. Download your bank letter and upload it here.' },
                     ],
                 },
                 {
                     label: 'Scotiabank Business (USD-friendly)',
-                    time: '48–72 hours after appointment',
+                    time: '48 to 72 hours after appointment',
                     cost: 'J$10,000 minimum balance (Chequing). Monthly service charge: J$1,035.',
                     steps: [
                         { action: 'Book a business banking appointment at your nearest Scotiabank branch.', url: 'https://jm.scotiabank.com/business-banking.html', cta: 'Scotiabank Business' },
                         { action: 'Bring: Certificate of Incorporation, Articles of Incorporation, company TRN, directors\' TRNs, and proof of address (utility bill under 6 months old).' },
-                        { action: 'Provide two character references — from a Justice of the Peace or another bank.' },
+                        { action: 'Provide two character references. From a Justice of the Peace or another bank.' },
                         { action: 'Bring a Directors\' Resolution authorising the account, listing authorised signatories and signing mandate.' },
                         { action: 'Provide 12 months of bank statements or audited financials.' },
-                        { action: 'In-branch signing of Signature Card, Operation of Account Agreement, and Business Services Application. Account active within 48–72 hours. Download your bank letter and upload it here.' },
+                        { action: 'In-branch signing of Signature Card, Operation of Account Agreement, and Business Services Application. Account active within 48 to 72 hours. Download your bank letter and upload it here.' },
                     ],
                 },
             ],
@@ -1334,30 +1332,30 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
             tracks: [
                 {
                     label: 'Mercury (best for startups and international founders)',
-                    time: '1–3 business days',
+                    time: '1 to 3 business days',
                     cost: 'Free. No minimum balance, no monthly fees.',
                     steps: [
                         { action: 'Apply online at Mercury. No branch visit required. Accepts international founders with a US entity.', url: 'https://mercury.com', cta: 'Mercury bank' },
                         { action: 'Provide: formation documents (Articles / Certificate), EIN confirmation, government ID for all owners over 25%, and Operating Agreement or Bylaws.' },
-                        { action: 'Account typically approved in 1–3 business days. Download your bank letter and upload it here.' },
+                        { action: 'Account typically approved in 1 to 3 business days. Download your bank letter and upload it here.' },
                     ],
                 },
                 {
                     label: 'Relay (great for multi-account cash management)',
-                    time: '2–4 business days',
+                    time: '2 to 4 business days',
                     cost: 'Free. No minimum balance.',
                     steps: [
-                        { action: 'Apply at Relay. Supports up to 20 sub-accounts — useful for separating operating cash, payroll, and tax reserves.', url: 'https://relayfi.com', cta: 'Relay bank' },
+                        { action: 'Apply at Relay. Supports up to 20 sub-accounts. Useful for separating operating cash, payroll, and tax reserves.', url: 'https://relayfi.com', cta: 'Relay bank' },
                         { action: 'Provide: formation documents, EIN, government ID.' },
                         { action: 'Download your bank letter and upload it here.' },
                     ],
                 },
                 {
                     label: 'Brex (VC-backed startups)',
-                    time: '1–2 business days',
+                    time: '1 to 2 business days',
                     cost: 'Free. Includes corporate card with no personal guarantee.',
                     steps: [
-                        { action: 'Apply at Brex. Built for funded startups — recommended if you\'re raising or have raised.', url: 'https://www.brex.com', cta: 'Brex' },
+                        { action: 'Apply at Brex. Built for funded startups. Recommended if you\'re raising or have raised.', url: 'https://www.brex.com', cta: 'Brex' },
                         { action: 'Provide: formation documents, EIN, cap table.' },
                     ],
                 },
@@ -1382,14 +1380,14 @@ const Signup = ({ setCurrentView }) => {
     const [founderName, setFounderName] = useState('');
     const [workEmail, setWorkEmail] = useState('');
     const [fundingStage, setFundingStage] = useState('Pre-Seed');
-    // Step 3 — jurisdiction + entity
+    // Step 3. Jurisdiction + entity
     const [country, setCountry] = useState('United States');
     const [jurisdiction, setJurisdiction] = useState('');
     const [businessIntent, setBusinessIntent] = useState('');
     const [sellsTo, setSellsTo] = useState('');
     const [entityType, setEntityType] = useState('');
     const [entityOverride, setEntityOverride] = useState(false);
-    // Step 3 — domain + email
+    // Step 3. Domain + email
     const [hasDomain, setHasDomain] = useState(null); // true | false | null
     const [existingDomain, setExistingDomain] = useState('');
     const [domainQuery, setDomainQuery] = useState('');
@@ -1399,7 +1397,7 @@ const Signup = ({ setCurrentView }) => {
     const [hasBusinessEmail, setHasBusinessEmail] = useState(null); // true | false | null
     const [workspaceSeats, setWorkspaceSeats] = useState(1);
     const [workspacePlan, setWorkspacePlan] = useState('business_starter');
-    // Step 5 — password
+    // Step 5. Password
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [loading, setLoading] = useState(false);
@@ -1724,7 +1722,7 @@ const Signup = ({ setCurrentView }) => {
                             </form>
                         )}
 
-                        {/* Step 5 — Password */}
+                        {/* Step 5: Password */}
                         {step === 5 && (
                             <form onSubmit={handleCreateAccount} className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl shadow-2xl space-y-6">
                                 <div className="group"><label className={labelClass}>Password</label><input type="password" value={password} onChange={e => setPassword(e.target.value)} required minLength={8} className={inputClass} placeholder="••••••••••••" /></div>
@@ -1749,7 +1747,7 @@ const Signup = ({ setCurrentView }) => {
     );
 };
 
-// Dashboard — protected client console
+// Dashboard. Protected client console
 const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [session, setSession] = useState(null);
     const [email, setEmail] = useState('');
@@ -1769,7 +1767,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [armedDeleteId, setArmedDeleteId] = useState(null);
     const [deletingId, setDeletingId] = useState(null);
     const [deleteError, setDeleteError] = useState('');
-    // Phase A — admin filters
+    // Phase A. Admin filters
     const [adminSearch, setAdminSearch] = useState('');
     const [adminPlanFilter, setAdminPlanFilter] = useState('all'); // 'all' | 'starter' | 'growth' | 'past_due'
     const [adminLifecycleFilter, setAdminLifecycleFilter] = useState('all'); // 'all' | 'onboarding' | 'active' | 'paused' | 'churned' | 'archived'
@@ -1809,9 +1807,9 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [completingStep06, setCompletingStep06] = useState(false);
     const [step06Error, setStep06Error] = useState('');
     const [advanceStepError, setAdvanceStepError] = useState('');
-    // Questions the user has already asked — persisted in localStorage per user
+    // Questions the user has already asked. Persisted in localStorage per user
     const [answeredQuestions, setAnsweredQuestions] = useState([]);
-    // Capital readiness — partner intro request state
+    // Capital readiness. Partner intro request state
     const [capitalRequestSent, setCapitalRequestSent] = useState(false);
     const [activePhaseTab, setActivePhaseTab] = useState('foundation'); // 'foundation' | 'operations' | 'infrastructure'
     const [capitalRequesting, setCapitalRequesting] = useState(false);
@@ -1885,7 +1883,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                 } else {
                     setClientProfile(data);
                     
-                    // Load last AI answer from messages table — works across devices
+                    // Load last AI answer from messages table. Works across devices
                     if (!data.is_admin) {
                         supabase
                             .from('messages')
@@ -1966,7 +1964,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         }
     }, [clientProfile]);
 
-    // Load answered questions + vault state — Supabase first, localStorage as fallback cache
+    // Load answered questions + vault state: Supabase first, localStorage as fallback cache
     useEffect(() => {
         if (!session || !clientProfile) return;
         const uid = session.user.id;
@@ -2133,7 +2131,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                             setComplianceBlueprint(json);
                             fromEdge = true;
                         }
-                    } catch { /* edge unavailable — fall through to DB */ }
+                    } catch { /* edge unavailable. Fall through to DB */ }
                 }
                 if (!cancelled && !fromEdge) {
                     const { data: row } = await supabase.from('procedure_guides').select('blueprint').eq('slug', slug).maybeSingle();
@@ -2501,7 +2499,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
           jurisdictions: ['*'],
           stages: ['Pre-Seed','Seed','Series A','Series B+','Bootstrapped'],
           match_weight: 65,
-          why: () => `Low-cost domains and email. Onboardin is a registered reseller — apply through the Infrastructure pipeline step.`,
+          why: () => `Low-cost domains and email. Onboardin is a registered reseller. Apply through the Infrastructure pipeline step.`,
         },
     ];
 
@@ -2651,7 +2649,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         const intakeRow = (artifacts || []).find((a) => a.kind === 'compliance_intake');
         const intake = mergeProfileIntoIntake(buildIntakeAnswers(intakeRow), client, bp.intake_questions || []);
         if (!intakeRow?.artifact_path) {
-            return { pass: false, missing: ['Compliance intake not saved — client must complete Step 06 from dashboard'] };
+            return { pass: false, missing: ['Compliance intake not saved. Client must complete Step 06 from dashboard'] };
         }
         return evaluateAcceptCriteria(bp, intake, artifacts || [], docs || []);
     };
@@ -2862,7 +2860,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         </div>
                     )}
 
-                    {/* Phase A — Action queue: clients waiting on admin attention */}
+                    {/* Phase A: Action queue: clients waiting on admin attention */}
                     {(() => {
                         const nonAdmin = allClients.filter(c => !c.is_admin);
                         const unread = nonAdmin.filter(c => c.last_message_at > c.admin_last_read_at);
@@ -2936,7 +2934,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         );
                     })()}
 
-                    {/* Phase A — Filter bar */}
+                    {/* Phase A: Filter bar */}
                     {!adminLoading && (
                         <div className="mb-4 flex flex-wrap items-center gap-3">
                             <div className="flex-1 min-w-[200px] relative">
@@ -2971,9 +2969,8 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         <div className="space-y-3">
                             {[1,2,3].map(i => <div key={i} className="w-full h-16 bg-white/5 rounded-xl animate-pulse" />)}
                         </div>
-                    ) : (
-                        <div className="bg-white/5 border border-white/10 rounded-2xl backdrop-blur-xl overflow-hidden">
-                            {/* Desktop header — hidden on mobile */}
+                    ) : (<div className="bg-white/5 border border-white/10 rounded-2xl backdrop-blur-xl overflow-hidden">
+                            {/* Desktop header, hidden on mobile */}
                             <div className="hidden md:grid md:grid-cols-[minmax(180px,2fr)_minmax(120px,1.2fr)_90px_100px_110px_60px_minmax(140px,1.5fr)_90px_90px_80px] gap-0 px-6 py-3 border-b border-white/5">
                                 {['Company','Founder','Stage','Plan','Lifecycle','Credits','Progress','Joined','',''].map((h, i) => (
                                     <span key={i} className="text-xs uppercase tracking-widest text-gray-500">{h}</span>
@@ -3046,7 +3043,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                                     </div>
                                                 </div>
                                                 <span className="text-xs text-gray-300 truncate pr-2">{client.founder_name}</span>
-                                                <span className="text-xs uppercase tracking-widest text-purple-300 border border-purple-400/20 px-2 py-0.5 rounded-full whitespace-nowrap">{client.funding_stage || '—'}</span>
+                                                <span className="text-xs uppercase tracking-widest text-purple-300 border border-purple-400/20 px-2 py-0.5 rounded-full whitespace-nowrap">{client.funding_stage || 'n/a'}</span>
                                                 {planSelect}
                                                 <span className={`text-xs uppercase tracking-widest px-2 py-0.5 rounded-full whitespace-nowrap ${lcColor}`}>{lc}</span>
                                                 <span className="text-xs text-gray-400">{client.daily_ai_credits}</span>
@@ -3079,7 +3076,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                                     </div>
                                                 </div>
                                                 <div className="flex flex-wrap items-center gap-2 mb-3">
-                                                    <span className="text-xs uppercase tracking-widest text-purple-300 bg-purple-400/10 px-2 py-1 rounded-full">{client.funding_stage || '—'}</span>
+                                                    <span className="text-xs uppercase tracking-widest text-purple-300 bg-purple-400/10 px-2 py-1 rounded-full">{client.funding_stage || 'n/a'}</span>
                                                     <span className={`text-xs uppercase tracking-widest px-2 py-1 rounded-full ${lcColor}`}>{lc}</span>
                                                     <span className="text-xs text-gray-500">{client.daily_ai_credits} credits</span>
                                                     <span className="text-xs text-gray-500">{joined}</span>
@@ -3301,7 +3298,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                 </div>
                             )}
 
-                            {/* Phase A — Lifecycle + onboarding step controls */}
+                            {/* Phase A: Lifecycle + onboarding step controls */}
                             <div className="px-6 py-4 border-t border-white/5 bg-white/[0.02] grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <p className="text-sm uppercase tracking-widest text-gray-500 mb-2">Lifecycle</p>
@@ -3340,15 +3337,13 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                 </div>
                             </div>
 
-                            {(selectedClient.onboarding_step ?? 0) >= 5 && (
-                                <div className="px-6 py-4 border-t border-white/5">
+                            {(selectedClient.onboarding_step ?? 0) >= 5 && (<div className="px-6 py-4 border-t border-white/5">
                                     <div className="flex items-center justify-between mb-3">
-                                        <p className="text-sm uppercase tracking-widest text-gray-500">Step 06 — Compliance Artifacts</p>
+                                        <p className="text-sm uppercase tracking-widest text-gray-500">Step 06, Compliance Artifacts</p>
                                         <span className="text-xs uppercase tracking-widest text-purple-400/60 border border-purple-500/20 px-2 py-0.5 rounded-full">{clientComplianceArtifacts.length} rows</span>
                                     </div>
                                     {clientComplianceArtifacts.length === 0 ? (
-                                        <p className="text-sm text-gray-600 italic">No compliance artifacts yet.</p>
-                                    ) : (
+                                        <p className="text-sm text-gray-600 italic">No compliance artifacts yet.</p>) : (
                                         <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                                             {clientComplianceArtifacts.map((a) => (
                                                 <div key={a.id} className="flex items-center gap-3 py-2 px-3 bg-white/5 rounded-lg">
@@ -3366,7 +3361,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                 </div>
                             )}
 
-                            {/* Ticket #08 — Recurring obligations (compliance_obligations). Not Step 06. */}
+                            {/* Ticket #08: Recurring obligations (compliance_obligations). Not Step 06. */}
                             <AdminObligationsPanel
                                 client={selectedClient}
                                 obligations={adminClientObligations}
@@ -3455,7 +3450,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         </div>
                     </div>
 
-                    {/* Quick setup banner — shown when jurisdiction/entity not yet set */}
+                    {/* Quick setup banner. Shown when jurisdiction/entity not yet set */}
                     {!profileLoading && clientProfile && !clientProfile.jurisdiction && !clientProfile.entity_type && !showJurisdictionSetup && (
                         <div className="mb-8 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-purple-500/20 rounded-2xl p-5 flex items-center justify-between gap-4 animate-[fadeIn_0.4s_ease-out]">
                             <div className="flex items-center gap-4">
@@ -3476,7 +3471,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         </div>
                     )}
 
-                    {/* Alert strip — past_due or other urgent states */}
+                    {/* Alert strip. Past_due or other urgent states */}
                     {!profileLoading && !alertDismissed && clientProfile && canAccessComplianceCalendar(clientProfile).access && (() => {
                         const enriched = clientObligations.map(enrichObligation);
                         const overdueItems = enriched.filter((o) => o.effectiveStatus === 'overdue');
@@ -3541,7 +3536,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         </div>
                     )}
 
-                    {/* Overview tab — profile + progress */}
+                    {/* Overview tab. Profile + progress */}
                     {dashTab === 'overview' && <div className="grid grid-cols-1 md:grid-cols-[2fr_3fr] gap-4">
                         {/* Client Profile card */}
                         <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
@@ -3584,7 +3579,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                             )}
                         </div>
 
-                        {/* Onboarding Progress — phased tabs with tier gating */}
+                        {/* Onboarding Progress. Phased tabs with tier gating */}
                         {(() => {
                             const plan = clientProfile?.plan ?? 'starter';
                             const isPaid = plan === 'growth' || plan === 'enterprise';
@@ -3667,9 +3662,9 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                     <p className="text-sm text-gray-600 mt-5 italic">
                                         {activePhaseTab === 'foundation' && 'We take you as far as we can without cost. Foundation steps are always on the house.'}
                                         {activePhaseTab === 'operations' && !isPaid && 'Operations covers tax registration, business banking, IP templates, and privacy compliance. Unlock with Growth.'}
-                                        {activePhaseTab === 'operations' && isPaid && 'Tax, banking, IP, and privacy — your specialist will work alongside the AI guide through each.'}
+                                        {activePhaseTab === 'operations' && isPaid && 'Tax, banking, IP, and privacy. Your specialist will work alongside the AI guide through each.'}
                                         {activePhaseTab === 'infrastructure' && !isPaid && 'Infrastructure covers your landing page, repo, CRM, analytics, and first AI agent. Unlock with Growth.'}
-                                        {activePhaseTab === 'infrastructure' && isPaid && 'Your digital infrastructure — built and configured to your business profile.'}
+                                        {activePhaseTab === 'infrastructure' && isPaid && 'Your digital infrastructure. Built and configured to your business profile.'}
                                     </p>
                                     {activePhaseTab === 'operations' && currentStep >= 5 && (
                                         <Step06Panel
@@ -3696,7 +3691,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         })()}
                     </div>}
 
-                    {/* Pipeline tab — full 11-step onboarding detail */}
+                    {/* Pipeline tab. Full 11-step onboarding detail */}
                     {dashTab === 'pipeline' && (() => {
                         const plan = clientProfile?.plan ?? 'starter';
                         const isPaid = plan === 'growth' || plan === 'enterprise';
@@ -3781,7 +3776,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         );
                     })()}
 
-                    {/* Formation Assistant — overview tab only */}
+                    {/* Formation Assistant. Overview tab only */}
                     {dashTab === 'overview' && <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
                         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
                             <div className="flex items-center gap-3">
@@ -3863,7 +3858,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         </form>
                     </div>}
 
-                    {/* Vault tab — documents */}
+                    {/* Vault tab. Documents */}
                     {dashTab === 'vault' && <>{/* Documents: categorized by entity + jurisdiction */}
                     {(() => {
                         const hasJurisdiction = clientProfile?.jurisdiction || clientProfile?.entity_type;
@@ -4014,12 +4009,11 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                                     }}
                                                 />
                                             );
-                                            return (
-                                                <div
+                                            return (<div
                                                     key={cat.id}
                                                     className={`border rounded-xl p-4 space-y-3 transition-all ${hasDoc ? 'border-green-400/20 bg-green-400/5' : isExpanded ? 'border-purple-400/30 bg-purple-500/8' : cat.required ? 'border-purple-500/20 bg-purple-500/5' : 'border-white/5 bg-white/[0.02]'}`}
                                                 >
-                                                    {/* Header row — upload lives here, no expand trigger */}
+                                                    {/* Header row, upload lives here, no expand trigger */}
                                                     <div className="flex items-start justify-between gap-2">
                                                         <div className="flex items-center gap-2">
                                                             <i className={`ph ${cat.icon} text-base ${hasDoc ? 'text-green-400' : isExpanded ? 'text-purple-300' : cat.required ? 'text-purple-400' : 'text-gray-500'}`}></i>
@@ -4033,8 +4027,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                                             {cat.templateUrl && (
                                                                 <a href={cat.templateUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400/80 hover:text-blue-300 transition-colors" title="Download Template">
                                                                     <i className="ph ph-file-arrow-down text-base"></i>
-                                                                </a>
-                                                            )}
+                                                                </a>)}
                                                             {uploadInput}
                                                         </div>
                                                     </div>
@@ -4070,7 +4063,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         );
                     })()}
 
-                    {/* Vault process panel — full-screen overlay showing step-by-step doc process */}
+                    {/* Vault process panel. Full-screen overlay showing step-by-step doc process */}
                     {vaultProcess && (() => {
                         const cat = vaultProcess;
                         const proc = cat.process;
@@ -4219,7 +4212,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         );
                     })()}</>}
 
-                    {/* Compliance tab — Ticket #08 recurring obligations (not Step 06) */}
+                    {/* Compliance tab: Ticket #08 recurring obligations (not Step 06) */}
                     {dashTab === 'compliance' && (
                         <ComplianceCalendar
                             clientProfile={clientProfile}
@@ -4255,7 +4248,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                         {t.badge > 0 && <span className="ml-1 w-4 h-4 bg-blue-500 rounded-full text-xs flex items-center justify-center text-white font-bold">{t.badge}</span>}
                                     </button>
                                 ))}
-                                {/* Onboardin tab — greyed + disabled on free tier */}
+                                {/* Onboardin tab. Greyed + disabled on free tier */}
                                 {(() => {
                                     const badge = teamMessages.filter(m => m.is_admin_message && !m.seen).length;
                                     const active = msgInbox === 'team';
@@ -4435,7 +4428,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                         ))}
                                     </ul>
                                 </div>
-                                {/* Capital Partners — empty state */}
+                                {/* Capital Partners. Empty state */}
                                 <div className="bg-black/30 border border-white/5 rounded-xl p-4">
                                     <div className="flex items-center gap-2 mb-2">
                                         <i className="ph ph-handshake text-purple-300 text-base"></i>
@@ -4444,11 +4437,10 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                     {capitalRequestSent ? (
                                         <div className="flex items-start gap-2 py-2">
                                             <i className="ph ph-check-circle text-green-400 text-base flex-shrink-0 mt-0.5"></i>
-                                            <p className="text-base text-gray-300 leading-relaxed">Request received. Our team will review your profile and message you with matched capital sources within 1–2 business days.</p>
+                                            <p className="text-base text-gray-300 leading-relaxed">Request received. Our team will review your profile and message you with matched capital sources within 1 to 2 business days.</p>
                                         </div>
-                                    ) : (
-                                        <>
-                                            <p className="text-base text-gray-400 leading-relaxed mb-3">No direct partners are live in your region yet. While we build out integrations, our team can do a manual capital-source intro on request — matched to your stage, country, and business model.</p>
+                                    ) : (<>
+                                            <p className="text-base text-gray-400 leading-relaxed mb-3">No direct partners are live in your region yet. While we build out integrations, our team can do a manual capital-source intro on request, matched to your stage, country, and business model.</p>
                                             <button
                                                 onClick={handleRequestCapitalIntro}
                                                 disabled={capitalRequesting || score < 60}
@@ -4457,8 +4449,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                             >
                                                 {capitalRequesting ? 'Sending…' : 'Request capital intro'}
                                             </button>
-                                        </>
-                                    )}
+                                        </>)}
                                 </div>
                             </div>
                         );
@@ -4578,22 +4569,20 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         );
                     })()}
 
-                    {/* Billing — overview tab only */}
+                    {/* Billing. Overview tab only */}
                     {dashTab === 'overview' && (() => {
                         const plan = clientProfile?.plan ?? 'starter';
                         const isPaid = plan === 'growth' || plan === 'enterprise';
                         const isPastDue = plan === 'past_due';
-                        return (
-                            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                        return (<div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
                                 <div className="flex items-center justify-between mb-4">
                                     <h3 className="text-sm uppercase tracking-widest text-gray-500">Billing</h3>
-                                    {isPaid && <span className="text-sm uppercase tracking-widest text-green-300 bg-green-400/10 border border-green-400/20 px-2 py-1 rounded-full">Growth — Active</span>}
+                                    {isPaid && <span className="text-sm uppercase tracking-widest text-green-300 bg-green-400/10 border border-green-400/20 px-2 py-1 rounded-full">Growth: Active</span>}
                                     {isPastDue && <span className="text-sm uppercase tracking-widest text-red-300 bg-red-400/10 border border-red-400/20 px-2 py-1 rounded-full">Payment Failed</span>}
-                                    {!isPaid && !isPastDue && <span className="text-sm uppercase tracking-widest text-gray-400 bg-white/5 border border-white/10 px-2 py-1 rounded-full">Starter — Free</span>}
+                                    {!isPaid && !isPastDue && <span className="text-sm uppercase tracking-widest text-gray-400 bg-white/5 border border-white/10 px-2 py-1 rounded-full">Starter, Free</span>}
                                 </div>
                                 {isPaid ? (
-                                    <p className="text-base text-gray-400 leading-relaxed">You're on the Growth plan. Full access to all features and priority support.</p>
-                                ) : isPastDue ? (
+                                    <p className="text-base text-gray-400 leading-relaxed">You're on the Growth plan. Full access to all features and priority support.</p>) : isPastDue ? (
                                     <div className="space-y-3">
                                         <p className="text-base text-red-300 leading-relaxed">Your last payment failed. Update your payment method to restore access.</p>
                                         <button onClick={handleUpgrade} className="w-full py-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm font-bold uppercase tracking-wider text-red-300 hover:bg-red-500/20 transition-all">
@@ -4695,13 +4684,11 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         >
                             Recover Access Credentials
                         </p>
-                    ) : (
-                        <form onSubmit={handleReset} className="bg-black/40 border border-white/10 rounded-lg p-4 text-left space-y-3">
+                    ) : (<form onSubmit={handleReset} className="bg-black/40 border border-white/10 rounded-lg p-4 text-left space-y-3">
                             {resetStatus === 'sent' ? (
                                 <p className="text-sm uppercase tracking-widest text-green-400 text-center py-1">
-                                    Reset link sent — check your inbox.
-                                </p>
-                            ) : (
+                                    Reset link sent, check your inbox.
+                                </p>) : (
                                 <>
                                     <div className="group">
                                         <label className="block text-sm uppercase tracking-widest text-gray-500 mb-1 group-focus-within:text-purple-400 transition-colors">Email</label>
@@ -4743,7 +4730,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     );
 };
 
-// GalaxyBackground — canvas starfield with nebula glow and shooting stars
+// GalaxyBackground. Canvas starfield with nebula glow and shooting stars
 const GalaxyBackground = ({ visible }) => {
     const canvasRef = useRef(null);
     const stateRef = useRef(null);
@@ -4765,7 +4752,7 @@ const GalaxyBackground = ({ visible }) => {
         const rand = (a, b) => a + Math.random() * (b - a);
 
         if (!stateRef.current) {
-            // dense star field — 3 layers (distant tiny, mid, bright foreground)
+            // dense star field: 3 layers (distant tiny, mid, bright foreground)
             const stars = [
                 ...Array.from({ length: 420 }, () => { const x=Math.random(),y=Math.random(); const cx=Math.abs(x-0.5),cy=Math.abs(y-0.5); const nearCenter=(cx<0.18&&cy<0.18); return { x, y, r: nearCenter?rand(0.1,0.3):rand(0.2,0.7), alpha: nearCenter?rand(0.1,0.25):rand(0.2,0.55), twinkleSpeed: rand(0.03,0.10), twinkleOffset: Math.random()*Math.PI*2, drift: rand(-0.00002,0.00002), color: [255,255,255] }; }),
                 ...Array.from({ length: 140 }, () => { const x=Math.random(),y=Math.random(); const cx=Math.abs(x-0.5),cy=Math.abs(y-0.5); const nearCenter=(cx<0.18&&cy<0.18); return { x, y, r: nearCenter?rand(0.4,0.7):rand(0.7,1.4), alpha: nearCenter?rand(0.15,0.3):rand(0.4,0.8), twinkleSpeed: rand(0.05,0.14), twinkleOffset: Math.random()*Math.PI*2, drift: rand(-0.00004,0.00004), color: [220,210,255] }; }),
@@ -4803,7 +4790,7 @@ const GalaxyBackground = ({ visible }) => {
             ctx.fillStyle = bg;
             ctx.fillRect(0, 0, W, H);
 
-            // nebulae — simple radial fills at viewport scale
+            // nebulae. Simple radial fills at viewport scale
             nebulae.forEach(n => {
                 const nx = n.x * W, ny = n.y * H, nr = n.r * Math.min(W, H);
                 const [r,g,b] = n.color;
@@ -4900,7 +4887,7 @@ const GalaxyBackground = ({ visible }) => {
     );
 };
 
-// EarthBackground — midnight Caribbean: deep ocean blue base, warm gold fireflies, bioluminescent blue glows
+// EarthBackground. Midnight Caribbean: deep ocean blue base, warm gold fireflies, bioluminescent blue glows
 const EarthBackground = ({ visible }) => {
     const canvasRef = useRef(null);
     const stateRef = useRef(null);
@@ -4916,7 +4903,7 @@ const EarthBackground = ({ visible }) => {
         const rand = (a, b) => a + Math.random() * (b - a);
 
         if (!stateRef.current) {
-            // particles — warm gold fireflies + cool bioluminescent blue/teal
+            // particles. Warm gold fireflies + cool bioluminescent blue/teal
             const fireflies = Array.from({ length: 110 }, () => {
                 const kind = Math.random();
                 return {
@@ -4931,7 +4918,7 @@ const EarthBackground = ({ visible }) => {
                     color: kind > 0.55 ? [201, 162, 42] : kind > 0.25 ? [30, 160, 220] : [20, 210, 180],
                 };
             });
-            // ambient depth glows — ocean blue from below, warm amber from top (surface light)
+            // ambient depth glows. Ocean blue from below, warm amber from top (surface light)
             const glows = [
                 { x: 0.50, y: 0.0,  r: 0.70, color: [180, 130, 40],  alpha: 0.06 }, // surface warmth top center
                 { x: 0.15, y: 0.05, r: 0.45, color: [160, 110, 25],  alpha: 0.05 }, // surface warmth top left
@@ -4950,7 +4937,7 @@ const EarthBackground = ({ visible }) => {
         const tick = (t) => {
             const ctx = canvas.getContext('2d');
 
-            // base — warm amber at surface fading to deep midnight blue-black at the bottom
+            // base. Warm amber at surface fading to deep midnight blue-black at the bottom
             const bg = ctx.createLinearGradient(0, 0, 0, H);
             bg.addColorStop(0,    'rgb(12, 18, 10)');  // dark warm green-black at top (shoreline)
             bg.addColorStop(0.18, 'rgb(6,  14, 22)');  // transition into ocean
@@ -5018,17 +5005,15 @@ const InquiryBanner = ({ onDismiss }) => {
         return () => clearTimeout(t);
     }, [onDismiss]);
 
-    return (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-[fadeIn_0.4s_ease-out]">
+    return (<div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-[fadeIn_0.4s_ease-out]">
             <div className="flex items-center gap-4 bg-[#03020a]/90 border border-purple-500/30 backdrop-blur-xl rounded-2xl px-6 py-4 shadow-2xl">
                 <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse flex-shrink-0"></div>
-                <p className="text-base uppercase tracking-widest text-gray-200">Inquiry received — our team will be in touch shortly.</p>
+                <p className="text-base uppercase tracking-widest text-gray-200">Inquiry received, our team will be in touch shortly.</p>
                 <button onClick={onDismiss} className="ml-2 text-gray-500 hover:text-white transition-colors">
                     <i className="ph ph-x text-base"></i>
                 </button>
             </div>
-        </div>
-    );
+        </div>);
 };
 
 const BrandKitToast = ({ onDismiss }) => {
@@ -5119,12 +5104,11 @@ const App = () => {
         }
     };
 
-    return (
-        <div className={`min-h-screen text-white relative font-sans selection:bg-purple-500/30 ${theme === 'earth' ? 'bg-[#01030c]' : 'bg-[#03020a]'}`}>
+    return (<div className={`min-h-screen text-white relative font-sans selection:bg-purple-500/30 ${theme === 'earth' ? 'bg-[#01030c]' : 'bg-[#03020a]'}`}>
             {theme === 'earth' ? <EarthBackground visible={true} /> : <GalaxyBackground visible={true} />}
 
             <nav className={`fixed top-0 left-0 w-full z-50 px-8 py-8 md:px-16 md:py-12 flex justify-center items-center transition-all duration-700 ${currentView !== 'landing' || navReady ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-4'}`}>
-                {/* nav logo — muted, kept for reference */}
+                {/* nav logo, muted, kept for reference */}
                 <div
                     className="cursor-pointer nav-link flex items-center group opacity-0 pointer-events-none absolute left-8 md:left-16"
                     onClick={() => setCurrentView('landing')}
@@ -5139,8 +5123,7 @@ const App = () => {
                     </div>
                 </div>
 
-                {appSession ? (
-                    /* Authenticated nav — identity + sign out */
+                {appSession ? (/* Authenticated nav, identity + sign out */
                     <div className="flex items-center gap-4 md:gap-6 text-sm md:text-base tracking-widest uppercase font-bold">
                         <span className="nav-link text-purple-200 hidden sm:inline truncate max-w-[200px]" title={appProfile?.company_name || appSession.user.email}>
                             {appProfile?.is_admin ? 'Admin Console' : (appProfile?.company_name || appSession.user.email)}
@@ -5154,8 +5137,7 @@ const App = () => {
                         </button>
                         <button onClick={handleAppSignOut} className="nav-link text-gray-500 hover:text-white transition-colors">Sign Out</button>
                     </div>
-                ) : (
-                    /* Marketing nav — pre-auth */
+                ) : (/* Marketing nav, pre-auth */
                     <div className="flex items-center gap-8 md:gap-12 text-sm md:text-base tracking-widest uppercase font-bold">
                         <button onClick={() => navigateTo('features')} className={`nav-link transition-opacity hidden sm:block ${currentView === 'features' ? 'text-purple-300 opacity-100' : 'opacity-60 hover:opacity-100'}`}>Features</button>
                         <button onClick={() => navigateTo('pricing')} className={`nav-link transition-opacity hidden sm:block ${currentView === 'pricing' ? 'text-purple-300 opacity-100' : 'opacity-60 hover:opacity-100'}`}>Pricing</button>
@@ -5192,7 +5174,7 @@ const App = () => {
                 {currentView === 'signup' && <Signup setCurrentView={navigateTo} />}
             </main>
 
-            {/* Features/Pricing/Support overlay — fade up, tap outside to dismiss */}
+            {/* Features/Pricing/Support overlay. Fade up, tap outside to dismiss */}
             {(currentView === 'features' || currentView === 'pricing' || currentView === 'support') && (
                 <>
                     {currentView === 'features' && <Features onDismiss={() => navigateTo('landing')} visible={viewVisible} />}

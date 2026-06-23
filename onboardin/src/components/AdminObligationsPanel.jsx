@@ -31,7 +31,7 @@ export default function AdminObligationsPanel({
     if (error) {
       setSeedError(error.message);
     } else {
-      setSeedOk('Obligations seeded (idempotent — no duplicate slugs).');
+      setSeedOk('Obligations seeded (idempotent, no duplicate slugs).');
       await onRefresh();
     }
     setSeeding(false);
@@ -109,7 +109,7 @@ export default function AdminObligationsPanel({
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-gray-300 truncate">{ob.title}</p>
-                  <p className="text-xs text-gray-600 truncate">{ob.slug} · {ob.authority || ob.seeded_from || '—'}</p>
+                  <p className="text-xs text-gray-600 truncate">{ob.slug} · {ob.authority || ob.seeded_from || 'n/a'}</p>
                 </div>
                 <span className={`text-[10px] uppercase tracking-widest border px-2 py-0.5 rounded-full flex-shrink-0 ${statusPillClass(ob.effectiveStatus)}`}>
                   {statusLabel(ob.effectiveStatus, ob.daysUntil)}

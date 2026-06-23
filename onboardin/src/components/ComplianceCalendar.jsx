@@ -190,13 +190,12 @@ export default function ComplianceCalendar({
 
   if (!access.access) {
     const isGrowth = access.reason === 'growth';
-    return (
-      <div className="bg-gradient-to-br from-purple-500/5 to-blue-500/5 border border-purple-500/15 rounded-2xl p-8 backdrop-blur-xl text-center">
+    return (<div className="bg-gradient-to-br from-purple-500/5 to-blue-500/5 border border-purple-500/15 rounded-2xl p-8 backdrop-blur-xl text-center">
         <i className={`ph ${isGrowth ? 'ph-lock-simple' : 'ph-calendar-check'} text-3xl text-purple-300/60 mb-4 block`}></i>
         <p className="text-sm uppercase tracking-widest text-gray-500 mb-2">Compliance Calendar</p>
         <p className="text-base text-gray-400 leading-relaxed max-w-md mx-auto mb-4">
           {isGrowth
-            ? 'Recurring filing deadlines — TCC renewals, annual reports, franchise tax, and more. Unlock with Growth.'
+            ? 'Recurring filing deadlines, TCC renewals, annual reports, franchise tax, and more. Unlock with Growth.'
             : 'Your compliance calendar activates when your entity is active or onboarding is complete (step 7+).'}
         </p>
         {isGrowth && (

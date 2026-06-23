@@ -1,5 +1,5 @@
 /**
- * Step 06 — Privacy & Compliance helpers.
+ * Step 06: Privacy & Compliance helpers.
  * Slug resolution, intake visibility, accept_criteria evaluation, vault categories.
  */
 
@@ -206,6 +206,6 @@ export function getComplianceVaultCategories(blueprint) {
 }
 
 export const COMPLIANCE_DISCLAIMER =
-  'This guided procedure helps you prepare and publish compliance documents. It does not provide legal advice. Termly, OIC, and FinCEN filings are manual in v1 — upload proof when complete.';
+  'This guided procedure helps you prepare and publish compliance documents. It does not provide legal advice. Termly, OIC, and FinCEN filings are manual in v1. Upload proof when complete.';
 
 export const TERMLY_URL = 'https://termly.io';

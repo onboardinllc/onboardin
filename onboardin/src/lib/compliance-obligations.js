@@ -1,5 +1,5 @@
 /**
- * Ticket #08 — Recurring compliance obligations (maintenance phase).
+ * Ticket #08: Recurring compliance obligations (maintenance phase).
  * Separate from Step 06 (#07) one-time privacy/compliance artifacts.
  */
 
@@ -110,7 +110,7 @@ export function categoryIconBg(status) {
 }
 
 export function formatDueDateParts(dueDate) {
-  if (!dueDate) return { day: '—', month: '' };
+  if (!dueDate) return { day: 'n/a', month: '' };
   const d = new Date(`${dueDate}T00:00:00`);
   return {
     day: d.getDate(),

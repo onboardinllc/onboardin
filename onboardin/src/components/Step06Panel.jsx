@@ -43,21 +43,19 @@ export default function Step06Panel({
   const [proofUploading, setProofUploading] = useState(null);
 
   if (locked) {
-    return (
-      <div className="mt-6 bg-gradient-to-br from-purple-500/5 to-blue-500/5 border border-purple-500/15 rounded-xl p-6">
+    return (<div className="mt-6 bg-gradient-to-br from-purple-500/5 to-blue-500/5 border border-purple-500/15 rounded-xl p-6">
         <div className="flex items-center gap-3 mb-3">
           <i className="ph ph-shield-check text-purple-300 text-xl"></i>
-          <h4 className="text-sm uppercase tracking-widest text-gray-400">Step 06 — Privacy & Compliance</h4>
+          <h4 className="text-sm uppercase tracking-widest text-gray-400">Step 06: Privacy & Compliance</h4>
           <span className="ml-auto text-xs uppercase tracking-widest text-purple-300 bg-purple-400/10 border border-purple-400/20 px-2 py-0.5 rounded-full">Growth</span>
         </div>
         <p className="text-base text-gray-500 leading-relaxed mb-4">
-          Privacy policy, data protection registration, cookie consent, and proof uploads — guided by jurisdiction-specific procedures.
+          Privacy policy, data protection registration, cookie consent, and proof uploads, guided by jurisdiction-specific procedures.
         </p>
         <button type="button" onClick={onUpgrade} className="text-sm uppercase tracking-widest text-purple-300 border border-purple-500/30 px-3 py-2 rounded-lg hover:bg-purple-500/10 transition-all">
           Unlock with Growth →
         </button>
-      </div>
-    );
+      </div>);
   }
 
   if (!blueprint) {
@@ -282,12 +280,11 @@ export default function Step06Panel({
     );
   };
 
-  return (
-    <div className="mt-6 space-y-4">
+  return (<div className="mt-6 space-y-4">
       <div className="bg-gradient-to-br from-purple-500/5 to-blue-500/5 border border-purple-500/15 rounded-xl p-5">
         <div className="flex items-center gap-2 mb-2">
           <i className="ph ph-shield-check text-purple-300 text-lg"></i>
-          <h4 className="text-sm uppercase tracking-widest text-gray-300">Step 06 — Privacy & Compliance</h4>
+          <h4 className="text-sm uppercase tracking-widest text-gray-300">Step 06, Privacy & Compliance</h4>
           {intakeDone && pass && <span className="ml-auto text-xs uppercase tracking-widest text-green-300 bg-green-400/10 border border-green-400/20 px-2 py-0.5 rounded-full">Ready</span>}
         </div>
         <p className="text-sm text-gray-500 leading-relaxed">{blueprint.description}</p>
@@ -358,7 +355,7 @@ export default function Step06Panel({
                             className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500/50" />
                           <button type="button" onClick={() => saveArtifactUrl(step)} disabled={artifactSaving === kind}
                             className="text-xs uppercase tracking-widest text-purple-300 border border-purple-500/30 px-3 py-1.5 rounded-lg hover:bg-purple-500/10 disabled:opacity-40 whitespace-nowrap">
-                            {artifactSaving === kind ? '…' : "I've published — save URL"}
+                            {artifactSaving === kind ? '…' : "I've published. Save URL"}
                           </button>
                         </div>
                       )}

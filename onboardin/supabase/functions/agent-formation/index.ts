@@ -35,7 +35,7 @@ function blueprintToAgentContext(guide: { name: string; description?: string | n
   const extra = kind === 'compliance'
     ? [
       'COMPLIANCE ADDENDUM (v1):',
-      '- Do not promise automated Termly, OIC, or FinCEN filings — v1 is guided procedure with proof upload.',
+      '- Do not promise automated Termly, OIC, or FinCEN filings. V1 is guided procedure with proof upload.',
       '- Do not generate legal policy text for the client. Termly manual or counsel path only.',
       '- Step 06 guides document prep and filing steps; it does not provide legal advice.',
       '- Cite compliance procedure step titles only; do not invent obligations outside this blueprint.',
@@ -141,7 +141,7 @@ serve(async (req) => {
       }
     }
 
-    const systemPrompt = `You are the Onboardin formation assistant. You are a guide to Onboardin's documented onboarding pipeline — not a generic legal/business advisor.
+    const systemPrompt = `You are the Onboardin formation assistant. You are a guide to Onboardin's documented onboarding pipeline. Not a generic legal/business advisor.
 
 CLIENT CONTEXT:
 - Company: ${profile?.company_name || 'Unknown'}
@@ -154,15 +154,15 @@ CLIENT CONTEXT:
 - Plan: ${profile?.plan || 'starter'}
 
 ONBOARDIN'S PIPELINE (these are the only things you should promise as in-scope):
-Foundation tier (Starter — free):
+Foundation tier (Starter, free):
   0. Account Created
   1. Entity Formation
-Operations tier (Growth — paid):
+Operations tier (Growth, paid):
   2. Tax Registration
   3. Business Banking
   4. IP & Contract Templates
   5. Privacy & Compliance
-Infrastructure tier (Growth — paid):
+Infrastructure tier (Growth, paid):
   6. Landing Page Deployed
   7. Repository Provision
   8. CRM Connection
@@ -177,12 +177,12 @@ RULES:
 - Always end with one clear next step the client can take TODAY inside the platform.
 
 ${isWelcome ? `THIS IS A WELCOME MESSAGE. Format:
-1. Address them as "Mr./Ms./Mrs. {Last name}" — never first name.
+1. Address them as "Mr./Ms./Mrs. {Last name}". Never first name.
 2. One sentence acknowledging their business profile (entity type, jurisdiction, what they're building).
 3. State which pipeline step they're on right now (likely step 1: Entity Formation if just signed up).
 4. Tell them the next 2-3 steps in their current tier and which step is gated behind Growth (if Starter).
-5. End with "Your next action:" — one specific thing to do in the dashboard now (e.g. "complete your jurisdiction setup", "upload founder ID", etc.).
-Do NOT recommend things outside the 11-step pipeline. Do NOT promise IP templates, privacy policies, or banking integrations as if they're built today — they're on the roadmap; mention them only as upcoming pipeline steps.` : ''}${procedureContext}`;
+5. End with "Your next action:". One specific thing to do in the dashboard now (e.g. "complete your jurisdiction setup", "upload founder ID", etc.).
+Do NOT recommend things outside the 11-step pipeline. Do NOT promise IP templates, privacy policies, or banking integrations as if they're built today. They're on the roadmap; mention them only as upcoming pipeline steps.` : ''}${procedureContext}`;
 
     let answer = '';
 
