@@ -12,6 +12,7 @@ import Step06Panel from './components/Step06Panel';
 import ComplianceCalendar from './components/ComplianceCalendar';
 import AdminObligationsPanel from './components/AdminObligationsPanel';
 import { canAccessComplianceCalendar, enrichObligation, obligationStats } from './lib/compliance-obligations';
+import { buildDraftPayload, buildActivePayload, serializeIntake } from './lib/compliance-intake-persist';
 
 const LOGO_PNG = '/Onboardin.png';
 const LOGO_SVG = '/favicon.svg';
@@ -1804,6 +1805,10 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [complianceBlueprint, setComplianceBlueprint] = useState(null);
     const [complianceArtifacts, setComplianceArtifacts] = useState([]);
     const [complianceIntake, setComplianceIntake] = useState({});
+    const [draftStatus, setDraftStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
+    const intakeDirtyRef = React.useRef(false);
+    const autosaveTimerRef = React.useRef(null);
+    const lastSavedPayloadRef = React.useRef(null);
     const [completingStep06, setCompletingStep06] = useState(false);
     const [step06Error, setStep06Error] = useState('');
     const [advanceStepError, setAdvanceStepError] = useState('');
@@ -2046,10 +2051,70 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
             .then(({ data }) => {
                 const rows = data || [];
                 setComplianceArtifacts(rows);
-                const intakeRow = rows.find((a) => a.kind === 'compliance_intake');
-                if (intakeRow) setComplianceIntake(buildIntakeAnswers(intakeRow));
+                // Do not overwrite in-progress edits — user may be mid-typing
+                if (!intakeDirtyRef.current) {
+                    const intakeRow = rows.find((a) => a.kind === 'compliance_intake');
+                    if (intakeRow) setComplianceIntake(buildIntakeAnswers(intakeRow));
+                }
             });
     }, [session?.user?.id, clientProfile?.is_admin]);
+
+    const autosaveDraftIntake = React.useCallback(async (answers) => {
+        if (!supabase || !session || !complianceBlueprint) return;
+        const payload = buildDraftPayload({
+            clientId: session.user.id,
+            blueprintId: complianceBlueprint.id,
+            lastResearched: complianceBlueprint.last_researched,
+            intakeAnswers: answers,
+            jurisdiction: complianceBlueprint.jurisdiction,
+        });
+        const serialized = payload.artifact_path;
+        if (serialized === lastSavedPayloadRef.current) {
+            intakeDirtyRef.current = false;
+            return;
+        }
+        setDraftStatus('saving');
+        const existing = complianceArtifacts.find((a) => a.kind === 'compliance_intake');
+        let error;
+        if (existing) {
+            ({ error } = await supabase.from('compliance_artifacts').update(payload).eq('id', existing.id));
+        } else {
+            ({ error } = await supabase.from('compliance_artifacts').insert(payload));
+        }
+        if (error) {
+            setDraftStatus('error');
+        } else {
+            lastSavedPayloadRef.current = serialized;
+            intakeDirtyRef.current = false;
+            setDraftStatus('saved');
+            // Refresh artifact list to pick up new row id (without disturbing intake state)
+            supabase.from('compliance_artifacts').select('*').eq('client_id', session.user.id).order('created_at', { ascending: false })
+                .then(({ data }) => { if (data) setComplianceArtifacts(data); });
+        }
+    }, [supabase, session?.user?.id, complianceBlueprint, complianceArtifacts]);
+
+    const handleIntakeChange = React.useCallback((updater) => {
+        setComplianceIntake((prev) => {
+            const next = typeof updater === 'function' ? updater(prev) : updater;
+            intakeDirtyRef.current = true;
+            if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+            autosaveTimerRef.current = setTimeout(() => {
+                autosaveDraftIntake(next);
+            }, 900);
+            return next;
+        });
+    }, [autosaveDraftIntake]);
+
+    const handleIntakePromoted = React.useCallback((answers) => {
+        if (autosaveTimerRef.current) {
+            clearTimeout(autosaveTimerRef.current);
+            autosaveTimerRef.current = null;
+        }
+        intakeDirtyRef.current = false;
+        lastSavedPayloadRef.current = serializeIntake(answers);
+        setComplianceIntake(answers);
+        setDraftStatus(null);
+    }, []);
 
     const refreshClientObligations = React.useCallback(() => {
         if (!session || !supabase || clientProfile?.is_admin) return Promise.resolve();
@@ -2097,6 +2162,22 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         if (!session || !supabase || !clientProfile || clientProfile.is_admin) return;
         refreshComplianceArtifacts();
     }, [session?.user?.id, clientProfile?.id, clientProfile?.is_admin, refreshComplianceArtifacts]);
+
+    // Flush pending autosave on tab hide or page unload
+    useEffect(() => {
+        const flush = () => {
+            if (intakeDirtyRef.current && autosaveTimerRef.current) {
+                clearTimeout(autosaveTimerRef.current);
+                autosaveDraftIntake(complianceIntake);
+            }
+        };
+        window.addEventListener('beforeunload', flush);
+        document.addEventListener('visibilitychange', flush);
+        return () => {
+            window.removeEventListener('beforeunload', flush);
+            document.removeEventListener('visibilitychange', flush);
+        };
+    }, [autosaveDraftIntake, complianceIntake]);
 
     useEffect(() => {
         if (!session || !supabase || !clientProfile || clientProfile.is_admin) return;
@@ -2649,7 +2730,10 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         const intakeRow = (artifacts || []).find((a) => a.kind === 'compliance_intake');
         const intake = mergeProfileIntoIntake(buildIntakeAnswers(intakeRow), client, bp.intake_questions || []);
         if (!intakeRow?.artifact_path) {
-            return { pass: false, missing: ['Compliance intake not saved. Client must complete Step 06 from dashboard'] };
+            return { pass: false, missing: ['Compliance intake not started. Client must open Step 06 from dashboard'] };
+        }
+        if (intakeRow.status === 'draft') {
+            return { pass: false, missing: ['Compliance intake saved as draft. Client must save intake to finish'] };
         }
         return evaluateAcceptCriteria(bp, intake, artifacts || [], docs || []);
     };
@@ -2705,16 +2789,13 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
             setCompletingStep06(false);
             return;
         }
-        const intakePayload = {
-            client_id: session.user.id,
-            kind: 'compliance_intake',
-            label: 'Compliance intake',
-            jurisdiction: complianceBlueprint.jurisdiction || 'multi',
-            artifact_path: JSON.stringify(merged),
-            status: 'active',
-            source: 'upload',
-            procedure_version: `${complianceBlueprint.id}@${complianceBlueprint.last_researched || 'v1'}`,
-        };
+        const intakePayload = buildActivePayload({
+            clientId: session.user.id,
+            blueprintId: complianceBlueprint.id,
+            lastResearched: complianceBlueprint.last_researched,
+            intakeAnswers: merged,
+            jurisdiction: complianceBlueprint.jurisdiction,
+        });
         const { error: intakeErr } = intakeRow
             ? await supabase.from('compliance_artifacts').update(intakePayload).eq('id', intakeRow.id)
             : await supabase.from('compliance_artifacts').insert(intakePayload);
@@ -2723,6 +2804,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
             setCompletingStep06(false);
             return;
         }
+        handleIntakePromoted(merged);
         const step = clientProfile.onboarding_step ?? 0;
         if (step !== 5) {
             setCompletingStep06(false);
@@ -3672,7 +3754,8 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                             onUpgrade={handleUpgrade}
                                             blueprint={complianceBlueprint}
                                             intake={complianceIntake}
-                                            setIntake={setComplianceIntake}
+                                            setIntake={handleIntakeChange}
+                                            onIntakePromoted={handleIntakePromoted}
                                             artifacts={complianceArtifacts}
                                             docs={myDocs}
                                             clientProfile={clientProfile}
@@ -3684,6 +3767,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                             completingStep={completingStep06}
                                             stepError={step06Error}
                                             currentStep={currentStep}
+                                            draftStatus={draftStatus}
                                         />
                                     )}
                                 </div>
@@ -3758,7 +3842,8 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                         onUpgrade={handleUpgrade}
                                         blueprint={complianceBlueprint}
                                         intake={complianceIntake}
-                                        setIntake={setComplianceIntake}
+                                        setIntake={handleIntakeChange}
+                                        onIntakePromoted={handleIntakePromoted}
                                         artifacts={complianceArtifacts}
                                         docs={myDocs}
                                         clientProfile={clientProfile}
@@ -3770,6 +3855,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                         completingStep={completingStep06}
                                         stepError={step06Error}
                                         currentStep={currentStep}
+                                        draftStatus={draftStatus}
                                     />
                                 )}
                             </div>

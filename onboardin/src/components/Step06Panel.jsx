@@ -9,6 +9,7 @@ import {
   mergeProfileIntoIntake,
   shouldShowIntakeQuestion,
 } from '../lib/compliance';
+import { buildActivePayload } from '../lib/compliance-intake-persist';
 
 const STATUS_COLORS = {
   active: 'text-green-300 bg-green-400/10 border-green-400/20',
@@ -34,6 +35,8 @@ export default function Step06Panel({
   completingStep,
   stepError,
   currentStep,
+  draftStatus,
+  onIntakePromoted,
 }) {
   const [savingIntake, setSavingIntake] = useState(false);
   const [intakeError, setIntakeError] = useState('');
@@ -99,16 +102,13 @@ export default function Step06Panel({
       }
     }
     const existing = artifacts.find((a) => a.kind === 'compliance_intake');
-    const payload = {
-      client_id: session.user.id,
-      kind: 'compliance_intake',
-      label: 'Compliance intake',
-      jurisdiction: blueprint.jurisdiction || 'multi',
-      artifact_path: JSON.stringify(mergedIntake),
-      status: 'active',
-      source: 'upload',
-      procedure_version: `${blueprint.id}@${blueprint.last_researched || 'v1'}`,
-    };
+    const payload = buildActivePayload({
+      clientId: session.user.id,
+      blueprintId: blueprint.id,
+      lastResearched: blueprint.last_researched,
+      intakeAnswers: mergedIntake,
+      jurisdiction: blueprint.jurisdiction,
+    });
     const { error: artErr } = existing
       ? await supabase.from('compliance_artifacts').update(payload).eq('id', existing.id)
       : await supabase.from('compliance_artifacts').insert(payload);
@@ -117,7 +117,8 @@ export default function Step06Panel({
       setSavingIntake(false);
       return;
     }
-    setIntake(mergedIntake);
+    if (onIntakePromoted) onIntakePromoted(mergedIntake);
+    else setIntake(mergedIntake);
     await onRefreshArtifacts();
     setSavingIntake(false);
   };
@@ -293,7 +294,12 @@ export default function Step06Panel({
 
       {/* Intake */}
       <div className="bg-white/5 border border-white/10 rounded-xl p-5">
-        <h5 className="text-xs uppercase tracking-widest text-gray-500 mb-4">Intake</h5>
+        <div className="flex items-center justify-between mb-4">
+          <h5 className="text-xs uppercase tracking-widest text-gray-500">Intake</h5>
+          {draftStatus === 'saving' && <span className="text-xs text-gray-500">Saving…</span>}
+          {draftStatus === 'saved' && <span className="text-xs text-gray-500">Draft saved</span>}
+          {draftStatus === 'error' && <span className="text-xs text-red-400">Save failed, retrying</span>}
+        </div>
         <div className="space-y-4">
           {(blueprint.intake_questions || []).filter((q) => shouldShowIntakeQuestion(q, mergedIntake)).map((q) => (
             <div key={q.id}>
