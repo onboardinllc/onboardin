@@ -11,6 +11,7 @@ import {
 import Step06Panel from './components/Step06Panel';
 import ComplianceCalendar from './components/ComplianceCalendar';
 import AdminObligationsPanel from './components/AdminObligationsPanel';
+import DocumentFillPanel from './components/DocumentFillPanel';
 import { canAccessComplianceCalendar, enrichObligation, obligationStats } from './lib/compliance-obligations';
 import { buildDraftPayload, buildActivePayload, serializeIntake } from './lib/compliance-intake-persist';
 
@@ -837,6 +838,7 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
             desc: 'Signed founder agreement covering equity, vesting, IP, and dispute resolution.',
             required: true,
             templateUrl: 'https://onboardin.llc/templates/founder-agreement-v1.pdf',
+            fillEnabled: true,
             process: {
                 title: 'Draft and sign your Founder Agreement',
                 pick: null,
@@ -909,6 +911,7 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
             desc: isJM ? 'Private shareholders agreement defining transfer restrictions and reserved matters.' : 'Internal governance document outlining ownership and management structure.',
             required: false,
             templateUrl: entityType === 'LLC' ? 'https://onboardin.llc/templates/llc-operating-agreement.pdf' : 'https://onboardin.llc/templates/corp-bylaws.pdf',
+            fillEnabled: true,
             process: isJM ? {
                 title: 'Draft your Shareholders Agreement',
                 pick: null,
@@ -1839,6 +1842,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [showPricing, setShowPricing] = useState(false);
     const [alertDismissed, setAlertDismissed] = useState(false);
     const [expandedVaultCard, setExpandedVaultCard] = useState(null);
+    const [vaultFillCat, setVaultFillCat] = useState(null);
     const [vaultProcess, setVaultProcess] = useState(null);
     const [vaultProcessTrack, setVaultProcessTrack] = useState(0);
     const [vaultStepsDone, setVaultStepsDone] = useState({}); // { catId_trackIdx_stepIdx: true }
@@ -4119,6 +4123,16 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                                     </div>
                                                     {/* Card body */}
                                                     <p className="text-sm text-gray-500 leading-relaxed">{cat.desc}</p>
+                                                    {cat.fillEnabled && cat.templateUrl?.includes('onboardin.llc/templates') && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => { setVaultProcess(null); setVaultFillCat(cat); }}
+                                                            className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-blue-400 hover:text-blue-300 transition-colors"
+                                                        >
+                                                            <i className="ph ph-magic-wand text-xs"></i>
+                                                            Preview with my info
+                                                        </button>
+                                                    )}
                                                     {!hasDoc && cat.process && (
                                                         <button
                                                             type="button"
@@ -4148,6 +4162,22 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                             </div>
                         );
                     })()}
+
+                    {/* Document fill panel — preview + assistant fill for fillEnabled cards */}
+                    {vaultFillCat && (
+                        <DocumentFillPanel
+                            cat={vaultFillCat}
+                            clientProfile={clientProfile}
+                            complianceIntake={complianceIntake}
+                            supabase={supabase}
+                            session={session}
+                            onClose={() => setVaultFillCat(null)}
+                            onDocumentSigned={(doc) => {
+                                setMyDocs(prev => [doc, ...prev]);
+                                setVaultFillCat(null);
+                            }}
+                        />
+                    )}
 
                     {/* Vault process panel. Full-screen overlay showing step-by-step doc process */}
                     {vaultProcess && (() => {

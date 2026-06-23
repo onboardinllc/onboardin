@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.4",
+    "pdf-lib": "^1.17.1",
     "preact": "^10.19.3",
     "react": "npm:@preact/compat",
     "react-dom": "npm:@preact/compat"

@@ -26,3 +26,6 @@ verify_jwt = true
 
 [functions.integrations-google-drive]
 verify_jwt = true
+
+[functions.document-fill]
+verify_jwt = true
