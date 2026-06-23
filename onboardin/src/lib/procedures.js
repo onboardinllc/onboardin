@@ -15,7 +15,8 @@
  *   required  — boolean
  *   process   — { title, pick, tracks[] }
  *     track:  { label, time, cost, steps[] }
- *     step:   { action, url?, cta?, note? }
+ *     step:   { action, url?, cta?, portalUrl?, portalCta?, note? }
+ *             url/cta = on-platform download; portalUrl/portalCta = external filing portal
  *
  * Last researched: 2026-06-04. Fees verified against official sources.
  * Delaware HB 400 (enacted 2026) fee increases reflected below.
@@ -109,10 +110,10 @@ export const JAMAICA_LTD = [
                     time: '4–6 working days. Same-day available for extra J$1,500–4,000.',
                     cost: '~J$28,000 total (registration fee + stamp duty). Name reservation: J$3,000 JMD.',
                     steps: [
-                        { action: 'Search your proposed company name at the COJ to confirm it is available. Reserve it using Form 6 (J$3,000 JMD, holds the name for 90 days).', url: 'https://www.orcjamaica.com', cta: 'Open COJ portal' },
-                        { action: 'Download and complete the BRF1 "Super Form". This single form simultaneously registers your company with COJ, TAJ (company TRN + TCC), NIS, NHT, and HEART. You do not file those separately.', url: 'https://www.orcjamaica.com/Forms.aspx', cta: 'Download BRF1 Super Form' },
-                        { action: 'Complete Form 1A (Articles of Incorporation). Include: proposed company name, registered office address in Jamaica, names and addresses of all directors, and authorized share capital.' },
-                        { action: 'Complete the Beneficial Ownership Return (BOR) forms. Use Form A for individual shareholders and Form B for corporate shareholders. Mandatory since 2023.' },
+                        { action: 'Search your proposed company name at the COJ to confirm it is available. Reserve it using Form 6 (J$3,000 JMD, holds the name for 90 days).', url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/form-6.pdf', cta: 'Download Form 6', portalUrl: 'https://www.orcjamaica.com', portalCta: 'COJ portal' },
+                        { action: 'Download and complete the BRF1 "Super Form". This single form simultaneously registers your company with COJ, TAJ (company TRN + TCC), NIS, NHT, and HEART. You do not file those separately.', url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/brf1.pdf', cta: 'Download BRF1', portalUrl: 'https://www.orcjamaica.com/Forms.aspx', portalCta: 'COJ forms portal' },
+                        { action: 'Complete Form 1A (Articles of Incorporation). Include: proposed company name, registered office address in Jamaica, names and addresses of all directors, and authorized share capital.', url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/form-1a.pdf', cta: 'Download Form 1A' },
+                        { action: 'Complete the Beneficial Ownership Return (BOR) forms. Use Form A for individual shareholders and Form B for corporate shareholders. Mandatory since 2023.', url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/form-a.pdf', cta: 'Download Form A (BOR)' },
                         { action: 'Gather for all directors: valid government ID (passport, driver\'s license, or voter\'s ID), personal TRN, and proof of residential address.' },
                         { action: 'Submit all forms at the COJ office (14 Camp Road, Kingston) or via the online portal. Pay the fee at the counter. Request same-day processing if you need it (submit before 11 AM).' },
                         { action: 'Receive your Certificate of Incorporation (typically 4–6 days). Your company TRN and initial 90-day TCC are issued at the same time. Upload your Certificate here.' },
@@ -476,7 +477,7 @@ export const US_DE_LLC = [
                     time: '4 business days',
                     cost: 'Free',
                     steps: [
-                        { action: 'Download Form SS-4 (Rev. Dec 2025 or later) from the IRS.', url: 'https://www.irs.gov/pub/irs-pdf/fss4.pdf', cta: 'Download Form SS-4' },
+                        { action: 'Download Form SS-4 (Rev. Dec 2025 or later) from the IRS.', url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/irs/fss4.pdf', cta: 'Download Form SS-4' },
                         { action: 'On Line 7b, write "Foreign" (since you have no SSN). Line 7a must be a natural person\'s name as the Responsible Party.' },
                         { action: 'Fax the completed form to: +1-304-707-9471 (International fax line). Include a return fax number on the cover sheet.' },
                         { action: 'You receive your EIN by fax within 4 business days. The physical CP 575 letter arrives by mail in 4–6 weeks. Upload whichever you receive first.' },
@@ -762,7 +763,7 @@ export const US_DE_CCORP = [
                     time: '4 business days',
                     cost: 'Free',
                     steps: [
-                        { action: 'Download Form SS-4.', url: 'https://www.irs.gov/pub/irs-pdf/fss4.pdf', cta: 'Download Form SS-4' },
+                        { action: 'Download Form SS-4.', url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/irs/fss4.pdf', cta: 'Download Form SS-4' },
                         { action: 'Write "Foreign" on Line 7b. Fax to +1-304-707-9471 with a return fax number.' },
                         { action: 'EIN arrives by fax within 4 business days.' },
                     ],
@@ -991,7 +992,7 @@ export const US_WY_LLC = [
                     time: '4 business days',
                     cost: 'Free',
                     steps: [
-                        { action: 'Download Form SS-4.', url: 'https://www.irs.gov/pub/irs-pdf/fss4.pdf', cta: 'Download Form SS-4' },
+                        { action: 'Download Form SS-4.', url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/irs/fss4.pdf', cta: 'Download Form SS-4' },
                         { action: 'Write "Foreign" on Line 7b. List a natural person on Line 7a. Fax to +1-304-707-9471.' },
                         { action: 'EIN by fax in 4 business days. Physical CP 575 arrives in 4–6 weeks.' },
                     ],

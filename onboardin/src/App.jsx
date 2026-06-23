@@ -875,10 +875,10 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
                         time: '4–6 working days',
                         cost: '~$28,000 JMD (registration + stamp duty)',
                         steps: [
-                            { action: 'Search your proposed company name at the COJ to confirm availability. Reserve it using Form 6.', url: 'https://www.orcjamaica.com', cta: 'Open COJ portal' },
-                            { action: 'Download and complete the BRF1 "Super Form". This single form registers your company AND handles NIS and GCT registration automatically.', url: 'https://www.orcjamaica.com/forms/', cta: 'Download BRF1 form' },
-                            { action: 'Gather: TRN for all directors and shareholders, valid ID for each, proof of registered address, and the completed Form 1A (Articles of Incorporation).' },
-                            { action: 'Submit the Beneficial Ownership Return (BOR) forms — Form A for individuals, Form B for corporate shareholders. Required by law.' },
+                            { action: 'Search your proposed company name at the COJ to confirm availability. Reserve it using Form 6 (J$3,000 JMD, holds name 90 days).', url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/form-6.pdf', cta: 'Download Form 6', portalUrl: 'https://www.orcjamaica.com', portalCta: 'COJ portal' },
+                            { action: 'Download and complete the BRF1 "Super Form". This single form registers your company AND handles NIS and GCT registration automatically.', url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/brf1.pdf', cta: 'Download BRF1', portalUrl: 'https://www.orcjamaica.com/Forms.aspx', portalCta: 'COJ forms portal' },
+                            { action: 'Gather: TRN for all directors and shareholders, valid ID for each, proof of registered address, and the completed Form 1A (Articles of Incorporation).', url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/form-1a.pdf', cta: 'Download Form 1A' },
+                            { action: 'Submit the Beneficial Ownership Return (BOR) forms — Form A for individuals, Form B for corporate shareholders. Required by law.', url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/form-a.pdf', cta: 'Download Form A (BOR)' },
                             { action: 'Submit all forms at the COJ office (14 Camp Road, Kingston) or via their online portal. Pay the fee at the counter. Same-day processing if submitted before 11 AM.' },
                             { action: 'Receive your Certificate of Incorporation (typically 4–6 days standard). Upload it here.' },
                         ],
@@ -1151,7 +1151,7 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
             icon: 'ph-receipt',
             desc: isUS ? 'IRS Employer Identification Number — required for banking and tax filings.' : 'Canada Revenue Agency business number confirmation.',
             required: true,
-            templateUrl: isUS ? 'https://www.irs.gov/pub/irs-pdf/fss4.pdf' : 'https://www.canada.ca/en/revenue-agency/services/tax/businesses/topics/registering-your-business/bro-how-register.html',
+            templateUrl: isUS ? 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/irs/fss4.pdf' : 'https://www.canada.ca/en/revenue-agency/services/tax/businesses/topics/registering-your-business/bro-how-register.html',
             process: isUS ? {
                 title: 'Get your EIN from the IRS',
                 pick: 'Choose your method:',
@@ -1172,7 +1172,7 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
                         time: '4 business days',
                         cost: 'Free',
                         steps: [
-                            { action: 'Download Form SS-4 (Rev. Dec 2025 or later).', url: 'https://www.irs.gov/pub/irs-pdf/fss4.pdf', cta: 'Download Form SS-4' },
+                            { action: 'Download Form SS-4 (Rev. Dec 2025 or later).', url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/irs/fss4.pdf', cta: 'Download Form SS-4' },
                             { action: 'On Line 7b write "Foreign" (no SSN). Line 7a must be a natural person\'s name as the Responsible Party.' },
                             { action: 'Fax the completed form to: +1-304-707-9471 (International fax line). Include a return fax number on your cover sheet.' },
                             { action: 'EIN arrives by fax within 4 business days. Physical CP 575 letter arrives by mail in 4–6 weeks. Upload whichever you receive first.' },
@@ -4158,6 +4158,13 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                                                     className="inline-flex items-center gap-1.5 text-xs text-purple-400 hover:text-purple-300 border border-purple-500/30 hover:border-purple-400/50 bg-purple-500/5 hover:bg-purple-500/10 px-3 py-1.5 rounded-lg transition-all">
                                                                     <i className="ph ph-arrow-square-out text-xs"></i>
                                                                     {step.cta || 'Open link'}
+                                                                </a>
+                                                            )}
+                                                            {step.portalUrl && !isDone && (
+                                                                <a href={step.portalUrl} target="_blank" rel="noopener noreferrer"
+                                                                    className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-300 border border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-lg transition-all">
+                                                                    <i className="ph ph-globe text-xs"></i>
+                                                                    {step.portalCta || 'Open filing portal'}
                                                                 </a>
                                                             )}
                                                             {!isDone && !hasReminder && !isReminderOpen && (
