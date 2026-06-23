@@ -782,11 +782,11 @@ export const US_DE_CCORP = [
             pick: null,
             tracks: [
                 {
-                    label: '2026 status — domestic corps currently exempt',
+                    label: 'March 2025 IFR — domestic corps not reporting companies',
                     time: 'N/A',
                     cost: 'Free',
                     steps: [
-                        { action: 'Domestic US-formed corporations are currently exempt from BOI filing under FinCEN\'s 2026 non-enforcement policy. Monitor for updates.' },
+                        { action: 'Domestic US-formed corporations are not reporting companies under FinCEN\'s March 2025 interim final rule. Monitor for final rule.' },
                         { action: 'Foreign-formed entities registered in the US must file within 30 days.', url: 'https://boiefiling.fincen.gov', cta: 'FinCEN BOI portal' },
                     ],
                 },
@@ -1011,11 +1011,11 @@ export const US_WY_LLC = [
             pick: null,
             tracks: [
                 {
-                    label: '2026 status — domestic LLCs currently exempt',
+                    label: 'March 2025 IFR — domestic LLCs not reporting companies',
                     time: 'N/A',
                     cost: 'Free',
                     steps: [
-                        { action: 'Domestic Wyoming LLCs are currently exempt from BOI filing under FinCEN\'s 2026 non-enforcement policy. Monitor FinCEN for updates.' },
+                        { action: 'Domestic Wyoming LLCs are not reporting companies under FinCEN\'s March 2025 interim final rule. Monitor for final rule.' },
                         { action: 'Foreign-formed entities operating in the US must file within 30 days.', url: 'https://boiefiling.fincen.gov', cta: 'FinCEN BOI portal' },
                     ],
                 },
