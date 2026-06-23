@@ -1195,20 +1195,19 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
             id: 'boi_report',
             label: 'BOI Report (FinCEN)',
             icon: 'ph-shield-check',
-            desc: 'Beneficial Ownership Information — domestic US entities currently exempt in 2026.',
+            desc: 'Beneficial Ownership Information — domestic U.S.-formed entities exempt under March 2025 IFR.',
             required: false,
             process: isUS ? {
                 title: 'Beneficial Ownership Information (BOI) Report',
                 pick: null,
                 tracks: [
                     {
-                        label: '2026 status — domestic US entities currently exempt',
+                        label: 'March 2025 IFR — domestic US entities not reporting companies',
                         time: 'N/A for domestic entities',
                         cost: 'Free',
                         steps: [
-                            { action: 'As of 2026, FinCEN has a non-enforcement policy for domestic US-formed entities due to ongoing Supreme Court challenges (NSBA v. Yellen). Domestic LLCs and C-Corps do not need to file.' },
+                            { action: 'Domestic U.S.-formed LLCs and C-Corps are not reporting companies under FinCEN\'s March 2025 interim final rule. Monitor fincen.gov/boi for the final rule.' },
                             { action: 'Foreign-formed entities registered to do business in the US must file within 30 days of registration.', url: 'https://boiefiling.fincen.gov', cta: 'FinCEN BOI portal' },
-                            { action: 'Monitor FinCEN.gov for updates — enforcement status may change if the Supreme Court rules.' },
                         ],
                     },
                 ],
