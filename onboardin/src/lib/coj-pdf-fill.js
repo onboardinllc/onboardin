@@ -1,10 +1,14 @@
 /**
  * Fill COJ statutory PDFs via AcroForm fields.
- * COJ Form 6 template is encrypted — Chrome ignores new content on encrypted saves.
- * We read widget rects from the source form, copy pages into an unencrypted PDF,
- * and draw black text at those rects so the browser PDF viewer shows filled values.
+ * COJ Form 6 template is encrypted — mobile viewers show blank if we only copy encrypted bytes.
+ * We bake field appearances on the encrypted source, copy from an unencrypted visual shell,
+ * then draw text at widget rects so filled values are visible everywhere.
  */
 import { PDFDocument, StandardFonts, rgb } from '../vendor/pdf-lib.esm.min.js';
+
+const COJ_FORM_6_SHELL_URL = 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/form-6-shell.pdf';
+
+let cachedShellBytes = null;
 
 /** Browser-safe — Buffer is Node-only and breaks mobile autofill. */
 function templateIsEncrypted(bytes) {
@@ -18,6 +22,18 @@ function templateIsEncrypted(bytes) {
     if (match) return true;
   }
   return false;
+}
+
+async function loadForm6ShellBytes() {
+  if (cachedShellBytes) return cachedShellBytes;
+  try {
+    const res = await fetch(COJ_FORM_6_SHELL_URL);
+    if (!res.ok) return null;
+    cachedShellBytes = new Uint8Array(await res.arrayBuffer());
+    return cachedShellBytes;
+  } catch {
+    return null;
+  }
 }
 
 function fieldValueForKey(key, def, fieldValues, placements) {
@@ -75,6 +91,76 @@ function formatDateBoxValue(value, boxIndex, rect) {
   return v;
 }
 
+function setAcroFieldText(acroField, value) {
+  if (!acroField || typeof acroField.setText !== 'function') return false;
+  try {
+    acroField.setText(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Apply values to AcroForm fields on the encrypted/source doc. */
+function applyFieldValues(srcFields, fieldMap, fieldValues, placements) {
+  let filledCount = 0;
+  for (const [key, def] of Object.entries(fieldMap || {})) {
+    if (!def) continue;
+    const value = fieldValueForKey(key, def, fieldValues, placements);
+    if (!value && !Array.isArray(def.acroIndices)) continue;
+
+    if (Array.isArray(def.acroIndices) && def.type === 'date') {
+      const parts = splitDateParts(value);
+      if (!parts) continue;
+      const values = parts.combined
+        ? [parts.combined]
+        : [parts.day, parts.month, parts.year];
+      def.acroIndices.forEach((idx, i) => {
+        const v = values[i];
+        if (!v) return;
+        const acro = srcFields[idx];
+        if (setAcroFieldText(acro, v)) filledCount += 1;
+      });
+      continue;
+    }
+
+    if (def.acroField == null && typeof def.acroIndex !== 'number') continue;
+    const acro = resolveAcroTarget(srcFields, def);
+    if (setAcroFieldText(acro, value)) filledCount += 1;
+  }
+  return filledCount;
+}
+
+/** Collect widget paint targets after appearances are generated. */
+function collectFieldPaints(pdfDoc, srcFields, fieldMap, fieldValues, placements) {
+  const paints = [];
+  for (const [key, def] of Object.entries(fieldMap || {})) {
+    if (!def) continue;
+    const value = fieldValueForKey(key, def, fieldValues, placements);
+    if (!value && !Array.isArray(def.acroIndices)) continue;
+
+    if (Array.isArray(def.acroIndices) && def.type === 'date') {
+      const parts = splitDateParts(value);
+      if (!parts) continue;
+      const values = parts.combined
+        ? [parts.combined]
+        : [parts.day, parts.month, parts.year];
+      def.acroIndices.forEach((idx, i) => {
+        const v = values[i];
+        if (!v) return;
+        const acro = srcFields[idx];
+        queueFieldPaint(paints, pdfDoc, acro, v, def.fontSize);
+      });
+      continue;
+    }
+
+    if (def.acroField == null && typeof def.acroIndex !== 'number') continue;
+    const acro = resolveAcroTarget(srcFields, def);
+    queueFieldPaint(paints, pdfDoc, acro, value, def.fontSize);
+  }
+  return paints;
+}
+
 function queueFieldPaint(paints, pdfDoc, acroField, value, fontSize) {
   const text = String(value ?? '').trim();
   if (!text || !acroField?.acroField) return false;
@@ -92,23 +178,13 @@ function queueFieldPaint(paints, pdfDoc, acroField, value, fontSize) {
   return queued;
 }
 
-function prepareFieldPaint(pdfDoc, paints, acroField, value, fontSize) {
-  if (!acroField || typeof acroField.setText !== 'function') return false;
-  try {
-    acroField.setText(value);
-  } catch {
-    return false;
-  }
-  return queueFieldPaint(paints, pdfDoc, acroField, value, fontSize);
-}
-
 function drawPaintQueue(pdfDoc, paints, font) {
   const pages = pdfDoc.getPages();
   for (const paint of paints) {
     const page = pages[paint.pageIndex];
     if (!page) continue;
     const rect = paint.rect;
-    const size = paint.fontSize || Math.min(11, Math.max(7, rect.height * 0.65));
+    const size = paint.fontSize || Math.min(12, Math.max(9, rect.height * 0.65));
     const y = rect.y + Math.max(2, (rect.height - size) * 0.35);
     page.drawText(paint.value, {
       x: rect.x + 2,
@@ -137,34 +213,8 @@ export async function buildCojFilledPdf({
   const srcDoc = await PDFDocument.load(templatePdfBytes, { ignoreEncryption: true });
   const srcForm = srcDoc.getForm();
   const srcFields = srcForm.getFields();
-  const paints = [];
 
-  let filledCount = 0;
-  for (const [key, def] of Object.entries(fieldMap || {})) {
-    if (!def) continue;
-    const value = fieldValueForKey(key, def, fieldValues, placements);
-    if (!value && !Array.isArray(def.acroIndices)) continue;
-
-    if (Array.isArray(def.acroIndices) && def.type === 'date') {
-      const parts = splitDateParts(value);
-      if (!parts) continue;
-      const values = parts.combined
-        ? [parts.combined]
-        : [parts.day, parts.month, parts.year];
-      def.acroIndices.forEach((idx, i) => {
-        const v = values[i];
-        if (!v) return;
-        const acro = srcFields[idx];
-        if (prepareFieldPaint(srcDoc, paints, acro, v, def.fontSize)) filledCount += 1;
-      });
-      continue;
-    }
-
-    if (def.acroField == null && typeof def.acroIndex !== 'number') continue;
-    const acro = resolveAcroTarget(srcFields, def);
-    if (prepareFieldPaint(srcDoc, paints, acro, value, def.fontSize)) filledCount += 1;
-  }
-
+  const filledCount = applyFieldValues(srcFields, fieldMap, fieldValues, placements);
   const font = await srcDoc.embedFont(StandardFonts.Helvetica);
 
   if (filledCount === 0) {
@@ -172,10 +222,32 @@ export async function buildCojFilledPdf({
     return { pdfBytes, filledCount };
   }
 
-  // Encrypted COJ templates (Form 6): Chrome won't render in-place edits — burn into an unencrypted copy.
-  if (templateIsEncrypted(templatePdfBytes)) {
+  const encrypted = templateIsEncrypted(templatePdfBytes);
+
+  if (encrypted) {
+    try {
+      srcForm.updateFieldAppearances(font);
+    } catch {
+      /* drawText backup below */
+    }
+
+    const paints = collectFieldPaints(srcDoc, srcFields, fieldMap, fieldValues, placements);
+
+    let visualDoc = srcDoc;
+    const shellBytes = await loadForm6ShellBytes();
+    if (shellBytes) {
+      try {
+        const shellDoc = await PDFDocument.load(shellBytes);
+        if (shellDoc.getPageCount() === srcDoc.getPageCount()) {
+          visualDoc = shellDoc;
+        }
+      } catch {
+        /* fall back to encrypted copy */
+      }
+    }
+
     const outDoc = await PDFDocument.create();
-    const copiedPages = await outDoc.copyPages(srcDoc, srcDoc.getPageIndices());
+    const copiedPages = await outDoc.copyPages(visualDoc, visualDoc.getPageIndices());
     copiedPages.forEach((page) => outDoc.addPage(page));
     const outFont = await outDoc.embedFont(StandardFonts.Helvetica);
     drawPaintQueue(outDoc, paints, outFont);
@@ -183,7 +255,6 @@ export async function buildCojFilledPdf({
     return { pdfBytes, filledCount };
   }
 
-  // Unencrypted templates: keep AcroForm fields editable with generated appearances.
   try {
     srcForm.updateFieldAppearances(font);
   } catch {
@@ -203,4 +274,9 @@ export function hasCojAcroFieldMap(fieldMap) {
       || Array.isArray(def.acroIndices)
     ),
   );
+}
+
+/** Test helper — reset cached shell between runs. */
+export function clearForm6ShellCache() {
+  cachedShellBytes = null;
 }
