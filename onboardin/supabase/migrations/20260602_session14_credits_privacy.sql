@@ -1,5 +1,5 @@
 -- Session 14: daily AI credits, AI data privacy toggle, AI-generated message tagging
--- Idempotent — safe to re-run. Includes the Session 6/7/8/10 catch-up columns
+-- Idempotent - safe to re-run. Includes the Session 6/7/8/10 catch-up columns
 -- in case the consolidated migration was never executed.
 
 -- Catch-up (Sessions 6, 7, 8, 10): only adds what's missing
@@ -50,7 +50,7 @@ create trigger on_message_inserted
   after insert on public.messages
   for each row execute function public.update_last_message_at();
 
--- Signup trigger update — populate Session 7 columns from auth metadata on signup
+-- Signup trigger update - populate Session 7 columns from auth metadata on signup
 create or replace function public.handle_new_client()
 returns trigger language plpgsql security definer as $$
 begin

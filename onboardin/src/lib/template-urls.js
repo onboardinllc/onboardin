@@ -1,4 +1,4 @@
-/** Public legal template PDFs — hosted in Supabase public-forms bucket. */
+/** Public legal template PDFs - hosted in Supabase public-forms bucket. */
 const FALLBACK_SUPABASE_URL = 'https://qatfiicpkunabpphwqee.supabase.co';
 const envUrl = import.meta.env?.VITE_SUPABASE_URL;
 const supabaseUrl = envUrl && !envUrl.startsWith('your-') ? envUrl : FALLBACK_SUPABASE_URL;

@@ -1,5 +1,5 @@
 /**
- * Browser PDF fill — document-fill edge (MuPDF AcroForm or coordinate overlay).
+ * Browser PDF fill - document-fill edge (MuPDF AcroForm or coordinate overlay).
  * Node scripts use scripts/pdf-fill-node.mjs instead.
  */
 import { getPdfFillStrategy } from './pdf-field-map.js';
@@ -27,7 +27,12 @@ export async function buildFilledPdf({
   template,
 }) {
   const strategy = getPdfFillStrategy(fieldMap);
-  if (!strategy) return { pdfBytes: templatePdfBytes, filledCount: 0 };
+  if (!strategy) {
+    return {
+      pdfBytes: templatePdfBytes instanceof Uint8Array ? templatePdfBytes : new Uint8Array(0),
+      filledCount: 0,
+    };
+  }
   if (!supabase) throw new Error('PDF autofill requires a signed-in session.');
 
   if (strategy === 'acro') {
@@ -39,7 +44,7 @@ export async function buildFilledPdf({
     });
   }
 
-  // coordinate — text/date fields only (signatures added later in sign overlay)
+  // coordinate - text/date fields only (signatures added later in sign overlay)
   const textFieldMap = Object.fromEntries(
     Object.entries(fieldMap || {}).filter(([, def]) => def?.type === 'text' || def?.type === 'date'),
   );

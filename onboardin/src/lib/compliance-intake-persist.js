@@ -1,6 +1,6 @@
 /**
  * Pure helpers for compliance intake auto-save and resume.
- * Used by Step06Panel (via App.jsx callbacks) — no Supabase imports here.
+ * Used by Step06Panel (via App.jsx callbacks) - no Supabase imports here.
  */
 
 export function serializeIntake(intakeAnswers) {

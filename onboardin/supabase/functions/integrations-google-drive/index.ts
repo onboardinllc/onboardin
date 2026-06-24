@@ -1,5 +1,5 @@
 /**
- * integrations-google-drive — Ticket #06 Google Drive export (Phase A stub)
+ * integrations-google-drive - Ticket #06 Google Drive export (Phase A stub)
  *
  * Handlers: oauth_start, oauth_callback, ensure_folder_tree, upload_file,
  * get_file_link, disconnect
@@ -22,7 +22,7 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-/** Mirrors scaffolds/data/drive-vault-category-map.json — keep in sync on #06 changes. */
+/** Mirrors scaffolds/data/drive-vault-category-map.json - keep in sync on #06 changes. */
 const DRIVE_VAULT_CATEGORY_MAP = {
   root: 'Onboardin/{company_slug}',
   subfolders: {

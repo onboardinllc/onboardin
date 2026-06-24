@@ -21,7 +21,7 @@ serve(async (req) => {
     const { domain } = await req.json();
     if (!domain) return new Response(JSON.stringify({ error: 'domain required' }), { status: 400, headers: corsHeaders });
 
-    // Strip TLD if provided — we'll check multiple TLDs
+    // Strip TLD if provided - we'll check multiple TLDs
     const sld = domain.replace(/\.[^.]+$/, '').toLowerCase().replace(/[^a-z0-9-]/g, '-');
     const tlds = ['com', 'co', 'io', 'net', 'org', 'app'];
     const domainList = tlds.map(t => `${sld}.${t}`).join(',');

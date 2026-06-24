@@ -1,5 +1,5 @@
 /**
- * Node-only PDF fill — PyMuPDF AcroForm or pdf-lib coordinate overlay.
+ * Node-only PDF fill - PyMuPDF AcroForm or pdf-lib coordinate overlay.
  * Used by local verification scripts; not bundled into the PWA.
  */
 import { getPdfFillStrategy } from '../src/lib/pdf-field-map.js';

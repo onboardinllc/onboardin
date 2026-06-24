@@ -1,4 +1,4 @@
-const CACHE_NAME = 'onboardin-v2';
+const CACHE_NAME = 'onboardin-v3';
 const PRECACHE = ['./Onboardin.png'];
 
 self.addEventListener('install', (event) => {

@@ -1,5 +1,5 @@
 /**
- * Canonical field registry — loaded from Supabase entity_field_definitions.
+ * Canonical field registry - loaded from Supabase entity_field_definitions.
  * Fallback seed for offline/dev until migrations applied.
  * Admin updates DB; Publish syncs legal_templates maps.
  */

@@ -127,7 +127,7 @@ if (doUpload) {
   if (!up.ok) process.exit(1);
 }
 
-console.log('\nDone —', FILLED);
+console.log('\nDone - ', FILLED);
 if (openAfter || !doUpload) {
   execSync(`powershell -Command "Start-Process -FilePath '${FILLED.replace(/'/g, "''")}'"`, { stdio: 'ignore' });
 }

@@ -6,7 +6,7 @@
 alter table public.clients
   add column if not exists step_statuses jsonb not null default '{}'::jsonb;
 
--- Lifecycle status — distinct from onboarding_step (which is formation progress)
+-- Lifecycle status - distinct from onboarding_step (which is formation progress)
 -- Values: onboarding | active | paused | churned | archived
 alter table public.clients
   add column if not exists lifecycle text not null default 'onboarding';

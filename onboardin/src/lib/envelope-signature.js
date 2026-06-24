@@ -1,8 +1,8 @@
 /**
  * Envelope signer PNG path assert + path builder.
- * No Supabase imports — pure helpers.
+ * No Supabase imports - pure helpers.
  *
- * Storage path format (invitees upload to their own uid prefix — RLS allows first segment = auth.uid()):
+ * Storage path format (invitees upload to their own uid prefix - RLS allows first segment = auth.uid()):
  *   {signerUserId}/envelope-signatures/{envelopeId}/{signerRowId}.png
  */
 

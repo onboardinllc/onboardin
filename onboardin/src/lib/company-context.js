@@ -1,6 +1,6 @@
 /**
  * Context merge precedence: clients.* → entity_profile.facts.* → formation_draft.* → compliance_intake (active only)
- * Rightmost wins on conflict. Resolver is read-only — never writes clients row.
+ * Rightmost wins on conflict. Resolver is read-only - never writes clients row.
  */
 
 /**
@@ -38,7 +38,7 @@ export function profileFactsToFlat(facts) {
 }
 
 /**
- * Superset of resolveCompanyContext — includes entity_profile.facts in merge chain.
+ * Superset of resolveCompanyContext - includes entity_profile.facts in merge chain.
  * Called by autofill-service; replaces ad-hoc context builds in coj-prefill.
  * merge order: clients.* → entity_profile.facts → formation_draft → compliance_intake
  */
@@ -87,7 +87,7 @@ export function resolveEntityFacts({ client, entityProfile, formationDraft, comp
 /**
  * Merge completed field_values and formation_draft fields back into entity_profile.facts.
  * Writes a best-effort patch; never overwrites user-entered data (provenance.source === 'user').
- * Non-blocking — called fire-and-forget from autofill-service.
+ * Non-blocking - called fire-and-forget from autofill-service.
  *
  * @param {import('@supabase/supabase-js').SupabaseClient} supabase
  * @param {string} clientId
@@ -202,7 +202,7 @@ export function applyPlaceholderMap(template, context) {
 
 /**
  * Resolves the flat field values from a placeholder_map definition.
- * Returns { fieldKey: resolvedValue } — ready to write to document_jobs.field_values.
+ * Returns { fieldKey: resolvedValue } - ready to write to document_jobs.field_values.
  * Keys marked llm:true get a sentinel '__llm__' value; the edge function fills them.
  */
 export function resolveFieldValues(placeholderMap, context) {
@@ -276,7 +276,7 @@ export function flattenFormationDraft(draft) {
  * Resolve a single field from a source string against a flat context map.
  * Supported prefixes: clients.*, computed.*, formation_draft.*, compliance_intake.*
  * Also resolves flattened keys (director_1_name etc.) already merged into context.
- * Dotted paths like formation_draft.directors.0.name fall back to '' — flatten first.
+ * Dotted paths like formation_draft.directors.0.name fall back to '' - flatten first.
  */
 function walkDottedPath(root, path) {
   if (!path) return '';
@@ -318,7 +318,7 @@ export function resolveFieldValueFromSource(source, context) {
       if (pfx === 'entity_profile.') {
         return resolveProfileFieldValue(key, context._rawProfile ?? {});
       }
-      // Dotted sub-path: formation_draft.directors.0.name — draft wins, profile fallback
+      // Dotted sub-path: formation_draft.directors.0.name - draft wins, profile fallback
       if (pfx === 'formation_draft.' && key.includes('.')) {
         const fromDraft = walkDottedPath(context._rawDraft ?? {}, key);
         if (fromDraft) return fromDraft;
@@ -327,7 +327,7 @@ export function resolveFieldValueFromSource(source, context) {
       return '';
     }
   }
-  // Unqualified key — direct lookup
+  // Unqualified key - direct lookup
   if (source in context) return String(context[source] ?? '');
   return '';
 }
@@ -335,12 +335,12 @@ export function resolveFieldValueFromSource(source, context) {
 /**
  * Resolve all COJ placeholder_map fields deterministically (0 credits).
  * Flattens formation_draft arrays before resolving.
- * Returns { fieldKey: resolvedValue } — no __llm__ sentinels.
+ * Returns { fieldKey: resolvedValue } - no __llm__ sentinels.
  */
 export function resolveCojFieldValues(template, context) {
   const placeholderMap = template?.placeholder_map ?? {};
   const draft = context._rawDraft ?? {};
-  // Director/shareholder flattened keys only — profile + draft precedence already in context.
+  // Director/shareholder flattened keys only - profile + draft precedence already in context.
   const enriched = { ...context, ...flattenFormationDraft(draft) };
 
   const result = {};

@@ -1,27 +1,27 @@
--- Privacy & Compliance artifacts — pipeline step 6 (0-indexed step 5).
+-- Privacy & Compliance artifacts - pipeline step 6 (0-indexed step 5).
 -- Tracks privacy policy, DPA, cookie consent records, and jurisdiction-specific
 -- compliance items (e.g. Jamaica Data Protection Act, EU GDPR, CCPA).
--- Versioned via effective_at — old versions kept for audit.
+-- Versioned via effective_at - old versions kept for audit.
 
 create table if not exists public.compliance_artifacts (
   id uuid primary key default gen_random_uuid(),
   client_id uuid not null references public.clients(id) on delete cascade,
-  -- e.g. 'privacy_policy', 'dpa', 'cookie_consent_config', 'terms_of_service',
-  --      'jamaica_dpa_2020_registration', 'gdpr_dpo_appointment'
+ -- e.g. 'privacy_policy', 'dpa', 'cookie_consent_config', 'terms_of_service',
+ -- 'jamaica_dpa_2020_registration', 'gdpr_dpo_appointment'
   kind text not null,
   label text not null,
-  -- jurisdiction this artifact addresses (or 'multi' for cross-border)
+ -- jurisdiction this artifact addresses (or 'multi' for cross-border)
   jurisdiction text not null default 'multi',
-  -- storage path to the published artifact
+ -- storage path to the published artifact
   artifact_path text,
-  -- public URL for hosted docs (e.g. /privacy on the client's site)
+ -- public URL for hosted docs (e.g. /privacy on the client's site)
   hosted_url text,
   effective_at timestamptz not null default now(),
-  -- 'draft' | 'active' | 'superseded' | 'expired'
+ -- 'draft' | 'active' | 'superseded' | 'expired'
   status text not null default 'draft',
-  -- how the artifact was created: 'termly_manual', 'upload', 'admin'
+ -- how the artifact was created: 'termly_manual', 'upload', 'admin'
   source text,
-  -- compliance procedure slug + version date used when artifact was created
+ -- compliance procedure slug + version date used when artifact was created
   procedure_version text,
   created_at timestamptz not null default now()
 );

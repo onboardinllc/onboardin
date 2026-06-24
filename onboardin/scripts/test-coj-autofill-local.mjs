@@ -1,5 +1,5 @@
 /**
- * Local COJ autofill dry-run — no vault upload.
+ * Local COJ autofill dry-run - no vault upload.
  * Pulls live client + template from Supabase, runs the same fill pipeline as the app,
  * writes PDFs to scripts/local-output/ for visual review.
  *
@@ -190,7 +190,7 @@ if (vaultBytes) await probePdf('vault snapshot', vaultBytes);
 const painted = extractPaintedStrings(pdfBytes);
 console.log('\n--- Painted text in local output (decompressed streams) ---');
 if (painted.length === 0) {
-  console.log('  WARNING: no Tj strings found — PDF may render blank');
+  console.log('  WARNING: no Tj strings found - PDF may render blank');
 } else {
   for (const s of painted) console.log(' ', JSON.stringify(s));
 }
@@ -216,7 +216,7 @@ if (vaultBytes) {
   console.log('local fill complete:', localOk ? 'YES' : 'NO');
   console.log('vault fill complete:', vaultOk ? 'YES' : 'NO');
   if (localOk && !vaultOk) {
-    console.log('→ Local pipeline OK but vault stale — re-autofill in app or run with --upload when ready');
+    console.log('→ Local pipeline OK but vault stale - re-autofill in app or run with --upload when ready');
   }
 }
 
@@ -224,7 +224,7 @@ console.log('\n--- Viewer note ---');
 console.log('Output copies filled field appearances into an unencrypted PDF (+ drawText backup).');
 console.log('Open the local file in Chrome/Acrobat here before uploading. On phone: download → Files/Adobe.');
 
-console.log('\n=== Done — review local PDF before any upload ===\n');
+console.log('\n=== Done - review local PDF before any upload ===\n');
 console.log('Review:', filledPath);
 if (vaultBytes) console.log('Vault snapshot:', join(OUT_DIR, 'vault-working-latest.pdf'));
 

@@ -2,6 +2,7 @@
  * Vault storage paths + upsert for autofilled working copies (all templates).
  */
 import { sortCojDocsNewestFirst } from './coj-documents.js';
+import { pdfBytesToUploadBody } from './pdf-bytes.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -11,7 +12,7 @@ export function templateDocumentCategory(template) {
   return template?.vault_card_id || template?.kind || 'documents';
 }
 
-/** Canonical autofilled PDF path — one working copy per template slot. */
+/** Canonical autofilled PDF path - one working copy per template slot. */
 export function workingCopyCanonicalPath(clientId, template) {
   if (!UUID_RE.test(clientId)) throw new Error('Invalid clientId in working copy path.');
   const category = templateDocumentCategory(template);
@@ -32,10 +33,11 @@ export async function upsertWorkingCopy(supabase, {
   const category = templateDocumentCategory(template);
   const bytes = pdfBytes instanceof Uint8Array ? pdfBytes : new Uint8Array(pdfBytes);
   const size = fileSize ?? bytes.byteLength;
+  const body = pdfBytesToUploadBody(bytes);
 
   const { error: uploadErr } = await supabase.storage
     .from('client-documents')
-    .upload(path, bytes, { contentType: 'application/pdf', upsert: true });
+    .upload(path, body, { contentType: 'application/pdf', upsert: true });
   if (uploadErr) throw new Error(`Upload failed: ${uploadErr.message}`);
 
   const { data: existing } = await supabase

@@ -1,4 +1,4 @@
--- Entity profile — canonical company facts store (Ticket #10 / profile autofill plan)
+-- Entity profile - canonical company facts store (Ticket #10 / profile autofill plan)
 -- Values are jsonb for schema flexibility; shape driven by entity_field_definitions.profile_path
 
 alter table public.clients

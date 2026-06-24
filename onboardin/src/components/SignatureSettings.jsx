@@ -8,7 +8,7 @@ import {
 import SignatureCanvas from './SignatureCanvas';
 
 /**
- * Overview card — draw or upload member signature PNG.
+ * Overview card - draw or upload member signature PNG.
  * Only mounted for non-admin members (App.jsx guard).
  */
 export default function SignatureSettings({ supabase, session, onUploadSuccess }) {
@@ -105,7 +105,7 @@ export default function SignatureSettings({ supabase, session, onUploadSuccess }
       {loading ? (
         <div className="h-10 w-32 bg-white/5 rounded animate-pulse" />
       ) : previewUrl && !showCanvas ? (
-        // Existing signature — preview + replace actions
+        // Existing signature - preview + replace actions
         <div className="space-y-3">
           <img
             src={previewUrl}
@@ -198,7 +198,7 @@ export default function SignatureSettings({ supabase, session, onUploadSuccess }
         <p className="text-xs text-gray-600 mt-3">PNG recommended. Transparent background works best on documents.</p>
       )}
       {inputMode === 'draw' && (showCanvas || !previewUrl) && (
-        <p className="text-xs text-gray-600 mt-3">Draw on a transparent background — works best on signed documents.</p>
+        <p className="text-xs text-gray-600 mt-3">Draw on a transparent background - works best on signed documents.</p>
       )}
 
       <input

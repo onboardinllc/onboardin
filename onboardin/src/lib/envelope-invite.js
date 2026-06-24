@@ -1,11 +1,11 @@
 /**
  * Token crypto, validation, email match for envelope invite links.
- * No Supabase imports — pure helpers callable in Node and browser.
+ * No Supabase imports - pure helpers callable in Node and browser.
  *
  * Security model:
- *   - 32-byte random token → base64url raw URL once; DB stores sha256(token) only.
- *   - Token validated server-side (sign-portal edge). Client only holds raw token from URL.
- *   - Email binding enforced on every sign-portal action.
+ * - 32-byte random token → base64url raw URL once; DB stores sha256(token) only.
+ * - Token validated server-side (sign-portal edge). Client only holds raw token from URL.
+ * - Email binding enforced on every sign-portal action.
  */
 
 const TOKEN_BYTES = 32;
@@ -37,7 +37,7 @@ export async function hashToken(token) {
 }
 
 // ---------------------------------------------------------------------------
-// Validation helpers (pure — no DB access)
+// Validation helpers (pure - no DB access)
 // ---------------------------------------------------------------------------
 
 /**
@@ -84,7 +84,7 @@ export function assertSignerEmailMatch(sessionEmail, signerEmail) {
 
 /**
  * Client-side pre-check before calling sign-portal actions.
- * Does not replace server enforcement — just surfaces errors early.
+ * Does not replace server enforcement - just surfaces errors early.
  */
 export function assertSignerInviteContext(session, signerEmail) {
   if (!session?.user?.id) return { error: 'Not signed in.' };

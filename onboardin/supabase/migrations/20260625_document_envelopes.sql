@@ -50,7 +50,7 @@ create table if not exists public.sign_invites (
 );
 
 -- ---------------------------------------------------------------------------
--- Paid plan helper — called by create-envelope edge (SECURITY DEFINER)
+-- Paid plan helper - called by create-envelope edge (SECURITY DEFINER)
 -- ---------------------------------------------------------------------------
 create or replace function public.client_has_paid_plan(p_client_id uuid)
 returns boolean
@@ -74,7 +74,7 @@ alter table public.envelope_signers   enable row level security;
 alter table public.sign_invites       enable row level security;
 
 -- document_envelopes: initiator may SELECT; initiator may UPDATE status to 'voided'
--- NO direct client INSERT — create-envelope edge uses service role
+-- NO direct client INSERT - create-envelope edge uses service role
 create policy "envelope_initiator_select"
   on public.document_envelopes
   for select
@@ -99,7 +99,7 @@ create policy "envelope_signers_initiator_select"
     )
   );
 
--- sign_invites: initiator SELECT (token_hash exposed — edge returns URLs, not hashes)
+-- sign_invites: initiator SELECT (token_hash exposed - edge returns URLs, not hashes)
 create policy "sign_invites_initiator_select"
   on public.sign_invites
   for select

@@ -1,10 +1,10 @@
--- COJ Deterministic Autofill — Phase B (#10)
+-- COJ Deterministic Autofill - Phase B (#10)
 -- Populates placeholder_map + field_map for all 4 COJ forms.
 -- IMPORTANT: field_map coordinates are ESTIMATES (coords_estimated).
 -- Manual PDF QA required before claiming production-ready placement.
 -- form_version pinned to 2026-06 for all forms.
 
--- Form 6 — Name Reservation
+-- Form 6 - Name Reservation
 -- Single page; name + applicant block, top half of page.
 UPDATE public.legal_templates SET
   placeholder_map = '{
@@ -22,7 +22,7 @@ UPDATE public.legal_templates SET
   form_version = '2026-06'
 WHERE kind = 'coj_form_6' AND provider = 'coj';
 
--- Form 1A — Articles of Incorporation
+-- Form 1A - Articles of Incorporation
 -- Multi-section; name/address header block + directors table.
 UPDATE public.legal_templates SET
   placeholder_map = '{
@@ -46,7 +46,7 @@ UPDATE public.legal_templates SET
   form_version = '2026-06'
 WHERE kind = 'coj_form_1a' AND provider = 'coj';
 
--- BOR Form A — Beneficial Ownership Return (partial map)
+-- BOR Form A - Beneficial Ownership Return (partial map)
 -- Individual shareholders only; corporate shareholders out of scope v1.
 UPDATE public.legal_templates SET
   placeholder_map = '{
@@ -67,7 +67,7 @@ UPDATE public.legal_templates SET
   form_version = '2026-06'
 WHERE kind = 'coj_bor' AND provider = 'coj';
 
--- BRF1 Super Form (partial map — header block only; full BRF1 is Phase B+ manual QA sprint)
+-- BRF1 Super Form (partial map - header block only; full BRF1 is Phase B+ manual QA sprint)
 UPDATE public.legal_templates SET
   placeholder_map = '{
     "proposed_company_name":    {"source": "formation_draft.proposed_company_name"},

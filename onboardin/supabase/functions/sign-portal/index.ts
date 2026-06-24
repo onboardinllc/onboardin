@@ -110,7 +110,7 @@ serve(async (req) => {
     const { action, token: rawToken } = body;
 
     // -----------------------------------------------------------------------
-    // validate_token — no auth required; rate-limited by IP
+    // validate_token - no auth required; rate-limited by IP
     // -----------------------------------------------------------------------
     if (action === 'validate_token') {
       const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'unknown';
@@ -169,7 +169,7 @@ serve(async (req) => {
     }
 
     // -----------------------------------------------------------------------
-    // get_context — requires JWT
+    // get_context - requires JWT
     // -----------------------------------------------------------------------
     if (action === 'get_context') {
       const authHeader = req.headers.get('Authorization');
@@ -204,7 +204,7 @@ serve(async (req) => {
         await supabase.from('envelope_signers').update({ status: 'opened' }).eq('id', signer.id);
       }
 
-      // Load job + template (service role — invitees have no RLS access)
+      // Load job + template (service role - invitees have no RLS access)
       const { data: job, error: jobErr } = await supabase
         .from('document_jobs')
         .select('id, field_values, field_placements')
@@ -239,7 +239,7 @@ serve(async (req) => {
     }
 
     // -----------------------------------------------------------------------
-    // save_signature — requires JWT + PNG in body
+    // save_signature - requires JWT + PNG in body
     // -----------------------------------------------------------------------
     if (action === 'save_signature') {
       const authHeader = req.headers.get('Authorization');
@@ -320,7 +320,7 @@ serve(async (req) => {
         .eq('id', signer.id);
       if (updateErr) return json({ error: updateErr.message || 'Failed to save signature.' }, 500);
 
-      // Initiator activation after signer row is signed — avoids pending envelope with unsigned initiator
+      // Initiator activation after signer row is signed - avoids pending envelope with unsigned initiator
       if (signer.is_initiator && envelope.status === 'draft') {
         const { error: envActivateErr } = await supabase
           .from('document_envelopes')
@@ -339,7 +339,7 @@ serve(async (req) => {
         }
       }
 
-      // Check if all signers have now signed — trigger finalize async (fire-and-forget)
+      // Check if all signers have now signed - trigger finalize async (fire-and-forget)
       const { data: allSigners } = await supabase
         .from('envelope_signers')
         .select('id, status')

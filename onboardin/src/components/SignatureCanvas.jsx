@@ -11,7 +11,7 @@ const RESIZE_DEBOUNCE_MS = 150;
 const RESIZE_THRESHOLD_PX = 4;
 
 /**
- * Draw-only signature canvas. Calls onExport(file) with a PNG File — parent handles upload.
+ * Draw-only signature canvas. Calls onExport(file) with a PNG File - parent handles upload.
  *
  * compact=false (Overview): height ~140, full labels
  * compact=true  (Overlay):  height ~100, tighter chrome

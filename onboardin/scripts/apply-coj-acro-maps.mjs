@@ -66,5 +66,5 @@ for (const row of UPDATES) {
     process.exit(1);
   }
   const acroKeys = Object.values(row.field_map).filter((d) => d.acroField || typeof d.acroIndex === 'number').length;
-  console.log(`OK ${row.kind} — ${acroKeys} acro targets`);
+  console.log(`OK ${row.kind} - ${acroKeys} acro targets`);
 }

@@ -38,7 +38,7 @@ serve(async (req) => {
     }).eq('id', user.id);
 
     if (GWS_RESELLER_MODE && GWS_RESELLER_TOKEN) {
-      // Full reseller API path — create customer + subscription via Google Reseller API v1
+      // Full reseller API path - create customer + subscription via Google Reseller API v1
       const customerRes = await fetch('https://reseller.googleapis.com/apps/reseller/v1/customers', {
         method: 'POST',
         headers: {
@@ -75,7 +75,7 @@ serve(async (req) => {
       });
     }
 
-    // Referral mode — return link for client to complete signup; we track intent in DB
+    // Referral mode - return link for client to complete signup; we track intent in DB
     return new Response(JSON.stringify({
       mode: 'referral',
       referralUrl: GWS_REFERRAL_LINK,

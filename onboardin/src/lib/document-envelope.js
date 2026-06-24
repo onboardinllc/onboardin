@@ -28,7 +28,7 @@ async function callEdge(token, body) {
 
 /**
  * Create a new envelope for a document job.
- * signers: [{ email, displayName?, fieldKeys: string[] }]  — invitees only (initiator row added by edge)
+ * signers: [{ email, displayName?, fieldKeys: string[] }] - invitees only (initiator row added by edge)
  * Returns { envelope_id, initiator_invite_url, invite_urls: { [email]: url } }
  */
 export async function createEnvelope(supabase, { jobId, templateId, signers, origin }) {

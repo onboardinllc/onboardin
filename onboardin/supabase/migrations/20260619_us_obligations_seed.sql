@@ -1,4 +1,4 @@
--- Ticket #08 Phase A — US entity compliance obligation seeds
+-- Ticket #08 Phase A - US entity compliance obligation seeds
 -- Promoted from scaffolds/sql/us_obligations.sql
 -- Requires: 20260619_compliance_obligations.sql
 
@@ -57,9 +57,9 @@ begin
   values (
     p_client_id,
     'state-annual-report',
-    'State Annual Report — ' || p_state,
+    'State Annual Report - ' || p_state,
     'Annual report and/or franchise tax filing to maintain good standing.',
-    'Secretary of State — ' || p_state,
+    'Secretary of State - ' || p_state,
     'corporate', 'annual',
     annual_report_due,
     'upcoming',
@@ -149,7 +149,7 @@ begin
   values (
     p_client_id,
     '83b-election',
-    '83(b) Election — Founder Stock',
+    '83(b) Election - Founder Stock',
     'IRS election to be taxed on restricted stock at grant date value, not vesting date. Must be filed within 30 days of stock grant.',
     'IRS', 'tax', 'once',
     s83b_due,
@@ -190,7 +190,7 @@ begin
     'Delaware Division of Corporations', 'corporate', 'annual',
     annual_report_due,
     'upcoming',
-    '$50 annual report fee + franchise tax (min $175, often $400-$600 for startups using Authorized Shares method — use Assumed Par Value method instead).',
+    '$50 annual report fee + franchise tax (min $175, often $400-$600 for startups using Authorized Shares method - use Assumed Par Value method instead).',
     '$200 penalty + 1.5%/month interest for late filing. Loss of good standing.',
     ARRAY['Authorized shares count','Issued shares count','Par value','Gross assets'],
     'https://icis.corp.delaware.gov/', 45, 'us-de-c-corp'
@@ -294,14 +294,14 @@ begin
     raise exception 'Client not found: %', p_client_id;
   end if;
 
-  -- Jamaica Ltd
+ -- Jamaica Ltd
   if (
     lower(coalesce(v_country, '')) = 'jamaica'
     or lower(coalesce(v_jurisdiction, '')) = 'jamaica'
   ) and lower(coalesce(v_entity_type, '')) like '%ltd%' then
     perform public.seed_jamaica_ltd_obligations(p_client_id, v_formation_date);
 
-  -- US LLC (Delaware default; Wyoming when jurisdiction matches)
+ -- US LLC (Delaware default; Wyoming when jurisdiction matches)
   elsif lower(coalesce(v_country, '')) in ('united states', 'us', 'usa')
     and lower(coalesce(v_entity_type, '')) like '%llc%' then
     v_state := case
@@ -312,7 +312,7 @@ begin
     end;
     perform public.seed_us_llc_obligations(p_client_id, v_formation_date, v_state);
 
-  -- US Delaware C-Corp
+ -- US Delaware C-Corp
   elsif (
     lower(coalesce(v_country, '')) in ('united states', 'us', 'usa')
     or lower(coalesce(v_jurisdiction, '')) in ('delaware', 'de')
@@ -329,7 +329,7 @@ begin
     return;
   end if;
 
-  -- Step 06 bridge: BOI obligation vs Step 06 artifact (filed or domestic exemption ack)
+ -- Step 06 bridge: BOI obligation vs Step 06 artifact (filed or domestic exemption ack)
   select exists (
     select 1
     from public.compliance_artifacts ca

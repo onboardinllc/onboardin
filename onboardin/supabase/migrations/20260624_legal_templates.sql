@@ -1,4 +1,4 @@
--- Auto-Sign document layer (Ticket #09) — vault template registry, fill jobs,
+-- Auto-Sign document layer (Ticket #09) - vault template registry, fill jobs,
 -- member signature PNGs. v1: Assistant fill from company context + in-app sign
 -- overlay. Phase E (deferred): external_envelope_id for DocuSign adapter.
 
@@ -77,7 +77,7 @@ create table if not exists public.document_jobs (
 create index if not exists document_jobs_client_idx on public.document_jobs (client_id);
 create index if not exists document_jobs_template_idx on public.document_jobs (template_id);
 
--- One active job per (client_id, template_id) — upsert by id
+-- One active job per (client_id, template_id) - upsert by id
 create unique index if not exists document_jobs_active_pair_idx
   on public.document_jobs (client_id, template_id)
   where (status != 'voided');

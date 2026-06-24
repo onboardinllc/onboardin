@@ -1,7 +1,9 @@
 /**
  * Server-side PDF fill via document-fill edge.
- * Templates and field maps are loaded server-side — client sends only template_id + values.
+ * Templates and field maps are loaded server-side - client sends only template_id + values.
  */
+import { base64ToBytes } from './pdf-bytes.js';
+
 const FALLBACK_URL = 'https://qatfiicpkunabpphwqee.supabase.co';
 const FALLBACK_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhdGZpaWNwa3VuYWJwcGh3cWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzgyOTEsImV4cCI6MjA5NTkxNDI5MX0.00A9OEwex4Yeb4EXCy8vUtRXpCVPXmZDyXVHxl6XiVA';
 
@@ -11,13 +13,6 @@ function edgeConfig() {
   const url = isReal(env?.VITE_SUPABASE_URL) ? env.VITE_SUPABASE_URL : FALLBACK_URL;
   const anon = isReal(env?.VITE_SUPABASE_ANON_KEY) ? env.VITE_SUPABASE_ANON_KEY : FALLBACK_ANON_KEY;
   return { base: `${url}/functions/v1`, anon };
-}
-
-function base64ToBytes(b64) {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
 }
 
 async function callFillEdge(supabase, action, body) {

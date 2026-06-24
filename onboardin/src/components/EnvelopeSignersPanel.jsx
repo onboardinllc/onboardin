@@ -10,8 +10,8 @@ const FIELD_LABELS = {
  * Assign co-signer emails to signature fields from multi_signer_field_map.
  * Initiator is always founder_1_signature (auto-assigned, not shown here).
  * Props:
- *   multiSignerFieldMap  — { [fieldKey]: { type, ... } }
- *   onSubmit(signers)    — called with [{ email, displayName, fieldKeys }]
+ *   multiSignerFieldMap - { [fieldKey]: { type, ... } }
+ *   onSubmit(signers) - called with [{ email, displayName, fieldKeys }]
  *   onCancel
  *   disabled
  */

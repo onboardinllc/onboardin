@@ -1,8 +1,8 @@
--- Ticket #08 Phase A — Recurring compliance obligations calendar
+-- Ticket #08 Phase A - Recurring compliance obligations calendar
 -- Promoted from scaffolds/sql/compliance_calendar.sql
 --
 -- RETIRED: onboardin/supabase/migrations/_scaffold_recurring_obligations.sql
---   (legacy public.obligations table). Do NOT apply. Use compliance_obligations only.
+-- (legacy public.obligations table). Do NOT apply. Use compliance_obligations only.
 
 -- ── PREREQUISITES ───────────────────────────────────────────
 -- Formation date for accurate due-date seeding (nullable; admin sets on step 2 complete)
@@ -249,7 +249,7 @@ begin
     'Tax Compliance Certificate Renewal',
     'Renew TCC every 90 days at TAJ. Required for government contracts and banking.',
     'TAJ', 'tax', 'days:90', tcc_first_due, 'upcoming',
-    'No direct fee — requires statutory deductions to be current.',
+    'No direct fee - requires statutory deductions to be current.',
     'Expired TCC blocks government contract eligibility and may cause banking friction.',
     ARRAY['NIS payments current','NHT payments current','HEART payments current','Education Tax current'],
     'https://www.jamaicatax.gov.jm/', 14, 'jamaica-ltd'
@@ -320,7 +320,7 @@ begin
   )
   on conflict (client_id, slug) do nothing;
 
-  -- From #07 recurring_obligation_seeds: OIC annual renewal
+ -- From #07 recurring_obligation_seeds: OIC annual renewal
   insert into public.compliance_obligations
     (client_id, slug, title, description, authority, category, frequency, due_date, status, fee_description, penalty_note, requirements, action_url, reminder_days, seeded_from)
   values (

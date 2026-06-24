@@ -1,14 +1,8 @@
 import { PDFDocument, StandardFonts } from '../vendor/pdf-lib.esm.min.js';
+import { base64ToBytes } from './pdf-bytes.js';
 
 const EDGE_BASE = 'https://qatfiicpkunabpphwqee.supabase.co/functions/v1';
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhdGZpaWNwa3VuYWJwcGh3cWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzgyOTEsImV4cCI6MjA5NTkxNDI5MX0.00A9OEwex4Yeb4EXCy8vUtRXpCVPXmZDyXVHxl6XiVA';
-
-function base64ToBytes(b64) {
-  const binary = atob(b64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return bytes;
-}
 
 /**
  * Fetch master template PDF bytes. Browser fetch first; edge proxy on CORS failure.
@@ -45,8 +39,8 @@ export async function fetchTemplatePdfBytes(template, supabase) {
  * Burn field_values, placements, and signature PNG(s) onto template PDF.
  * field_map y is top-left UI coords; pdf-lib uses bottom-left origin.
  *
- * Solo path:  pass signaturePngBytes (single Uint8Array) — all signature fields get the same image.
- * Multi path: pass signaturesByFieldKey ({ [fieldKey]: Uint8Array }) — each field gets its own image.
+ * Solo path:  pass signaturePngBytes (single Uint8Array) - all signature fields get the same image.
+ * Multi path: pass signaturesByFieldKey ({ [fieldKey]: Uint8Array }) - each field gets its own image.
  * Both are backward compatible; multi path takes precedence when provided.
  */
 export async function buildSignedPdf({

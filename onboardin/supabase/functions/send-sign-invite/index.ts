@@ -51,7 +51,7 @@ serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
 
   try {
-    // JWT required — only the authenticated initiator triggers send
+    // JWT required - only the authenticated initiator triggers send
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) return json({ error: 'Unauthorized' }, 401);
 
@@ -65,7 +65,7 @@ serve(async (req) => {
     const { envelope_id, origin } = body;
     if (!envelope_id) return json({ error: 'envelope_id required' }, 400);
 
-    // Load envelope — verify caller is the initiator (client_id match)
+    // Load envelope - verify caller is the initiator (client_id match)
     const { data: envelope, error: envErr } = await supabase
       .from('document_envelopes')
       .select('id, status, client_id, template_id, document_job_id')
@@ -157,7 +157,7 @@ serve(async (req) => {
         <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#1a1a2e">
           <div style="background:#03020a;padding:32px;border-radius:12px;margin-bottom:24px">
             <p style="color:#a78bfa;font-size:11px;text-transform:uppercase;letter-spacing:0.15em;margin:0">
-              Onboardin — Document signing
+              Onboardin - Document signing
             </p>
           </div>
           <div style="padding:0 8px">
@@ -174,7 +174,7 @@ serve(async (req) => {
               </a>
             </p>
             <p style="font-size:13px;color:#6b7280;line-height:1.6">
-              This link expires in ${TOKEN_TTL_DAYS} days. Do not forward it — it is bound to your email address.
+              This link expires in ${TOKEN_TTL_DAYS} days. Do not forward it - it is bound to your email address.
             </p>
             <hr style="border:none;border-top:1px solid #e5e7eb;margin:32px 0" />
             <p style="font-size:12px;color:#9ca3af">Onboardin &mdash; <a href="https://onboardin.llc" style="color:#7c3aed">onboardin.llc</a></p>
@@ -191,7 +191,7 @@ serve(async (req) => {
         body: JSON.stringify({
           from: 'Onboardin <navigator@onboardin.llc>',
           to: [signer.email],
-          subject: `${initiatorName} invited you to sign — ${templateLabel}`,
+          subject: `${initiatorName} invited you to sign - ${templateLabel}`,
           html,
         }),
       });

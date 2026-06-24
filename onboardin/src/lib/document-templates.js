@@ -1,6 +1,6 @@
 /**
  * Resolve the correct legal_templates row for a given vault card + client profile.
- * Never use vault_card_id alone — multiple rows share vault_card_id (entity/kind/jurisdiction).
+ * Never use vault_card_id alone - multiple rows share vault_card_id (entity/kind/jurisdiction).
  */
 
 import { normalizeEntityType, isJamaicaProfile } from './procedures.js';

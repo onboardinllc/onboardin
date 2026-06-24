@@ -1,7 +1,7 @@
 -- COJ AcroForm field maps (replaces coordinate-burn estimates in 20260627).
 -- acroField = PDF field name; acroIndex = 0-based index when names are encrypted (Form 6).
 
--- Form 6 — Name Reservation (encrypted field names; use indices from PDF QA)
+-- Form 6 - Name Reservation (encrypted field names; use indices from PDF QA)
 UPDATE public.legal_templates SET
   field_map = '{
     "proposed_company_name": {"acroIndex": 15, "type": "text"},
@@ -12,7 +12,7 @@ UPDATE public.legal_templates SET
   form_version = '2026-06-acro'
 WHERE kind = 'coj_form_6' AND provider = 'coj';
 
--- Form 1A — Articles (readable AcroForm names)
+-- Form 1A - Articles (readable AcroForm names)
 UPDATE public.legal_templates SET
   field_map = '{
     "proposed_company_name":     {"acroField": "COMPANY NAME", "type": "text"},
@@ -24,7 +24,7 @@ UPDATE public.legal_templates SET
   form_version = '2026-06-acro'
 WHERE kind = 'coj_form_1a' AND provider = 'coj';
 
--- BOR Form A — Beneficial Ownership Return
+-- BOR Form A - Beneficial Ownership Return
 UPDATE public.legal_templates SET
   field_map = '{
     "proposed_company_name": {"acroField": "Text Field16", "type": "text"},
@@ -36,7 +36,7 @@ UPDATE public.legal_templates SET
   form_version = '2026-06-acro'
 WHERE kind = 'coj_bor' AND provider = 'coj';
 
--- BRF1 — not fillable via pdf-lib AcroForm (flat/corrupt XFA); disable autofill until re-hosted
+-- BRF1 - not fillable via pdf-lib AcroForm (flat/corrupt XFA); disable autofill until re-hosted
 UPDATE public.legal_templates SET
   field_map = '{}'::jsonb,
   form_version = '2026-06-acro'

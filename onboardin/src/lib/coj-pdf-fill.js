@@ -1,4 +1,4 @@
-/** @deprecated — import from pdf-fill.js */
+/** @deprecated - import from pdf-fill.js */
 export {
   buildFilledPdf,
   buildFilledPdf as buildCojFilledPdf,

@@ -1,4 +1,4 @@
-/** Member signature PNG — server-side only (client-documents + member_signatures). */
+/** Member signature PNG - server-side only (client-documents + member_signatures). */
 
 export const SIGNATURE_PREVIEW_TTL_SEC = 900;   // 15 min thumbnails
 export const SIGNED_DOC_PREVIEW_TTL_SEC = 3600; // fill-panel view of signed doc
@@ -50,7 +50,7 @@ export function assertMemberSignContext(session, clientProfile) {
 /**
  * Validates PNG before storage upload.
  * Checks magic bytes (89 50 4E 47), size ≤ 500 KB, dimensions ≤ 2000×800.
- * Does not trust file.type alone — browsers may omit it.
+ * Does not trust file.type alone - browsers may omit it.
  */
 export async function validatePngFile(file) {
   if (!file) return { error: 'No file provided.' };

@@ -1,5 +1,5 @@
 /**
- * Platform COJ autofill test — same path as the Onboardin PWA (edge MuPDF fill).
+ * Platform COJ autofill test - same path as the Onboardin PWA (edge MuPDF fill).
  * Signs in as test client, calls document-fill fill_coj_pdf, verifies visible text.
  *
  * Usage:

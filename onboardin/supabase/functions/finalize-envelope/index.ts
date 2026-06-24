@@ -231,7 +231,7 @@ serve(async (req) => {
     const { error: docErr } = await supabase.from('documents').insert({
       client_id: envelope.client_id,
       category: vaultCardId,
-      name: `${template.label} — signed`,
+      name: `${template.label} - signed`,
       path: signedPath,
       size: signedPdfBytes.byteLength,
       mime_type: 'application/pdf',
@@ -265,7 +265,7 @@ serve(async (req) => {
         <div style="font-family:sans-serif;max-width:600px;margin:0 auto;color:#1a1a2e">
           <div style="background:#03020a;padding:32px;border-radius:12px;margin-bottom:24px">
             <p style="color:#a78bfa;font-size:11px;text-transform:uppercase;letter-spacing:0.15em;margin:0">
-              Onboardin — ${client.company_name || 'Document signing'}
+              Onboardin - ${client.company_name || 'Document signing'}
             </p>
           </div>
           <div style="padding:0 8px">
@@ -291,7 +291,7 @@ serve(async (req) => {
         body: JSON.stringify({
           from: 'Onboardin <navigator@onboardin.llc>',
           to: [client.email],
-          subject: `All signatures complete — ${template.label}`,
+          subject: `All signatures complete - ${template.label}`,
           html,
         }),
       });

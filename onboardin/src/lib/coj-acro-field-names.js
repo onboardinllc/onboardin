@@ -1,5 +1,5 @@
 /**
- * COJ Form 6 — readable AcroForm field names (pdf-lib indices are wrong / encrypted).
+ * COJ Form 6 - readable AcroForm field names (pdf-lib indices are wrong / encrypted).
  * Fill by name like Acrobat: DAY, MONTH, YEAR, REQUESTED BY, STREET 1, NAME 1.
  */
 

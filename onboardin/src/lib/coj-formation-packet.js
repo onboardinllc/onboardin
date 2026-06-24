@@ -1,6 +1,6 @@
 /**
  * Pure helpers for the COJ formation packet (Jamaica Ltd).
- * No Supabase imports — data comes in from the caller.
+ * No Supabase imports - data comes in from the caller.
  * Form URLs/CTAs are sourced from vault procedures (articles process steps).
  */
 import { JAMAICA_LTD } from './procedures.js';
@@ -8,9 +8,9 @@ import { canAutofillTemplate } from './pdf-field-map.js';
 
 /** Map hosted PDF filename → packet form ids (must match legal_templates.kind). */
 const COJ_URL_FORM_META = {
-  'form-6.pdf': { form_id: 'coj_form_6', kind: 'coj_form_6', label: 'Form 6 — Name Reservation' },
+  'form-6.pdf': { form_id: 'coj_form_6', kind: 'coj_form_6', label: 'Form 6 - Name Reservation' },
   'brf1.pdf': { form_id: 'coj_brf1', kind: 'coj_brf1', label: 'BRF1 Super Form' },
-  'form-1a.pdf': { form_id: 'coj_form_1a', kind: 'coj_form_1a', label: 'Form 1A — Articles' },
+  'form-1a.pdf': { form_id: 'coj_form_1a', kind: 'coj_form_1a', label: 'Form 1A - Articles' },
   'form-a.pdf': { form_id: 'coj_bor', kind: 'coj_bor', label: 'BOR (Form A)' },
 };
 
@@ -99,7 +99,7 @@ export function resolvePacketProgress(jobs, docs) {
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Canonical editable COJ form path — one per form, upserted on autofill or manual save. */
+/** Canonical editable COJ form path - one per form, upserted on autofill or manual save. */
 export function workingCopyCanonicalPath(clientId, formId) {
   return `${clientId}/articles/${formId}/working-latest.pdf`;
 }

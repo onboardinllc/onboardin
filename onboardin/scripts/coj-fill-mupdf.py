@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fill COJ PDFs by AcroForm field name (like Acrobat) — visible in all viewers.
+Fill COJ PDFs by AcroForm field name (like Acrobat) - visible in all viewers.
 Usage:
   python scripts/coj-fill-mupdf.py <input.pdf> <output.pdf> [--json '{"NAME 1":"Acme Ltd",...}']
   python scripts/coj-fill-mupdf.py <input.pdf> <output.pdf> --field-values-json path.json

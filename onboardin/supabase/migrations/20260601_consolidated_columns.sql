@@ -1,6 +1,6 @@
 -- Consolidated catch-up migration: adds every column referenced by the app
 -- but missing from the live DB (Sessions 6, 7, 8, 10 migrations were never run).
--- Idempotent — safe to re-run.
+-- Idempotent - safe to re-run.
 
 -- Session 6: billing
 alter table public.clients

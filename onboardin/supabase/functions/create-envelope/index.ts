@@ -175,7 +175,7 @@ serve(async (req) => {
       return json({ error: 'Initiator email cannot be used as a co-signer.' }, 400);
     }
 
-    // Create envelope (draft — moves to pending after initiator signs)
+    // Create envelope (draft - moves to pending after initiator signs)
     const now = new Date().toISOString();
     const { data: envelope, error: envErr } = await supabase
       .from('document_envelopes')

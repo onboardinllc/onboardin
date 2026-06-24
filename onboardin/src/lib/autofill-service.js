@@ -1,9 +1,8 @@
 /**
- * Unified autofill service — all vault templates with acro or coordinate field_map.
+ * Unified autofill service - all vault templates with acro or coordinate field_map.
  * Deterministic (0 credits). LLM fields are filled separately before calling with full values.
  */
 import { resolveCojFieldValues, resolveEntityFacts, syncFormationDraftToProfile } from './company-context.js';
-import { fetchTemplatePdfBytes } from './document-sign-pdf.js';
 import { buildFilledPdf, canAutofillTemplate } from './pdf-fill.js';
 import { removeLegacyPrefilledCojDocs } from './coj-documents.js';
 import { COJ_FORM_STATUSES } from './coj-formation-packet.js';
@@ -50,10 +49,8 @@ export async function runDocumentAutofill({
 
   const fieldValues = fieldValuesOverride ?? resolveCojFieldValues(template, context);
 
-  const templatePdfBytes = await fetchTemplatePdfBytes(template, supabase);
-
   const { pdfBytes, filledCount } = await buildFilledPdf({
-    templatePdfBytes,
+    templatePdfBytes: null,
     fieldMap: template.field_map ?? {},
     fieldValues,
     formKind: formId || template.kind,
@@ -71,7 +68,7 @@ export async function runDocumentAutofill({
     : [];
 
   const storagePath = workingCopyCanonicalPath(clientId, template);
-  const displayName = `${template.label} — working copy.pdf`;
+  const displayName = `${template.label} - working copy.pdf`;
 
   const insertedDoc = await upsertWorkingCopy(supabase, {
     clientId,

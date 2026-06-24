@@ -25,6 +25,7 @@ import { fetchActiveMemberSignature, assertSignaturePathForUser } from './lib/me
 import { canAccessComplianceCalendar, enrichObligation, obligationStats } from './lib/compliance-obligations';
 import { buildDraftPayload, buildActivePayload, serializeIntake } from './lib/compliance-intake-persist';
 import { parseFormationDraft } from './lib/formation-draft-persist';
+import { openDocumentUrl } from './lib/open-document-url.js';
 import { COJ_FORM_IDS, resolvePacketProgress } from './lib/coj-formation-packet';
 import { legalTemplateUrl, isFillableTemplateUrl } from './lib/template-urls.js';
 
@@ -2101,7 +2102,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
             .then(({ data }) => {
                 const rows = data || [];
                 setComplianceArtifacts(rows);
-                // Do not overwrite in-progress edits — user may be mid-typing
+                // Do not overwrite in-progress edits - user may be mid-typing
                 if (!intakeDirtyRef.current) {
                     const intakeRow = rows.find((a) => a.kind === 'compliance_intake');
                     if (intakeRow) setComplianceIntake(buildIntakeAnswers(intakeRow));
@@ -2766,7 +2767,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
 
     const getSignedUrl = async (path) => {
         const { data } = await supabase.storage.from('client-documents').createSignedUrl(path, 60);
-        if (data?.signedUrl) window.open(data.signedUrl, '_blank');
+        if (data?.signedUrl) openDocumentUrl(data.signedUrl);
     };
 
     const handleFormationDraftChange = (patch) => {
@@ -3741,7 +3742,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                             <div>
                                 <p className="text-sm text-gray-300">You were signing <span className="text-white font-medium">{signatureReturnCat.label}</span>.</p>
                                 <p className="text-xs text-gray-500 mt-0.5">
-                                    {hasMemberSignature ? 'Your signature is ready — continue in Vault.' : 'Upload your signature below, then continue.'}
+                                    {hasMemberSignature ? 'Your signature is ready - continue in Vault.' : 'Upload your signature below, then continue.'}
                                 </p>
                             </div>
                             {hasMemberSignature && (
@@ -4363,7 +4364,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         );
                     })()}
 
-                    {/* Document fill panel — preview + assistant fill for fillEnabled cards */}
+                    {/* Document fill panel - preview + assistant fill for fillEnabled cards */}
                     {showCojPacket && (
                         <CojFormationPacketPanel
                             clientProfile={clientProfile}
@@ -5451,7 +5452,7 @@ const App = () => {
         }
     };
 
-    // Sign portal — early exit, no vault chrome
+    // Sign portal - early exit, no vault chrome
     const signPortalToken = (() => {
         const hash = window.location.hash.replace(/^#/, '');
         const qIdx = hash.indexOf('?');

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { fetchTemplatePdfBytes, buildSignedPdf } from '../lib/document-sign-pdf';
+import { pdfBytesToUploadBody } from '../lib/pdf-bytes.js';
 import {
   fetchActiveMemberSignature,
   signaturePreviewUrl,
@@ -11,7 +12,7 @@ import {
 import SignatureCanvas from './SignatureCanvas';
 
 /**
- * DocumentSignOverlay — places signature PNG + date text onto a PDF using pdf-lib.
+ * DocumentSignOverlay - places signature PNG + date text onto a PDF using pdf-lib.
  */
 export default function DocumentSignOverlay({
   job,
@@ -136,14 +137,14 @@ export default function DocumentSignOverlay({
 
       const { error: uploadErr } = await supabase.storage
         .from('client-documents')
-        .upload(signedPath, signedPdfBytes, { contentType: 'application/pdf', upsert: false });
+        .upload(signedPath, pdfBytesToUploadBody(signedPdfBytes), { contentType: 'application/pdf', upsert: false });
       if (uploadErr) throw new Error(uploadErr.message || 'Upload failed.');
 
       let docRow = null;
       try {
         const { data, error: docErr } = await supabase.from('documents').insert({
           client_id: clientProfile.id,
-          name: `${template.label} — signed`,
+          name: `${template.label} - signed`,
           path: signedPath,
           size: signedPdfBytes.byteLength,
           uploaded_by: session.user.id,
@@ -192,7 +193,7 @@ export default function DocumentSignOverlay({
               <h2 className="text-lg font-bold text-white">
                 {phase === 'done' ? 'Document signed.' : 'Place your signature.'}
               </h2>
-              <p className="text-xs text-gray-500 mt-1">Step 2 of 2 — Sign and save to vault</p>
+              <p className="text-xs text-gray-500 mt-1">Step 2 of 2 - Sign and save to vault</p>
             </div>
             <button type="button" onClick={onClose} className="text-gray-600 hover:text-gray-300 transition-colors mt-1">
               <i className="ph ph-x text-lg"></i>

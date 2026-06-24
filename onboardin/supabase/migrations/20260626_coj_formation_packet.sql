@@ -16,7 +16,7 @@ insert into public.legal_templates
 values
   (
     'Jamaica', 'Ltd', 'coj_form_6',
-    'Form 6 — Name Reservation',
+    'Form 6 - Name Reservation',
     'articles',
     'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/form-6.pdf',
     '{}'::jsonb, '{}'::jsonb, true, 'coj', 'coj_portal', 'jamaica_ltd_incorporation'
@@ -30,7 +30,7 @@ values
   ),
   (
     'Jamaica', 'Ltd', 'coj_form_1a',
-    'Form 1A — Articles',
+    'Form 1A - Articles',
     'articles',
     'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/form-1a.pdf',
     '{}'::jsonb, '{}'::jsonb, true, 'coj', 'coj_portal', 'jamaica_ltd_incorporation'

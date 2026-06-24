@@ -18,19 +18,20 @@ import {
 } from '../lib/coj-documents.js';
 import { workingCopyCanonicalPath } from '../lib/coj-formation-packet.js';
 import { resolveEntityFacts, resolveCojFieldValues } from '../lib/company-context.js';
+import { openDocumentUrl } from '../lib/open-document-url.js';
 
 /**
  * CojFormationPacketPanel
  * Props:
- *   clientProfile       — clients row (id, country, jurisdiction, entity_type, formation_draft, …)
- *   supabase            — Supabase client
- *   session             — auth session
- *   onClose             — close callback
- *   onWorkingCopySaved  — callback(doc) called after upload records to vault
- *   onDocumentRemoved   — callback(doc) after delete from vault
- *   formationDraft      — current local draft state (object)
- *   onDraftChange       — callback(patch) for debounced autosave in parent
- *   draftSaveStatus     — 'idle' | 'saving' | 'saved' | 'error'
+ *   clientProfile - clients row (id, country, jurisdiction, entity_type, formation_draft, …)
+ *   supabase - Supabase client
+ *   session - auth session
+ *   onClose - close callback
+ *   onWorkingCopySaved - callback(doc) called after upload records to vault
+ *   onDocumentRemoved - callback(doc) after delete from vault
+ *   formationDraft - current local draft state (object)
+ *   onDraftChange - callback(patch) for debounced autosave in parent
+ *   draftSaveStatus - 'idle' | 'saving' | 'saved' | 'error'
  */
 export default function CojFormationPacketPanel({
   clientProfile,
@@ -201,7 +202,7 @@ export default function CojFormationPacketPanel({
         clientId,
         formId: formDef.form_id,
         pdfBytes: new Uint8Array(buffer),
-        displayName: file.name || `${formDef.label} — working copy.pdf`,
+        displayName: file.name || `${formDef.label} - working copy.pdf`,
         fileSize: file.size,
       });
 
@@ -306,7 +307,7 @@ export default function CojFormationPacketPanel({
   const getSignedUrl = async (path) => {
     if (!supabase) return;
     const { data } = await supabase.storage.from('client-documents').createSignedUrl(path, 300);
-    if (data?.signedUrl) window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+    if (data?.signedUrl) openDocumentUrl(data.signedUrl);
   };
 
   const handleDeleteDoc = async (formDef, doc) => {
@@ -461,7 +462,7 @@ export default function CojFormationPacketPanel({
                     </div>
 
                     <p className="text-xs text-gray-600 leading-relaxed">
-                      This is your working copy. Filing happens at COJ — not through Onboardin until you submit there.
+                      This is your working copy. Filing happens at COJ - not through Onboardin until you submit there.
                     </p>
 
                     {!templateLinked && !loading && (
@@ -470,7 +471,7 @@ export default function CojFormationPacketPanel({
                       </p>
                     )}
 
-                    {/* Autofill block — only when DB template matches official PDF */}
+                    {/* Autofill block - only when DB template matches official PDF */}
                     {showAutofill && (
                       <div className="space-y-2">
                         <button
@@ -507,7 +508,7 @@ export default function CojFormationPacketPanel({
                           {isAutofilling ? 'Filling...' : formDocs.length > 0 ? 'Re-autofill from my info' : 'Autofill from my info'}
                         </button>
                         <p className="text-xs text-gray-600 leading-relaxed">
-                          Updates your private working copy in the vault (working-latest.pdf). Edits in the browser tab do not auto-save — use Save edited PDF to vault after changing the file locally.
+                          Updates your private working copy in the vault (working-latest.pdf). Edits in the browser tab do not auto-save - use Save edited PDF to vault after changing the file locally.
                         </p>
                       </div>
                     )}
@@ -515,7 +516,7 @@ export default function CojFormationPacketPanel({
                     {formDocs.length > 0 && (
                       <div className="space-y-1">
                         <p className="text-xs text-gray-600">
-                          This is your vault working copy — not the public COJ template. Download, edit in Acrobat or similar, then <span className="text-gray-500">Save edited PDF to vault</span> to replace it in Supabase.
+                          This is your vault working copy - not the public COJ template. Download, edit in Acrobat or similar, then <span className="text-gray-500">Save edited PDF to vault</span> to replace it in Supabase.
                         </p>
                         {formDocs.map((doc, i) => (
                           <div
@@ -609,7 +610,7 @@ export default function CojFormationPacketPanel({
                       : draftSaveStatus === 'saved' ? 'text-green-400/80'
                         : 'text-gray-600'
                 }`}>
-                  {draftSaveStatus === 'error' ? 'Save failed — retry'
+                  {draftSaveStatus === 'error' ? 'Save failed - retry'
                     : draftSaveStatus === 'saving' ? 'Saving...'
                       : draftSaveStatus === 'saved' ? 'Saved'
                         : 'Auto-saved'}

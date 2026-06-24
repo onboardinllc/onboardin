@@ -48,7 +48,7 @@ serve(async (req) => {
       }
     }
 
-    // Delete the auth user — cascades to public.clients, documents, messages via FK
+    // Delete the auth user - cascades to public.clients, documents, messages via FK
     const { error: deleteError } = await admin.auth.admin.deleteUser(user_id);
     if (deleteError) return new Response(JSON.stringify({ error: deleteError.message }), { status: 500, headers: { ...cors, 'Content-Type': 'application/json' } });
 

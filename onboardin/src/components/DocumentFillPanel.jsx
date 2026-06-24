@@ -16,6 +16,7 @@ import DocumentSignOverlay from './DocumentSignOverlay';
 import EnvelopeSignersPanel from './EnvelopeSignersPanel';
 import { runDocumentAutofill } from '../lib/autofill-service.js';
 import { canAutofillTemplate } from '../lib/pdf-field-map.js';
+import { openDocumentUrl } from '../lib/open-document-url.js';
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhdGZpaWNwa3VuYWJwcGh3cWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzgyOTEsImV4cCI6MjA5NTkxNDI5MX0.00A9OEwex4Yeb4EXCy8vUtRXpCVPXmZDyXVHxl6XiVA';
 const EDGE_BASE = 'https://qatfiicpkunabpphwqee.supabase.co/functions/v1';
@@ -41,17 +42,17 @@ function storeInitiatorUrl(envelopeId, url) {
 }
 
 /**
- * DocumentFillPanel — preview + assistant fill for a vault card template.
+ * DocumentFillPanel - preview + assistant fill for a vault card template.
  * Props:
- *   cat           — vault category object (id, label, templateUrl)
- *   clientProfile — clients row
- *   complianceIntake — active compliance intake answers (plain object)
- *   supabase      — Supabase client
- *   session       — auth session
- *   onClose       — close callback
- *   onDocumentSigned — callback(doc) when signed PDF saved to vault (panel stays open)
- *   onGoToSignatureSettings — navigate to Overview signature card
- *   onSignatureUploaded — parent refreshes signature-on-file state after overlay upload
+ *   cat - vault category object (id, label, templateUrl)
+ *   clientProfile - clients row
+ *   complianceIntake - active compliance intake answers (plain object)
+ *   supabase - Supabase client
+ *   session - auth session
+ *   onClose - close callback
+ *   onDocumentSigned - callback(doc) when signed PDF saved to vault (panel stays open)
+ *   onGoToSignatureSettings - navigate to Overview signature card
+ *   onSignatureUploaded - parent refreshes signature-on-file state after overlay upload
  */
 export default function DocumentFillPanel({
   cat,
@@ -194,7 +195,7 @@ export default function DocumentFillPanel({
         }
       }
     } catch {
-      // Non-fatal — envelope features degrade gracefully
+      // Non-fatal - envelope features degrade gracefully
     }
   }, [jobId, template, supabase]);
 
@@ -361,7 +362,7 @@ export default function DocumentFillPanel({
       setCopyFeedback(`${label} link copied`);
       setTimeout(() => setCopyFeedback(''), 2500);
     } catch {
-      setCopyFeedback('Could not copy — select the link manually');
+      setCopyFeedback('Could not copy - select the link manually');
     }
   };
 
@@ -501,7 +502,7 @@ export default function DocumentFillPanel({
 
                 {phase === 'filled' && !showSignersPanel && (
                   <div className="flex flex-col gap-2">
-                    {/* Solo sign — disabled when envelope is active */}
+                    {/* Solo sign - disabled when envelope is active */}
                     <button
                       type="button"
                       onClick={() => setShowSign(true)}
@@ -554,7 +555,7 @@ export default function DocumentFillPanel({
                                   </p>
                                 </div>
                               )}
-                              {/* Send invites CTA — show once initiator signed (envelope pending) */}
+                              {/* Send invites CTA - show once initiator signed (envelope pending) */}
                               {activeEnvelope?.status === 'pending' && initiatorSigner?.status === 'signed' && (
                                 <div className="mt-3 space-y-2">
                                   <button
@@ -578,7 +579,7 @@ export default function DocumentFillPanel({
                             </button>
                           </div>
                         ) : isPaid ? (
-                          /* Paid — show Request signatures */
+                          /* Paid - show Request signatures */
                           <button
                             type="button"
                             onClick={() => { setShowSignersPanel(true); setEnvelopeError(''); }}
@@ -587,7 +588,7 @@ export default function DocumentFillPanel({
                             Request signatures
                           </button>
                         ) : (
-                          /* Starter — upgrade CTA */
+                          /* Starter - upgrade CTA */
                           <div className="p-3 rounded-lg border border-white/5 bg-white/[0.02] text-xs text-gray-500">
                             Request signatures is available on Growth and Enterprise plans.
                           </div>
@@ -642,9 +643,9 @@ export default function DocumentFillPanel({
                             const { data } = await supabase.storage
                               .from('client-documents')
                               .createSignedUrl(currentJob.signed_path, SIGNED_DOC_PREVIEW_TTL_SEC);
-                            if (data?.signedUrl) window.open(data.signedUrl, '_blank');
+                            if (data?.signedUrl) openDocumentUrl(data.signedUrl);
                           } catch {
-                            // Malformed path — do not open preview
+                            // Malformed path - do not open preview
                           }
                         }}
                         className="w-full py-2.5 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-xl text-sm uppercase tracking-widest text-purple-200 transition-all"

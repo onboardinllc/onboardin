@@ -1,5 +1,5 @@
 /**
- * Filing adapter stubs — Phase A only.
+ * Filing adapter stubs - Phase A only.
  * Phase C replaces submitViaApi with a real COJ API call.
  */
 

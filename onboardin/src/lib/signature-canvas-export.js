@@ -52,9 +52,9 @@ function paintTapDot(ctx, x, y) {
 
 /**
  * Attach pointer-based drawing to a canvas element.
- * ctxOrGetter: CanvasRenderingContext2D or () => ctx — use getter when context may be re-created.
+ * ctxOrGetter: CanvasRenderingContext2D or () => ctx - use getter when context may be re-created.
  * Sets touch-action: none on the canvas to prevent scroll interference.
- * Returns a cleanup() function — call it in useEffect return.
+ * Returns a cleanup() function - call it in useEffect return.
  */
 export function bindSignaturePointerDrawing(canvas, ctxOrGetter, { onStrokeStart, onStrokeMove, onStrokeEnd } = {}) {
   canvas.style.touchAction = 'none';
@@ -136,7 +136,7 @@ export function bindSignaturePointerDrawing(canvas, ctxOrGetter, { onStrokeStart
 }
 
 /**
- * Returns true if any pixel on the canvas has non-zero alpha — i.e., something was drawn.
+ * Returns true if any pixel on the canvas has non-zero alpha - i.e., something was drawn.
  * threshold: minimum number of non-transparent pixels required (default 1).
  */
 export function canvasHasInk(canvas, ctx, threshold = 1) {
