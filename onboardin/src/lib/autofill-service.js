@@ -1,114 +1,105 @@
 /**
- * Unified autofill service (Ticket #10).
- * runDocumentAutofill() is the single entry point for all vault autofill.
- * COJ and future statutory forms delegate here; behavior matches legacy coj-prefill.js.
- *
- * Tiers:
- *   A — field_map complete + all facts in entity_profile/draft → deterministic, 0 credits
- *   C — missing acro map or BRF1-style XFA → throws; caller shows "upload manually" message
- *
- * No LLM calls in this module. document-fill edge is intentionally not imported.
+ * Unified autofill service — all vault templates with acro or coordinate field_map.
+ * Deterministic (0 credits). LLM fields are filled separately before calling with full values.
  */
 import { resolveCojFieldValues, resolveEntityFacts, syncFormationDraftToProfile } from './company-context.js';
 import { fetchTemplatePdfBytes } from './document-sign-pdf.js';
-import { buildCojFilledPdf, hasCojAcroFieldMap } from './coj-pdf-fill.js';
-import { removeLegacyPrefilledCojDocs, upsertCojWorkingCopy } from './coj-documents.js';
-import { workingCopyCanonicalPath, COJ_FORM_STATUSES } from './coj-formation-packet.js';
+import { buildFilledPdf, canAutofillTemplate } from './pdf-fill.js';
+import { removeLegacyPrefilledCojDocs } from './coj-documents.js';
+import { COJ_FORM_STATUSES } from './coj-formation-packet.js';
+import { upsertWorkingCopy, workingCopyCanonicalPath } from './document-vault.js';
 
 /**
- * @typedef {{
- *   doc: object,
- *   fieldValues: Record<string, string>,
- *   storagePath: string,
- *   filledBy: string,
- *   creditsCharged: number,
- *   removedLegacy: object[],
- * }} AutofillResult
- */
-
-/**
- * Run deterministic (0-credit) autofill for one vault form template.
- *
  * @param {{
  *   supabase: import('@supabase/supabase-js').SupabaseClient,
  *   session: { user: { id: string } },
  *   clientProfile: object,
  *   formationDraft?: object,
+ *   complianceIntake?: object,
  *   template: object,
  *   jobId?: string,
- *   formId: string,
+ *   formId?: string,
+ *   fieldValues?: Record<string, string>,
  * }} opts
- * @returns {Promise<AutofillResult>}
  */
 export async function runDocumentAutofill({
   supabase,
   session,
   clientProfile,
   formationDraft,
+  complianceIntake,
   template,
   jobId,
   formId,
+  fieldValues: fieldValuesOverride,
 }) {
   if (!supabase || !session?.user?.id) throw new Error('Not signed in.');
   if (!template?.id) throw new Error('Template required.');
-  if (!hasCojAcroFieldMap(template.field_map)) {
+  if (!canAutofillTemplate(template)) {
     throw new Error('This form is not configured for autofill yet.');
   }
 
   const clientId = session.user.id;
-
-  // Merge entity_profile + formation_draft + clients.* into resolution context.
   const entityProfile = clientProfile?.entity_profile ?? {};
   const context = resolveEntityFacts({
     client: clientProfile,
     entityProfile,
     formationDraft,
-    complianceIntake: {},
+    complianceIntake: complianceIntake ?? {},
   });
 
-  const fieldValues = resolveCojFieldValues(template, context);
+  const fieldValues = fieldValuesOverride ?? resolveCojFieldValues(template, context);
 
   const templatePdfBytes = await fetchTemplatePdfBytes(template, supabase);
 
-  const { pdfBytes, filledCount } = await buildCojFilledPdf({
+  const { pdfBytes, filledCount } = await buildFilledPdf({
     templatePdfBytes,
     fieldMap: template.field_map ?? {},
     fieldValues,
-    placements: {},
+    formKind: formId || template.kind,
+    supabase,
+    template,
   });
 
   if (filledCount === 0) {
-    throw new Error('No form fields could be filled. Check Company Details and try again.');
+    throw new Error('No form fields could be filled. Check your profile details and try again.');
   }
 
-  const removedLegacy = await removeLegacyPrefilledCojDocs(supabase, clientId, formId);
+  const isCoj = template.provider === 'coj';
+  const removedLegacy = isCoj
+    ? await removeLegacyPrefilledCojDocs(supabase, clientId, formId || template.kind)
+    : [];
 
-  const storagePath = workingCopyCanonicalPath(clientId, formId);
+  const storagePath = workingCopyCanonicalPath(clientId, template);
   const displayName = `${template.label} — working copy.pdf`;
 
-  const insertedDoc = await upsertCojWorkingCopy(supabase, {
+  const insertedDoc = await upsertWorkingCopy(supabase, {
     clientId,
-    formId,
+    template,
     pdfBytes,
     displayName,
   });
 
   if (jobId) {
+    const jobPatch = {
+      field_values: fieldValues,
+      filled_path: storagePath,
+      filled_by: 'autofill',
+      credits_charged: 0,
+      updated_at: new Date().toISOString(),
+    };
+    if (isCoj) {
+      jobPatch.status = COJ_FORM_STATUSES.WORKING_SAVED;
+    } else {
+      jobPatch.status = 'filled';
+    }
     const { error: jobErr } = await supabase
       .from('document_jobs')
-      .update({
-        status: COJ_FORM_STATUSES.WORKING_SAVED,
-        field_values: fieldValues,
-        filled_path: storagePath,
-        filled_by: 'autofill',
-        credits_charged: 0,
-        updated_at: new Date().toISOString(),
-      })
+      .update(jobPatch)
       .eq('id', jobId);
     if (jobErr) throw new Error(`Job update failed: ${jobErr.message}`);
   }
 
-  // Harvest resolved facts back into entity_profile (non-blocking; best-effort).
   syncFormationDraftToProfile(supabase, clientId, formationDraft, fieldValues).catch((err) => {
     console.warn('[autofill] profile harvest failed:', err?.message || err);
   });

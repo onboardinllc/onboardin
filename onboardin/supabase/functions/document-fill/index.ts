@@ -1,6 +1,8 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
-import { encode as encodeBase64 } from 'https://deno.land/std@0.168.0/encoding/base64.ts';
+import { encode as encodeBase64, decode as decodeBase64 } from 'https://deno.land/std@0.168.0/encoding/base64.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import * as mupdf from 'npm:mupdf@1.27.0';
+import { PDFDocument, StandardFonts } from 'npm:pdf-lib@1.17.1';
 
 const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY') ?? '';
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? '';
@@ -13,6 +15,171 @@ const cors = {
 
 function json(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
+}
+
+const MAX_PDF_BYTES = 10 * 1024 * 1024;
+const MAX_FIELD_VALUE_LEN = 2000;
+const MAX_FIELD_COUNT = 64;
+
+type FieldMapDef = {
+  acroField?: string;
+  acroIndex?: number;
+  acroIndices?: number[];
+  page?: number;
+  x?: number;
+  y?: number;
+  w?: number;
+  h?: number;
+  type?: string;
+  fontSize?: number;
+};
+
+function hasAcroFieldMap(fieldMap: Record<string, FieldMapDef>): boolean {
+  return Object.values(fieldMap || {}).some(
+    (def) => def && (
+      def.acroField != null
+      || typeof def.acroIndex === 'number'
+      || Array.isArray(def.acroIndices)
+    ),
+  );
+}
+
+function hasCoordinateFieldMap(fieldMap: Record<string, FieldMapDef>): boolean {
+  return Object.values(fieldMap || {}).some(
+    (def) => def && typeof def.x === 'number' && typeof def.y === 'number',
+  );
+}
+
+const FORM6_PDF_FIELDS: Record<string, string | { day: string; month: string; year: string }> = {
+  proposed_company_name: 'NAME 1',
+  applicant_name: 'REQUESTED BY',
+  applicant_address: 'STREET 1',
+  reservation_date: { day: 'DAY', month: 'MONTH', year: 'YEAR' },
+};
+
+function splitReservationDate(value: string) {
+  const v = String(value ?? '').trim();
+  if (!v) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) {
+    const [year, month, day] = v.split('-');
+    return { day, month, year: year.slice(-2) };
+  }
+  if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(v)) {
+    const [d, m, y] = v.split('/');
+    return { day: d.padStart(2, '0'), month: m.padStart(2, '0'), year: y.slice(-2) };
+  }
+  return null;
+}
+
+function cojPdfFieldNameValues(
+  formKind: string,
+  fieldValues: Record<string, string>,
+  fieldMap: Record<string, { acroField?: string }> = {},
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (formKind === 'coj_form_6') {
+    for (const [key, pdfName] of Object.entries(FORM6_PDF_FIELDS)) {
+      if (typeof pdfName === 'string') {
+        const v = String(fieldValues?.[key] ?? '').trim();
+        if (v) out[pdfName] = v;
+      }
+    }
+    const dateSpec = FORM6_PDF_FIELDS.reservation_date;
+    const parts = splitReservationDate(fieldValues?.reservation_date ?? '');
+    if (dateSpec && typeof dateSpec === 'object' && parts) {
+      if (parts.day) out[dateSpec.day] = parts.day;
+      if (parts.month) out[dateSpec.month] = parts.month;
+      if (parts.year) out[dateSpec.year] = parts.year;
+    }
+  }
+  for (const [key, def] of Object.entries(fieldMap || {})) {
+    if (!def?.acroField || out[def.acroField]) continue;
+    const v = String(fieldValues?.[key] ?? '').trim();
+    if (v) out[String(def.acroField)] = v;
+  }
+  return out;
+}
+
+function sanitizeFieldValues(
+  fieldValues: Record<string, string>,
+  allowedKeys: Set<string>,
+): Record<string, string> {
+  const out: Record<string, string> = {};
+  let count = 0;
+  for (const [key, raw] of Object.entries(fieldValues || {})) {
+    if (!allowedKeys.has(key)) continue;
+    const v = String(raw ?? '').trim();
+    if (!v) continue;
+    if (v.length > MAX_FIELD_VALUE_LEN) {
+      throw new Error(`Field "${key}" exceeds maximum length`);
+    }
+    out[key] = v;
+    count += 1;
+    if (count > MAX_FIELD_COUNT) throw new Error('Too many field values');
+  }
+  return out;
+}
+
+async function loadActiveTemplate(supabase: ReturnType<typeof createClient>, templateId: string) {
+  const { data: template, error: tErr } = await supabase
+    .from('legal_templates')
+    .select('id, kind, provider, template_path, placeholder_map, field_map')
+    .eq('id', templateId)
+    .eq('active', true)
+    .maybeSingle();
+  if (tErr || !template?.template_path) return null;
+  return template;
+}
+
+function fillAcroPdfMupdf(templateBytes: Uint8Array, pdfFieldValues: Record<string, string>) {
+  if (templateBytes.byteLength > MAX_PDF_BYTES) {
+    throw new Error('Template PDF exceeds maximum size');
+  }
+  const doc = mupdf.Document.openDocument(templateBytes, 'application/pdf');
+  let filledCount = 0;
+  for (let i = 0; i < doc.countPages(); i++) {
+    const page = doc.loadPage(i);
+    for (const widget of page.getWidgets()) {
+      const name = widget.getName();
+      const value = pdfFieldValues[name];
+      if (!value) continue;
+      widget.setTextValue(value);
+      filledCount += 1;
+    }
+  }
+  const buffer = doc.saveToBuffer('pdf');
+  const pdfBytes = buffer.asUint8Array ? new Uint8Array(buffer.asUint8Array()) : new Uint8Array(buffer);
+  return { pdfBytes, filledCount };
+}
+
+async function fillCoordinatePdfLib(
+  templateBytes: Uint8Array,
+  fieldMap: Record<string, FieldMapDef>,
+  fieldValues: Record<string, string>,
+) {
+  if (templateBytes.byteLength > MAX_PDF_BYTES) {
+    throw new Error('Template PDF exceeds maximum size');
+  }
+  const pdfDoc = await PDFDocument.load(templateBytes, { ignoreEncryption: true });
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  let filledCount = 0;
+  for (const [key, def] of Object.entries(fieldMap || {})) {
+    if (def.type !== 'text' && def.type !== 'date') continue;
+    const text = String(fieldValues?.[key] ?? '').trim();
+    if (!text) continue;
+    const page = pdfDoc.getPages()[def.page ?? 0];
+    if (!page) continue;
+    const { height: pageHeight } = page.getSize();
+    const x = def.x ?? 72;
+    const h = def.h ?? 24;
+    const uiY = def.y ?? 0;
+    const pdfY = pageHeight - uiY - h;
+    const fontSize = def.fontSize ?? 10;
+    page.drawText(text, { x, y: pdfY + 4, size: fontSize, font });
+    filledCount += 1;
+  }
+  const pdfBytes = new Uint8Array(await pdfDoc.save({ useObjectStreams: false }));
+  return { pdfBytes, filledCount };
 }
 
 serve(async (req) => {
@@ -28,6 +195,95 @@ serve(async (req) => {
 
     const body = await req.json();
     const { action, job_id, template_id } = body;
+
+    if (action === 'fill_acro_pdf' || action === 'fill_coj_pdf') {
+      const { form_id, field_values } = body as {
+        form_id?: string;
+        field_values?: Record<string, string>;
+        template_id?: string;
+      };
+      if (!field_values || !template_id) return json({ error: 'template_id and field_values required' }, 400);
+
+      const template = await loadActiveTemplate(supabase, template_id);
+      if (!template) return json({ error: 'Template not found' }, 404);
+
+      const fieldMap = (template.field_map || {}) as Record<string, FieldMapDef>;
+      if (!hasAcroFieldMap(fieldMap)) return json({ error: 'Template has no AcroForm field map' }, 400);
+
+      const formKind = form_id || template.kind;
+      if (form_id && form_id !== template.kind) {
+        return json({ error: 'Template does not match form' }, 400);
+      }
+
+      const allowedKeys = new Set(Object.keys(
+        (template.placeholder_map || {}) as Record<string, unknown>,
+      ));
+      let safeFieldValues: Record<string, string>;
+      try {
+        safeFieldValues = sanitizeFieldValues(field_values, allowedKeys);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Invalid field values';
+        return json({ error: msg }, 400);
+      }
+      if (!Object.keys(safeFieldValues).length) return json({ error: 'No fillable field values' }, 400);
+
+      const templateBytes = await fetchTemplateBytes(template.template_path);
+      const pdfFieldValues = cojPdfFieldNameValues(formKind, safeFieldValues, fieldMap);
+      if (!Object.keys(pdfFieldValues).length) return json({ error: 'No fillable field values' }, 400);
+
+      let pdfBytes: Uint8Array;
+      let filledCount: number;
+      try {
+        ({ pdfBytes, filledCount } = fillAcroPdfMupdf(templateBytes, pdfFieldValues));
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'PDF fill failed';
+        return json({ error: msg }, 422);
+      }
+      if (filledCount === 0) return json({ error: 'No PDF fields could be filled' }, 422);
+
+      return json({ filled_count: filledCount, pdf_base64: encodeBase64(pdfBytes) });
+    }
+
+    if (action === 'fill_coordinate_pdf') {
+      const { field_values } = body as {
+        field_values?: Record<string, string>;
+        template_id?: string;
+      };
+      if (!field_values || !template_id) return json({ error: 'template_id and field_values required' }, 400);
+
+      const template = await loadActiveTemplate(supabase, template_id);
+      if (!template) return json({ error: 'Template not found' }, 404);
+
+      const fieldMap = (template.field_map || {}) as Record<string, FieldMapDef>;
+      if (!hasCoordinateFieldMap(fieldMap)) {
+        return json({ error: 'Template has no coordinate field map' }, 400);
+      }
+
+      const allowedKeys = new Set(Object.keys(
+        (template.placeholder_map || {}) as Record<string, unknown>,
+      ));
+      let safeFieldValues: Record<string, string>;
+      try {
+        safeFieldValues = sanitizeFieldValues(field_values, allowedKeys);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'Invalid field values';
+        return json({ error: msg }, 400);
+      }
+      if (!Object.keys(safeFieldValues).length) return json({ error: 'No fillable field values' }, 400);
+
+      const templateBytes = await fetchTemplateBytes(template.template_path);
+      let pdfBytes: Uint8Array;
+      let filledCount: number;
+      try {
+        ({ pdfBytes, filledCount } = await fillCoordinatePdfLib(templateBytes, fieldMap, safeFieldValues));
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : 'PDF fill failed';
+        return json({ error: msg }, 422);
+      }
+      if (filledCount === 0) return json({ error: 'No PDF fields could be filled' }, 422);
+
+      return json({ filled_count: filledCount, pdf_base64: encodeBase64(pdfBytes) });
+    }
 
     if (action === 'fetch_template') {
       if (!template_id) return json({ error: 'template_id required' }, 400);

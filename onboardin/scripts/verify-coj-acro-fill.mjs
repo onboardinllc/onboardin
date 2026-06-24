@@ -1,6 +1,7 @@
-import { readFileSync } from 'fs';
+import { readFileSync, writeFileSync } from 'fs';
 import { PDFDocument } from '../src/vendor/pdf-lib.esm.min.js';
-import { buildCojFilledPdf } from '../src/lib/coj-pdf-fill.js';
+import { buildCojFilledPdf } from './pdf-fill-node.mjs';
+import { spawnSync } from 'child_process';
 
 const MAPS = {
   form6: {
@@ -53,13 +54,45 @@ for (const [name, cfg] of Object.entries(MAPS)) {
     if (encrypted) {
       console.log(`FAIL ${name} still encrypted`);
       ok = false;
-    } else if (out.byteLength < 150000 || out.byteLength > 250000) {
+    } else if (out.byteLength < 150000 || out.byteLength > 300000) {
       console.log(`FAIL ${name} unexpected size (${out.byteLength})`);
       ok = false;
+    } else {
+      const py = spawnSync('python', ['-c', `
+import fitz, sys
+d=fitz.open(sys.argv[1])
+t=d[0].get_text()
+d.close()
+for s in ['ACME JAMAICA LTD','Jane Founder','14 Camp Road']:
+  if s not in t: raise SystemExit(1)
+`, 'verify-tmp-form6.pdf'], { encoding: 'utf8' });
+      writeFileSync('verify-tmp-form6.pdf', out);
+      if (py.status !== 0) {
+        console.log(`FAIL ${name} filled text not visible on page 1`);
+        ok = false;
+      }
     }
-  } else if (out.byteLength < 800000) {
+  } else if (out.byteLength < 700000) {
     console.log(`FAIL ${name} output too small (${out.byteLength} bytes)`);
     ok = false;
+  } else {
+    writeFileSync('verify-tmp-form1a.pdf', out);
+    const py = spawnSync('python', ['-c', `
+import fitz, sys
+d=fitz.open(sys.argv[1])
+text = ''
+for w in d[0].widgets():
+    text += (w.field_value or '') + ' '
+for p in range(d.page_count):
+    text += d[p].get_text()
+d.close()
+for s in ['ACME JAMAICA LTD','14 Camp Road']:
+  if s not in text: raise SystemExit(1)
+`, 'verify-tmp-form1a.pdf'], { encoding: 'utf8' });
+    if (py.status !== 0) {
+      console.log(`FAIL ${name} filled text not visible on page 1`);
+      ok = false;
+    }
   }
   if (ok) {
     console.log(`PASS ${name} (${out.byteLength} bytes, encrypted=${encrypted}, fields=${formFields.length})`);

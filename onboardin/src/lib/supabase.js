@@ -12,8 +12,8 @@ const envAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 // Ignore the placeholder values shipped in the example env file.
 const isReal = (v) => v && !v.startsWith('your-');
 
-const supabaseUrl = isReal(envUrl) ? envUrl : FALLBACK_URL;
-const supabaseAnonKey = isReal(envAnonKey) ? envAnonKey : FALLBACK_ANON_KEY;
+export const supabaseUrl = isReal(envUrl) ? envUrl : FALLBACK_URL;
+export const supabaseAnonKey = isReal(envAnonKey) ? envAnonKey : FALLBACK_ANON_KEY;
 
 function isValidSupabaseUrl(url) {
   try {

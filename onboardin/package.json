@@ -7,6 +7,10 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "test:coj-autofill-local": "node scripts/test-coj-autofill-local.mjs --open",
+    "fill:form6-local": "node scripts/fill-local-form6.mjs --open",
+    "test:coj-autofill-platform": "node scripts/test-coj-autofill-platform.mjs",
+    "verify:autofill-browser": "node ../scaffolds/tickets/verify-autofill-browser.mjs",
     "verify:envelope": "node ../scaffolds/tickets/verify-envelope-security.mjs",
     "verify:sign-portal": "node ../scaffolds/tickets/verify-sign-portal.mjs",
     "verify:envelope-browser": "node ../scaffolds/tickets/verify-envelope-browser.mjs"

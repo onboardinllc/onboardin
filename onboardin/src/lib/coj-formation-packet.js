@@ -4,6 +4,7 @@
  * Form URLs/CTAs are sourced from vault procedures (articles process steps).
  */
 import { JAMAICA_LTD } from './procedures.js';
+import { canAutofillTemplate } from './pdf-field-map.js';
 
 /** Map hosted PDF filename → packet form ids (must match legal_templates.kind). */
 const COJ_URL_FORM_META = {
@@ -43,18 +44,10 @@ export function isCojTemplateLinked(template, formDef) {
   return template.template_path === formDef.download_url;
 }
 
-/** Autofill is allowed when template is linked and field_map targets AcroForm fields. */
+/** Autofill is allowed when template is linked and field_map is fillable. */
 export function canCojAutofill(template, formDef) {
   if (!isCojTemplateLinked(template, formDef)) return false;
-  const fieldMap = template?.field_map;
-  if (!fieldMap || typeof fieldMap !== 'object') return false;
-  return Object.values(fieldMap).some(
-    (def) => def && (
-      def.acroField != null
-      || typeof def.acroIndex === 'number'
-      || Array.isArray(def.acroIndices)
-    ),
-  );
+  return canAutofillTemplate(template);
 }
 
 export const COJ_FORM_IDS = COJ_PACKET_FORMS.map((f) => f.form_id);

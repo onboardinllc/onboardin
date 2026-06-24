@@ -14,6 +14,8 @@ import {
 } from '../lib/document-envelope';
 import DocumentSignOverlay from './DocumentSignOverlay';
 import EnvelopeSignersPanel from './EnvelopeSignersPanel';
+import { runDocumentAutofill } from '../lib/autofill-service.js';
+import { canAutofillTemplate } from '../lib/pdf-field-map.js';
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhdGZpaWNwa3VuYWJwcGh3cWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzgyOTEsImV4cCI6MjA5NTkxNDI5MX0.00A9OEwex4Yeb4EXCy8vUtRXpCVPXmZDyXVHxl6XiVA';
 const EDGE_BASE = 'https://qatfiicpkunabpphwqee.supabase.co/functions/v1';
@@ -217,28 +219,48 @@ export default function DocumentFillPanel({
 
   const handleApplyFill = async () => {
     if (!jobId || !template || phase === 'filled' || phase === 'signed') return;
+    if (!canAutofillTemplate(template)) {
+      setFillError('This document is not configured for autofill yet.');
+      setPhase('error');
+      return;
+    }
     setPhase('filling');
     setFillError('');
     try {
       const { data: { session: authSession } } = await supabase.auth.getSession();
-      const res = await fetch(`${EDGE_BASE}/document-fill`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authSession.access_token}`,
-          'apikey': ANON_KEY,
-        },
-        body: JSON.stringify({ job_id: jobId, template_id: template.id }),
+      let valuesToFill = fieldValues;
+
+      if (hasLlmKey(template)) {
+        const res = await fetch(`${EDGE_BASE}/document-fill`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authSession.access_token}`,
+            'apikey': ANON_KEY,
+          },
+          body: JSON.stringify({ job_id: jobId, template_id: template.id }),
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(json.error || `Fill failed (${res.status})`);
+        valuesToFill = json.field_values || fieldValues;
+      }
+
+      const formation_draft = clientProfile?.formation_draft || {};
+      await runDocumentAutofill({
+        supabase,
+        session: authSession,
+        clientProfile,
+        formationDraft: formation_draft,
+        complianceIntake: complianceIntake || {},
+        template,
+        jobId,
+        fieldValues: valuesToFill,
       });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || `Fill failed (${res.status})`);
-      const updatedFieldValues = json.field_values || fieldValues;
-      const updatedJobId = json.job_id || jobId;
-      setFieldValues(updatedFieldValues);
-      setJobId(updatedJobId);
+
+      setFieldValues(valuesToFill);
       setCurrentJob({
-        id: updatedJobId,
-        field_values: updatedFieldValues,
+        id: jobId,
+        field_values: valuesToFill,
         client_id: clientProfile.id,
         template_id: template.id,
         status: 'filled',
@@ -436,13 +458,13 @@ export default function DocumentFillPanel({
                 )}
 
                 {/* Actions */}
-                {phase === 'preview' && (
+                {phase === 'preview' && canAutofillTemplate(template) && (
                   <button
                     type="button"
                     onClick={() => setPhase('confirm')}
                     className="w-full py-2.5 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-xl text-sm uppercase tracking-widest text-purple-200 transition-all"
                   >
-                    Ask Assistant to fill
+                    {hasLlmKey(template) ? 'Ask Assistant to fill' : 'Autofill from my info'}
                   </button>
                 )}
 
