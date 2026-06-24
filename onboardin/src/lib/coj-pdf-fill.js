@@ -6,8 +6,18 @@
  */
 import { PDFDocument, StandardFonts, rgb } from '../vendor/pdf-lib.esm.min.js';
 
+/** Browser-safe — Buffer is Node-only and breaks mobile autofill. */
 function templateIsEncrypted(bytes) {
-  return Buffer.from(bytes).toString('latin1').includes('/Encrypt');
+  const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  const needle = [0x2f, 0x45, 0x6e, 0x63, 0x72, 0x79, 0x70, 0x74]; // /Encrypt
+  for (let i = 0; i <= u8.length - needle.length; i++) {
+    let match = true;
+    for (let j = 0; j < needle.length; j++) {
+      if (u8[i + j] !== needle[j]) { match = false; break; }
+    }
+    if (match) return true;
+  }
+  return false;
 }
 
 function fieldValueForKey(key, def, fieldValues, placements) {
