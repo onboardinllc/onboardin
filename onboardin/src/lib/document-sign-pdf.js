@@ -42,8 +42,12 @@ export async function fetchTemplatePdfBytes(template, supabase) {
 }
 
 /**
- * Burn field_values, placements, and signature PNG onto template PDF.
+ * Burn field_values, placements, and signature PNG(s) onto template PDF.
  * field_map y is top-left UI coords; pdf-lib uses bottom-left origin.
+ *
+ * Solo path:  pass signaturePngBytes (single Uint8Array) — all signature fields get the same image.
+ * Multi path: pass signaturesByFieldKey ({ [fieldKey]: Uint8Array }) — each field gets its own image.
+ * Both are backward compatible; multi path takes precedence when provided.
  */
 export async function buildSignedPdf({
   templatePdfBytes,
@@ -51,12 +55,23 @@ export async function buildSignedPdf({
   fieldValues,
   placements,
   signaturePngBytes,
+  signaturesByFieldKey,
 }) {
   const pdfDoc = await PDFDocument.load(templatePdfBytes);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
-  const sigImage = signaturePngBytes?.length
-    ? await pdfDoc.embedPng(signaturePngBytes)
-    : null;
+
+  // Pre-embed all distinct PNG buffers (deduplicate by identity)
+  const embeddedImages = new Map();
+  async function getEmbedded(bytes) {
+    if (!bytes?.length) return null;
+    if (embeddedImages.has(bytes)) return embeddedImages.get(bytes);
+    const img = await pdfDoc.embedPng(bytes);
+    embeddedImages.set(bytes, img);
+    return img;
+  }
+
+  // Solo fallback image (used when no per-field map provided)
+  const soloImage = signaturePngBytes?.length ? await getEmbedded(signaturePngBytes) : null;
 
   for (const [key, def] of Object.entries(fieldMap || {})) {
     const pageIndex = def.page ?? 0;
@@ -77,8 +92,11 @@ export async function buildSignedPdf({
     } else if (def.type === 'date') {
       const text = String(placements?.[key]?.value ?? fieldValues?.[key] ?? '').trim();
       if (text) page.drawText(text, { x, y: pdfY + 4, size: fontSize, font });
-    } else if (def.type === 'signature' && placements?.[key]?.placed && sigImage) {
-      page.drawImage(sigImage, { x, y: pdfY, width: w, height: h });
+    } else if (def.type === 'signature' && placements?.[key]?.placed) {
+      // Per-field image wins over solo image
+      const fieldBytes = signaturesByFieldKey?.[key];
+      const img = fieldBytes?.length ? await getEmbedded(fieldBytes) : soloImage;
+      if (img) page.drawImage(img, { x, y: pdfY, width: w, height: h });
     }
   }
 

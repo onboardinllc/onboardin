@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "verify:envelope": "node ../scaffolds/tickets/verify-envelope-security.mjs",
+    "verify:sign-portal": "node ../scaffolds/tickets/verify-sign-portal.mjs",
+    "verify:envelope-browser": "node ../scaffolds/tickets/verify-envelope-browser.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.4",

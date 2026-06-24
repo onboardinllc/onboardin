@@ -13,6 +13,7 @@ import ComplianceCalendar from './components/ComplianceCalendar';
 import AdminObligationsPanel from './components/AdminObligationsPanel';
 import DocumentFillPanel from './components/DocumentFillPanel';
 import SignatureSettings from './components/SignatureSettings';
+import SignPortal from './components/SignPortal';
 import { fetchActiveMemberSignature, assertSignaturePathForUser } from './lib/member-signature';
 import { canAccessComplianceCalendar, enrichObligation, obligationStats } from './lib/compliance-obligations';
 import { buildDraftPayload, buildActivePayload, serializeIntake } from './lib/compliance-intake-persist';
@@ -5324,6 +5325,27 @@ const App = () => {
             setCurrentView('dashboard');
         }
     };
+
+    // Sign portal — early exit, no vault chrome
+    const signPortalToken = (() => {
+        const hash = window.location.hash.replace(/^#/, '');
+        const qIdx = hash.indexOf('?');
+        if (qIdx < 0) return null;
+        const segment = hash.slice(0, qIdx);
+        if (segment !== 'sign') return null;
+        return new URLSearchParams(hash.slice(qIdx + 1)).get('token') || null;
+    })();
+
+    if (signPortalToken) {
+        return (
+            <div className={`min-h-screen text-white relative font-sans ${theme === 'earth' ? 'bg-[#01030c]' : 'bg-[#03020a]'}`}>
+                {theme === 'earth' ? <EarthBackground visible={true} /> : <GalaxyBackground visible={true} />}
+                <div className="relative z-10">
+                    <SignPortal token={signPortalToken} />
+                </div>
+            </div>
+        );
+    }
 
     return (<div className={`min-h-screen text-white relative font-sans selection:bg-purple-500/30 ${theme === 'earth' ? 'bg-[#01030c]' : 'bg-[#03020a]'}`}>
             {theme === 'earth' ? <EarthBackground visible={true} /> : <GalaxyBackground visible={true} />}

@@ -5,10 +5,38 @@ import {
   assertSignedDocumentPath,
   SIGNED_DOC_PREVIEW_TTL_SEC,
 } from '../lib/member-signature';
+import {
+  createEnvelope,
+  fetchActiveEnvelope,
+  fetchEnvelopeSigners,
+  voidEnvelope,
+  sendInvites,
+} from '../lib/document-envelope';
 import DocumentSignOverlay from './DocumentSignOverlay';
+import EnvelopeSignersPanel from './EnvelopeSignersPanel';
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhdGZpaWNwa3VuYWJwcGh3cWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzgyOTEsImV4cCI6MjA5NTkxNDI5MX0.00A9OEwex4Yeb4EXCy8vUtRXpCVPXmZDyXVHxl6XiVA';
 const EDGE_BASE = 'https://qatfiicpkunabpphwqee.supabase.co/functions/v1';
+
+function initiatorUrlStorageKey(envelopeId) {
+  return `envelope-initiator-url-${envelopeId}`;
+}
+
+function readStoredInitiatorUrl(envelopeId) {
+  try {
+    return sessionStorage.getItem(initiatorUrlStorageKey(envelopeId));
+  } catch {
+    return null;
+  }
+}
+
+function storeInitiatorUrl(envelopeId, url) {
+  try {
+    sessionStorage.setItem(initiatorUrlStorageKey(envelopeId), url);
+  } catch {
+    /* sessionStorage unavailable */
+  }
+}
 
 /**
  * DocumentFillPanel — preview + assistant fill for a vault card template.
@@ -44,6 +72,19 @@ export default function DocumentFillPanel({
   const [loading, setLoading] = useState(true);
   const [showSign, setShowSign] = useState(false);
   const [currentJob, setCurrentJob] = useState(null);
+
+  // Envelope state
+  const [activeEnvelope, setActiveEnvelope] = useState(null);
+  const [envelopeSigners, setEnvelopeSigners] = useState([]);
+  const [showSignersPanel, setShowSignersPanel] = useState(false);
+  const [envelopeError, setEnvelopeError] = useState('');
+  const [envelopeLoading, setEnvelopeLoading] = useState(false);
+  const [inviteUrls, setInviteUrls] = useState(null);
+  const [copyFeedback, setCopyFeedback] = useState('');
+  const [sendingInvites, setSendingInvites] = useState(false);
+  const [invitesSent, setInvitesSent] = useState(false);
+
+  const isPaid = clientProfile?.plan === 'growth' || clientProfile?.plan === 'enterprise';
 
   const hasLlmKey = useCallback((t) => {
     if (!t?.placeholder_map) return false;
@@ -82,7 +123,7 @@ export default function DocumentFillPanel({
 
         if (existingJob?.id) {
           setJobId(existingJob.id);
-          if (existingJob.status === 'filled' || existingJob.status === 'signed') {
+          if (existingJob.status === 'filled' || existingJob.status === 'pending_signatures' || existingJob.status === 'signed') {
             setFieldValues(existingJob.field_values || previewFieldValues);
             setCurrentJob(existingJob);
             setPhase(existingJob.status === 'signed' ? 'signed' : 'filled');
@@ -113,6 +154,65 @@ export default function DocumentFillPanel({
     }
     if (cat && clientProfile && session) load();
   }, [cat, clientProfile, complianceIntake, session, supabase]);
+
+  const refreshEnvelopeState = useCallback(async () => {
+    if (!jobId || !template?.multi_signer_enabled) return;
+    try {
+      const env = await fetchActiveEnvelope(supabase, jobId);
+      setActiveEnvelope(env);
+      if (env) {
+        const signers = await fetchEnvelopeSigners(supabase, env.id);
+        setEnvelopeSigners(signers);
+        const storedInitiatorUrl = readStoredInitiatorUrl(env.id);
+        if (storedInitiatorUrl) {
+          setInviteUrls((prev) => prev ?? { initiator: storedInitiatorUrl });
+        }
+        if (env.status === 'pending') {
+          const { data: job } = await supabase
+            .from('document_jobs')
+            .select('status')
+            .eq('id', jobId)
+            .maybeSingle();
+          if (job?.status === 'pending_signatures') {
+            setCurrentJob((prev) => (prev ? { ...prev, status: 'pending_signatures' } : prev));
+          }
+        }
+      } else {
+        setEnvelopeSigners([]);
+        const { data: job } = await supabase
+          .from('document_jobs')
+          .select('*')
+          .eq('id', jobId)
+          .maybeSingle();
+        if (job?.status === 'signed') {
+          setCurrentJob(job);
+          if (job.field_values) setFieldValues(job.field_values);
+          setPhase('signed');
+        }
+      }
+    } catch {
+      // Non-fatal — envelope features degrade gracefully
+    }
+  }, [jobId, template, supabase]);
+
+  // Load active envelope whenever jobId + template are available and multi-signer is enabled
+  useEffect(() => {
+    refreshEnvelopeState();
+  }, [refreshEnvelopeState]);
+
+  // Refresh when user returns from sign portal (new tab or OTP redirect)
+  useEffect(() => {
+    const onFocus = () => { refreshEnvelopeState(); };
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') onFocus();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [refreshEnvelopeState]);
 
   const handleApplyFill = async () => {
     if (!jobId || !template || phase === 'filled' || phase === 'signed') return;
@@ -146,6 +246,99 @@ export default function DocumentFillPanel({
     } catch (e) {
       setFillError(e.message || 'Fill failed. Try again.');
       setPhase('error');
+    }
+  };
+
+  const handleCreateEnvelope = async (signers) => {
+    setEnvelopeError('');
+    setEnvelopeLoading(true);
+    try {
+      const result = await createEnvelope(supabase, {
+        jobId,
+        templateId: template.id,
+        signers,
+      });
+      const env = await fetchActiveEnvelope(supabase, jobId);
+      setActiveEnvelope(env);
+      if (env) {
+        const rows = await fetchEnvelopeSigners(supabase, env.id);
+        setEnvelopeSigners(rows);
+      }
+      const urls = { initiator: result.initiator_invite_url, ...result.invite_urls };
+      setInviteUrls(urls);
+      if (result.envelope_id && result.initiator_invite_url) {
+        storeInitiatorUrl(result.envelope_id, result.initiator_invite_url);
+      }
+      setShowSignersPanel(false);
+    } catch (e) {
+      if (e.code === 'upgrade_required') {
+        setEnvelopeError('Request signatures requires a Growth or Enterprise plan.');
+      } else {
+        setEnvelopeError(e.message || 'Failed to create envelope.');
+      }
+    }
+    setEnvelopeLoading(false);
+  };
+
+  const handleVoidEnvelope = async () => {
+    if (!activeEnvelope) return;
+    setEnvelopeError('');
+    setEnvelopeLoading(true);
+    try {
+      await voidEnvelope(supabase, activeEnvelope.id);
+      if (jobId) {
+        await supabase
+          .from('document_jobs')
+          .update({ status: 'filled', updated_at: new Date().toISOString() })
+          .eq('id', jobId)
+          .eq('status', 'pending_signatures');
+        setCurrentJob((prev) => (prev ? { ...prev, status: 'filled' } : prev));
+      }
+      try {
+        sessionStorage.removeItem(initiatorUrlStorageKey(activeEnvelope.id));
+      } catch { /* ignore */ }
+      setActiveEnvelope(null);
+      setEnvelopeSigners([]);
+      setInviteUrls(null);
+      setInvitesSent(false);
+    } catch (e) {
+      setEnvelopeError(e.message || 'Failed to void envelope.');
+    }
+    setEnvelopeLoading(false);
+  };
+
+  const handleSendInvites = async () => {
+    if (!activeEnvelope) return;
+    setSendingInvites(true);
+    setEnvelopeError('');
+    try {
+      const result = await sendInvites(supabase, activeEnvelope.id);
+      setInvitesSent(true);
+      setCopyFeedback(`${result.sent} invite${result.sent !== 1 ? 's' : ''} sent.`);
+      setTimeout(() => setCopyFeedback(''), 4000);
+    } catch (e) {
+      setEnvelopeError(e.message || 'Failed to send invites.');
+    }
+    setSendingInvites(false);
+  };
+
+  const envelopeActive = activeEnvelope && (activeEnvelope.status === 'draft' || activeEnvelope.status === 'pending');
+
+  const initiatorSigner = envelopeSigners.find((s) => s.is_initiator);
+  const initiatorInviteUrl = inviteUrls?.initiator
+    ?? (activeEnvelope?.id ? readStoredInitiatorUrl(activeEnvelope.id) : null);
+  const showInitiatorSignCta = activeEnvelope?.status === 'draft'
+    && initiatorSigner?.status !== 'signed'
+    && initiatorInviteUrl;
+
+  const handleCopyUrl = async (url, label) => {
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopyFeedback(`${label} link copied`);
+      setTimeout(() => setCopyFeedback(''), 2500);
+    } catch {
+      setCopyFeedback('Could not copy — select the link manually');
     }
   };
 
@@ -283,15 +476,109 @@ export default function DocumentFillPanel({
                   </div>
                 )}
 
-                {phase === 'filled' && (
+                {phase === 'filled' && !showSignersPanel && (
                   <div className="flex flex-col gap-2">
+                    {/* Solo sign — disabled when envelope is active */}
                     <button
                       type="button"
                       onClick={() => setShowSign(true)}
-                      className="w-full py-2.5 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-xl text-sm uppercase tracking-widest text-purple-200 transition-all"
+                      disabled={!!envelopeActive}
+                      title={envelopeActive ? 'Void the active envelope to sign solo.' : undefined}
+                      className="w-full py-2.5 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-xl text-sm uppercase tracking-widest text-purple-200 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                     >
-                      Sign document
+                      Fill &amp; sign with my info
                     </button>
+
+                    {/* Multi-signer: JM template only */}
+                    {template?.multi_signer_enabled && (
+                      <>
+                        {envelopeActive ? (
+                          /* Envelope in progress */
+                          <div className="space-y-3">
+                            <div className="p-3 rounded-lg border border-purple-500/20 bg-purple-500/5">
+                              <p className="text-xs uppercase tracking-widest text-purple-400 mb-2">
+                                Signatures in progress
+                              </p>
+                              {envelopeSigners.map((s) => (
+                                <div key={s.id} className="flex items-center justify-between py-1">
+                                  <span className="text-xs text-gray-400 truncate">{s.display_name || s.email}</span>
+                                  <span className={`text-xs uppercase tracking-widest ml-2 flex-shrink-0 ${
+                                    s.status === 'signed' ? 'text-green-400' : s.status === 'opened' ? 'text-amber-400' : 'text-gray-600'
+                                  }`}>
+                                    {s.status === 'signed' ? 'Signed' : s.status === 'opened' ? 'Opened' : 'Pending'}
+                                  </span>
+                                </div>
+                              ))}
+                              {showInitiatorSignCta && (
+                                <div className="mt-3 flex flex-col gap-2">
+                                  <a
+                                    href={initiatorInviteUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="w-full py-2.5 text-center bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-xl text-sm uppercase tracking-widest text-purple-200 transition-all"
+                                  >
+                                    Sign now (Founder 1)
+                                  </a>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyUrl(initiatorInviteUrl, 'Initiator')}
+                                    className="w-full py-2 border border-white/10 rounded-lg text-xs uppercase tracking-widest text-gray-500 hover:text-gray-300 transition-all"
+                                  >
+                                    Copy initiator link
+                                  </button>
+                                  <p className="text-xs text-gray-600">
+                                    Sign as Founder 1 before co-founders can be invited.
+                                  </p>
+                                </div>
+                              )}
+                              {/* Send invites CTA — show once initiator signed (envelope pending) */}
+                              {activeEnvelope?.status === 'pending' && initiatorSigner?.status === 'signed' && (
+                                <div className="mt-3 space-y-2">
+                                  <button
+                                    type="button"
+                                    onClick={handleSendInvites}
+                                    disabled={sendingInvites || envelopeLoading}
+                                    className="w-full py-2.5 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-xl text-sm uppercase tracking-widest text-purple-200 transition-all disabled:opacity-40"
+                                  >
+                                    {sendingInvites ? 'Sending…' : invitesSent ? 'Resend invites' : 'Send invites'}
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleVoidEnvelope}
+                              disabled={envelopeLoading}
+                              className="w-full py-2 border border-red-500/20 rounded-lg text-xs uppercase tracking-widest text-red-400 hover:border-red-500/40 transition-all disabled:opacity-40"
+                            >
+                              {envelopeLoading ? 'Voiding…' : 'Void envelope'}
+                            </button>
+                          </div>
+                        ) : isPaid ? (
+                          /* Paid — show Request signatures */
+                          <button
+                            type="button"
+                            onClick={() => { setShowSignersPanel(true); setEnvelopeError(''); }}
+                            className="w-full py-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm uppercase tracking-widest text-gray-300 transition-all"
+                          >
+                            Request signatures
+                          </button>
+                        ) : (
+                          /* Starter — upgrade CTA */
+                          <div className="p-3 rounded-lg border border-white/5 bg-white/[0.02] text-xs text-gray-500">
+                            Request signatures is available on Growth and Enterprise plans.
+                          </div>
+                        )}
+                      </>
+                    )}
+
+                    {envelopeError && (
+                      <p className="text-sm text-red-300">{envelopeError}</p>
+                    )}
+                    {copyFeedback && (
+                      <p className="text-xs text-green-400">{copyFeedback}</p>
+                    )}
+
                     <a
                       href={template?.template_path}
                       target="_blank"
@@ -301,6 +588,15 @@ export default function DocumentFillPanel({
                       Download blank template
                     </a>
                   </div>
+                )}
+
+                {phase === 'filled' && showSignersPanel && (
+                  <EnvelopeSignersPanel
+                    multiSignerFieldMap={template?.multi_signer_field_map}
+                    disabled={envelopeLoading}
+                    onCancel={() => { setShowSignersPanel(false); setEnvelopeError(''); }}
+                    onSubmit={handleCreateEnvelope}
+                  />
                 )}
 
                 {phase === 'signed' && (
