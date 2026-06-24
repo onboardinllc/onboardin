@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { resolveCompanyContext, resolveFieldValues } from '../lib/company-context';
 import { resolveTemplate } from '../lib/document-templates';
+import {
+  assertSignedDocumentPath,
+  SIGNED_DOC_PREVIEW_TTL_SEC,
+} from '../lib/member-signature';
 import DocumentSignOverlay from './DocumentSignOverlay';
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhdGZpaWNwa3VuYWJwcGh3cWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzgyOTEsImV4cCI6MjA5NTkxNDI5MX0.00A9OEwex4Yeb4EXCy8vUtRXpCVPXmZDyXVHxl6XiVA';
@@ -309,10 +313,20 @@ export default function DocumentFillPanel({
                       <button
                         type="button"
                         onClick={async () => {
-                          const { data } = await supabase.storage
-                            .from('client-documents')
-                            .createSignedUrl(currentJob.signed_path, 3600);
-                          if (data?.signedUrl) window.open(data.signedUrl, '_blank');
+                          try {
+                            const vaultCardId = template?.vault_card_id || cat.id;
+                            assertSignedDocumentPath(
+                              clientProfile.id,
+                              vaultCardId,
+                              currentJob.signed_path,
+                            );
+                            const { data } = await supabase.storage
+                              .from('client-documents')
+                              .createSignedUrl(currentJob.signed_path, SIGNED_DOC_PREVIEW_TTL_SEC);
+                            if (data?.signedUrl) window.open(data.signedUrl, '_blank');
+                          } catch {
+                            // Malformed path — do not open preview
+                          }
                         }}
                         className="w-full py-2.5 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-xl text-sm uppercase tracking-widest text-purple-200 transition-all"
                       >

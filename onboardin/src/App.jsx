@@ -13,7 +13,7 @@ import ComplianceCalendar from './components/ComplianceCalendar';
 import AdminObligationsPanel from './components/AdminObligationsPanel';
 import DocumentFillPanel from './components/DocumentFillPanel';
 import SignatureSettings from './components/SignatureSettings';
-import { fetchActiveMemberSignature } from './lib/member-signature';
+import { fetchActiveMemberSignature, assertSignaturePathForUser } from './lib/member-signature';
 import { canAccessComplianceCalendar, enrichObligation, obligationStats } from './lib/compliance-obligations';
 import { buildDraftPayload, buildActivePayload, serializeIntake } from './lib/compliance-intake-persist';
 import { legalTemplateUrl, isFillableTemplateUrl } from './lib/template-urls.js';
@@ -2173,7 +2173,14 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
             return Promise.resolve();
         }
         return fetchActiveMemberSignature(supabase, session.user.id)
-            .then((row) => setHasMemberSignature(!!row?.storage_path))
+            .then((row) => {
+                if (!row?.storage_path) {
+                    setHasMemberSignature(false);
+                    return;
+                }
+                assertSignaturePathForUser(session.user.id, row.storage_path);
+                setHasMemberSignature(true);
+            })
             .catch(() => setHasMemberSignature(false));
     }, [supabase, session?.user?.id, clientProfile?.is_admin]);
 

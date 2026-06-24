@@ -4,7 +4,11 @@ import {
   fetchActiveMemberSignature,
   signaturePreviewUrl,
   uploadMemberSignaturePng,
+  assertMemberSignContext,
+  assertSignaturePathForUser,
+  assertSignedDocumentPath,
 } from '../lib/member-signature';
+import SignatureCanvas from './SignatureCanvas';
 
 /**
  * DocumentSignOverlay — places signature PNG + date text onto a PDF using pdf-lib.
@@ -35,7 +39,8 @@ export default function DocumentSignOverlay({
     if (!supabase || !session?.user?.id) return;
     const row = await fetchActiveMemberSignature(supabase, session.user.id);
     if (!row?.storage_path) return;
-    const url = await signaturePreviewUrl(supabase, row.storage_path);
+    assertSignaturePathForUser(session.user.id, row.storage_path);
+    const url = await signaturePreviewUrl(supabase, row.storage_path, session.user.id);
     setSigStoragePath(row.storage_path);
     setSigPngUrl(url);
   }, [supabase, session]);
@@ -62,10 +67,18 @@ export default function DocumentSignOverlay({
       setSignError(result.error);
       return;
     }
-    setSigStoragePath(result.storagePath);
-    setSigPngUrl(result.previewUrl);
+    if (result.storagePath) setSigStoragePath(result.storagePath);
+    if (result.previewUrl) {
+      setSigPngUrl(result.previewUrl);
+    } else {
+      try {
+        await loadSignature();
+      } catch {
+        setSignError('Signature saved but preview could not load. Try again.');
+      }
+    }
     onSignatureUploaded?.();
-  }, [supabase, session, onSignatureUploaded]);
+  }, [supabase, session, onSignatureUploaded, loadSignature]);
 
   const handlePlaceSignature = useCallback((fieldKey) => {
     if (!sigStoragePath) return;
@@ -85,9 +98,12 @@ export default function DocumentSignOverlay({
   }, []);
 
   const handleSign = async () => {
+    const contextCheck = assertMemberSignContext(session, clientProfile);
+    if (!contextCheck.ok) { setSignError(contextCheck.error); return; }
+
     const hasSigFields = Object.values(fieldMap).some((f) => f.type === 'signature');
     if (hasSigFields && !sigStoragePath) {
-      setSignError('Upload your signature first, or set one up in Overview.');
+      setSignError('Draw or upload your signature first, or set one up in Overview.');
       return;
     }
     setPhase('signing');
@@ -97,6 +113,7 @@ export default function DocumentSignOverlay({
 
       let signaturePngBytes = null;
       if (sigStoragePath) {
+        assertSignaturePathForUser(session.user.id, sigStoragePath);
         const { data: sigBlob, error: sigErr } = await supabase.storage
           .from('client-documents')
           .download(sigStoragePath);
@@ -114,6 +131,7 @@ export default function DocumentSignOverlay({
 
       const timestamp = Date.now();
       const signedPath = `${clientProfile.id}/${template.vault_card_id}/signed-${timestamp}.pdf`;
+      assertSignedDocumentPath(clientProfile.id, template.vault_card_id, signedPath);
       const now = new Date().toISOString();
 
       const { error: uploadErr } = await supabase.storage
@@ -194,9 +212,13 @@ export default function DocumentSignOverlay({
               <>
                 <div className="space-y-2">
                   <p className="text-xs uppercase tracking-widest text-gray-500">Your signature</p>
-                  {sigPngUrl ? (
+                  {(sigPngUrl || sigStoragePath) ? (
                     <div className="flex items-center gap-3">
-                      <img src={sigPngUrl} alt="signature" className="h-10 object-contain bg-white/5 rounded p-1" />
+                      {sigPngUrl ? (
+                        <img src={sigPngUrl} alt="signature" className="h-10 object-contain bg-white/5 rounded p-1" />
+                      ) : (
+                        <span className="text-sm text-gray-400">Signature saved</span>
+                      )}
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
@@ -206,7 +228,17 @@ export default function DocumentSignOverlay({
                       </button>
                     </div>
                   ) : (
-                    <div className="space-y-2">
+                    <div className="space-y-3">
+                      <SignatureCanvas
+                        compact
+                        disabled={uploading}
+                        onExport={handleSignatureUpload}
+                      />
+                      <div className="flex items-center gap-3 text-xs text-gray-600">
+                        <div className="flex-1 h-px bg-white/10" />
+                        or
+                        <div className="flex-1 h-px bg-white/10" />
+                      </div>
                       <button
                         type="button"
                         disabled={uploading}
@@ -255,7 +287,7 @@ export default function DocumentSignOverlay({
                                 if (fieldDef.type === 'signature') handlePlaceSignature(fieldKey);
                                 else if (fieldDef.type === 'date') handlePlaceDate(fieldKey);
                               }}
-                              disabled={fieldDef.type === 'signature' && !sigPngUrl}
+                              disabled={fieldDef.type === 'signature' && !sigStoragePath}
                               className="text-xs uppercase tracking-widest text-purple-400 hover:text-purple-300 disabled:opacity-30 transition-colors"
                             >
                               {fieldDef.type === 'signature' ? 'Sign' : 'Place today'}
