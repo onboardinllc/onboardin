@@ -1,6 +1,11 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from './lib/supabase';
-import { getCategories as getProcedureCategories } from './lib/procedures';
+import {
+    getCategories as getProcedureCategories,
+    normalizeEntityType,
+    displayEntityType,
+    ENTITY_TYPE_OPTIONS,
+} from './lib/procedures';
 import {
     buildIntakeAnswers,
     evaluateAcceptCriteria,
@@ -748,8 +753,6 @@ const REGIONS = {
     ],
 };
 
-const ENTITY_TYPES = ['LLC','C-Corp','S-Corp','Limited Company (Ltd)','PLC','Sole Proprietor','Non-Profit','Partnership'];
-
 // Returns recommended entity + reason based on intent signals
 function recommendEntity(fundingStage, businessIntent, sellsTo, country) {
     const intent = (businessIntent || '').toLowerCase();
@@ -764,7 +767,7 @@ function recommendEntity(fundingStage, businessIntent, sellsTo, country) {
 
     if (isCaricom) {
         if (wantsVC) return { entity: 'PLC', reason: 'Public Limited Companies suit venture-scale businesses in CARICOM jurisdictions.' };
-        return { entity: 'Limited Company (Ltd)', reason: 'Limited Companies are the standard private structure across CARICOM.' };
+        return { entity: 'Ltd', reason: 'Limited Companies are the standard private structure across CARICOM.' };
     }
 
     if (wantsVC) return { entity: 'C-Corp', reason: 'C-Corps are the standard for venture-backed companies; VCs and stock options require it.' };
@@ -864,7 +867,7 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
         },
     ];
 
-    if (entityType === 'LLC' || entityType === 'C-Corp' || entityType === 'S-Corp') {
+    if (entityType === 'LLC' || entityType === 'C-Corp' || entityType === 'S-Corp' || (isJM && entityType === 'Ltd')) {
         base.push({
             id: 'articles',
             label: isJM ? 'Certificate of Incorporation' : (entityType === 'LLC' ? 'Articles of Organization' : 'Articles of Incorporation'),
@@ -1375,9 +1378,31 @@ function getDocCategoriesInline(entityType, country, jurisdiction) {
 }
 
 function getDocCategories(entityType, country, jurisdiction) {
-    const fromModule = getProcedureCategories(country, entityType, jurisdiction);
+    const entity = normalizeEntityType(entityType);
+    const fromModule = getProcedureCategories(country, entity, jurisdiction);
     if (fromModule?.length) return fromModule;
-    return getDocCategoriesInline(entityType, country, jurisdiction);
+    return getDocCategoriesInline(entity, country, jurisdiction);
+}
+
+/** Merge client-blueprint stubs with full procedure cards when ids match. */
+function buildBlueprintExtras(blueprint, country, entityType, jurisdiction, baseIds) {
+    const procedureById = Object.fromEntries(
+        getProcedureCategories(country, normalizeEntityType(entityType), jurisdiction).map((c) => [c.id, c]),
+    );
+    return (blueprint?.required_documents || [])
+        .filter((d) => d.id && !baseIds.has(d.id))
+        .map((d) => {
+            const full = procedureById[d.id];
+            if (full) return { ...full };
+            return {
+                id: d.id,
+                label: d.label,
+                icon: 'ph-sparkle',
+                desc: d.desc,
+                required: false,
+                suggested: true,
+            };
+        });
 }
 
 // -- Signup --------------------------------------------------------------------
@@ -1474,7 +1499,7 @@ const Signup = ({ setCurrentView }) => {
                     funding_stage: fundingStage,
                     country,
                     jurisdiction,
-                    entity_type: entityType || recommendation.entity,
+                    entity_type: normalizeEntityType(entityType || recommendation.entity),
                     business_intent: businessIntent,
                     sells_to: sellsTo,
                     domain: finalDomain || null,
@@ -1704,7 +1729,7 @@ const Signup = ({ setCurrentView }) => {
                                     {!entityOverride ? (
                                         <div className="bg-purple-500/10 border border-purple-500/30 rounded-xl p-4 space-y-2">
                                             <div className="flex items-center justify-between">
-                                                <span className="text-base font-bold text-white">{recommendation.entity}</span>
+                                                <span className="text-base font-bold text-white">{displayEntityType(recommendation.entity)}</span>
                                                 <span className="text-sm uppercase tracking-widest text-purple-300 bg-purple-400/10 px-2 py-1 rounded-full">Recommended</span>
                                             </div>
                                             <p className="text-base text-gray-400 leading-relaxed">{recommendation.reason}</p>
@@ -1714,7 +1739,7 @@ const Signup = ({ setCurrentView }) => {
                                             <label className={labelClass}>Entity Type</label>
                                             <select value={entityType} onChange={e => setEntityType(e.target.value)} required className={`${inputClass} appearance-none cursor-pointer`}>
                                                 <option value="">Select your entity type</option>
-                                                {ENTITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                                {ENTITY_TYPE_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                                             </select>
                                         </div>
                                     )}
@@ -1974,7 +1999,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         if (clientProfile.business_intent) setSetupIntent(clientProfile.business_intent);
         if (clientProfile.sells_to) setSetupSellsTo(clientProfile.sells_to);
         if (clientProfile.entity_type) {
-            setSetupEntity(clientProfile.entity_type);
+            setSetupEntity(normalizeEntityType(clientProfile.entity_type));
             setSetupEntityOverride(true);
         }
     }, [clientProfile]);
@@ -2640,6 +2665,10 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
 
     const getPartnerMatches = (profile) => {
         if (!profile) return [];
+        const displayProfile = {
+            ...profile,
+            entity_type: displayEntityType(profile.entity_type) || profile.entity_type || '',
+        };
         const jurisdiction = profile.jurisdiction || profile.country || '';
         const stage = profile.funding_stage || 'Pre-Seed';
         const isCARICOM = ['Jamaica','Barbados','Trinidad and Tobago','Guyana','Belize','Grenada',
@@ -2652,7 +2681,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
             const sFit = p.stages.includes(stage);
             const baseWeight = p.match_weight;
             const score = (jFit ? 50 : 0) + (sFit ? 30 : 0) + (baseWeight / 100 * 20);
-            return { ...p, score, jFit, sFit, why: p.why(profile) };
+            return { ...p, score, jFit, sFit, why: p.why(displayProfile) };
         })
         .filter(p => p.score > 40)
         .sort((a, b) => b.score - a.score);
@@ -2680,7 +2709,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         if (!supabase || !session) return;
         setSavingSetup(true);
         const rec = recommendEntity(clientProfile?.funding_stage, setupIntent, setupSellsTo, setupCountry);
-        const finalEntity = setupEntityOverride ? setupEntity : rec.entity;
+        const finalEntity = normalizeEntityType(setupEntityOverride ? setupEntity : rec.entity);
         await supabase.from('clients').update({
             country: setupCountry,
             jurisdiction: setupJurisdiction,
@@ -3277,7 +3306,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                 </div>
                                 <div>
                                     <p className="text-xs uppercase tracking-widest text-gray-500">Entity Type</p>
-                                    <p className="text-sm text-purple-300">{selectedClient.entity_type || 'Not set'}</p>
+                                    <p className="text-sm text-purple-300">{displayEntityType(selectedClient.entity_type) || 'Not set'}</p>
                                 </div>
                                 <div>
                                     <p className="text-xs uppercase tracking-widest text-gray-500">Funding Stage</p>
@@ -4041,9 +4070,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         const baseCategories = getDocCategories(entityType, country, jurisdiction);
                         // Layer in any AI-suggested doc categories the baseline doesn't already cover
                         const baseIds = new Set(baseCategories.map(c => c.id));
-                        const aiExtras = (blueprint?.required_documents || [])
-                            .filter(d => d.id && !baseIds.has(d.id))
-                            .map(d => ({ id: d.id, label: d.label, icon: 'ph-sparkle', desc: d.desc, required: false, suggested: true }));
+                        const aiExtras = buildBlueprintExtras(blueprint, country, entityType, jurisdiction, baseIds);
                         const complianceExtras = ((clientProfile?.onboarding_step ?? 0) >= 5 && complianceBlueprint)
                             ? getComplianceVaultCategories(complianceBlueprint).filter((c) => !baseIds.has(c.id))
                             : [];
@@ -4064,7 +4091,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                         <h3 className="text-sm uppercase tracking-widest text-gray-500">Documents</h3>
                                         {hasJurisdiction && (
                                             <p className="text-sm text-gray-600 mt-0.5">
-                                                {entityType} : {jurisdiction || country}
+                                                {displayEntityType(entityType)} : {jurisdiction || country}
                                                 <button onClick={() => setShowJurisdictionSetup(true)} className="ml-2 text-purple-400 hover:text-purple-300 transition-colors">edit</button>
                                             </p>
                                         )}
@@ -4136,13 +4163,13 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                                     <label className="block text-sm uppercase tracking-widest text-gray-500 mb-1">Entity Type</label>
                                                     {!setupEntityOverride ? (
                                                         <div className="flex items-center justify-between bg-purple-500/10 border border-purple-500/20 rounded-lg px-3 py-2">
-                                                            <span className="text-base text-white">{rec.entity} <span className="text-sm text-purple-400 ml-1">recommended</span></span>
+                                                            <span className="text-base text-white">{displayEntityType(rec.entity)} <span className="text-sm text-purple-400 ml-1">recommended</span></span>
                                                             <button type="button" onClick={() => setSetupEntityOverride(true)} className="text-sm uppercase tracking-widest text-gray-500 hover:text-purple-300 transition-colors">Change</button>
                                                         </div>
                                                     ) : (
                                                         <select value={setupEntity} onChange={e => setSetupEntity(e.target.value)} required className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-base text-white focus:outline-none focus:border-purple-500/50 transition-all appearance-none">
                                                             <option value="">Select…</option>
-                                                            {ENTITY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                                                            {ENTITY_TYPE_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                                                         </select>
                                                     )}
                                                 </div>
@@ -4710,7 +4737,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                     {clientProfile?.jurisdiction && (
                                         <div className="flex flex-wrap gap-2 mt-4">
                                             <span className="text-xs text-gray-500 border border-white/10 px-2 py-1 rounded-full">{clientProfile.jurisdiction}</span>
-                                            {clientProfile.entity_type && <span className="text-xs text-gray-500 border border-white/10 px-2 py-1 rounded-full">{clientProfile.entity_type}</span>}
+                                            {clientProfile.entity_type && <span className="text-xs text-gray-500 border border-white/10 px-2 py-1 rounded-full">{displayEntityType(clientProfile.entity_type)}</span>}
                                             {clientProfile.funding_stage && <span className="text-xs text-gray-500 border border-white/10 px-2 py-1 rounded-full">{clientProfile.funding_stage}</span>}
                                         </div>
                                     )}

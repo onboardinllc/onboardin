@@ -3,6 +3,8 @@
  * Slug resolution, intake visibility, accept_criteria evaluation, vault categories.
  */
 
+import { normalizeEntityType, isJamaicaProfile } from './procedures.js';
+
 const FORMATION_SLUG_MAP = {
   'jamaica-ltd': 'jamaica-ltd-privacy',
   'us-de-c-corp': 'us-de-c-corp-privacy',
@@ -11,12 +13,12 @@ const FORMATION_SLUG_MAP = {
 };
 
 export function resolveFormationSlug(country, jurisdiction, entityType) {
-  const isJamaica = country === 'Jamaica' || jurisdiction === 'Jamaica';
-  if (isJamaica) return 'jamaica-ltd';
-  if (jurisdiction === 'Wyoming' && (entityType === 'LLC' || entityType === 'S-Corp')) return 'us-wy-llc';
-  if (entityType === 'C-Corp' && (jurisdiction === 'Delaware' || country === 'United States')) return 'us-de-c-corp';
-  if ((entityType === 'LLC' || entityType === 'S-Corp') && jurisdiction === 'Wyoming') return 'us-wy-llc';
-  if ((entityType === 'LLC' || entityType === 'S-Corp') && (jurisdiction === 'Delaware' || country === 'United States')) return 'us-de-llc';
+  const entity = normalizeEntityType(entityType);
+  if (isJamaicaProfile(country, jurisdiction)) return 'jamaica-ltd';
+  if (jurisdiction === 'Wyoming' && (entity === 'LLC' || entity === 'S-Corp')) return 'us-wy-llc';
+  if (entity === 'C-Corp' && (jurisdiction === 'Delaware' || country === 'United States')) return 'us-de-c-corp';
+  if ((entity === 'LLC' || entity === 'S-Corp') && jurisdiction === 'Wyoming') return 'us-wy-llc';
+  if ((entity === 'LLC' || entity === 'S-Corp') && (jurisdiction === 'Delaware' || country === 'United States')) return 'us-de-llc';
   return null;
 }
 

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { displayEntityType } from '../lib/procedures';
 import {
   canAccessComplianceCalendar,
   categoryIcon,
@@ -243,7 +244,10 @@ export default function ComplianceCalendar({
     );
   }
 
-  const jurisdictionLabel = [clientProfile?.jurisdiction, clientProfile?.entity_type].filter(Boolean).join(' · ');
+  const jurisdictionLabel = [
+    clientProfile?.jurisdiction,
+    clientProfile?.entity_type ? displayEntityType(clientProfile.entity_type) : null,
+  ].filter(Boolean).join(' · ');
 
   return (
     <div className="space-y-6">

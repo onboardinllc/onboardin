@@ -1118,6 +1118,37 @@ export const US_WY_LLC = [
 // Wire-back: import this in App.jsx and replace getDocCategories() internals.
 // Key format: `${country}__${entityType}` (double underscore to avoid collision with country names containing spaces)
 
+/** Map signup/profile entity labels to procedure library keys. */
+export function normalizeEntityType(entityType) {
+    if (!entityType) return entityType;
+    const t = String(entityType).trim();
+    if (t === 'Limited Company (Ltd)' || t === 'Limited Company') return 'Ltd';
+    return t;
+}
+
+/** User-facing label for canonical entity_type stored in clients. */
+export function displayEntityType(entityType) {
+    const canonical = normalizeEntityType(entityType);
+    if (canonical === 'Ltd') return 'Limited Company (Ltd)';
+    return entityType || canonical || '';
+}
+
+export function isJamaicaProfile(country, jurisdiction) {
+    return country === 'Jamaica' || jurisdiction === 'Jamaica';
+}
+
+/** Signup / profile picker: value is canonical, label is friendly. */
+export const ENTITY_TYPE_OPTIONS = [
+    { value: 'LLC', label: 'LLC' },
+    { value: 'C-Corp', label: 'C-Corp' },
+    { value: 'S-Corp', label: 'S-Corp' },
+    { value: 'Ltd', label: 'Limited Company (Ltd)' },
+    { value: 'PLC', label: 'PLC' },
+    { value: 'Sole Proprietor', label: 'Sole Proprietor' },
+    { value: 'Non-Profit', label: 'Non-Profit' },
+    { value: 'Partnership', label: 'Partnership' },
+];
+
 export const PROCEDURE_LIBRARY = {
     'Jamaica__Ltd':     JAMAICA_LTD,
     'Jamaica__LLC':     JAMAICA_LTD,   // treat similarly for now
@@ -1135,7 +1166,8 @@ export const PROCEDURE_LIBRARY = {
  * Falls back to base set if jurisdiction not in library.
  */
 export function getCategories(country, entityType, jurisdiction) {
-    const key = `${country}__${entityType}`;
-    const jurisdictionKey = jurisdiction ? `${jurisdiction}__${entityType}` : null;
+    const entity = normalizeEntityType(entityType);
+    const key = `${country}__${entity}`;
+    const jurisdictionKey = jurisdiction ? `${jurisdiction}__${entity}` : null;
     return PROCEDURE_LIBRARY[jurisdictionKey] || PROCEDURE_LIBRARY[key] || [];
 }

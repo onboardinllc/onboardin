@@ -99,6 +99,7 @@ export default function DocumentFillPanel({
         const t = await resolveTemplate({
           vaultCardId: cat.id,
           jurisdiction: clientProfile?.jurisdiction || '',
+          country: clientProfile?.country || '',
           entityType: clientProfile?.entity_type || '',
         }, supabase);
         if (!t) { setLoadError('No template found for your entity type and jurisdiction.'); setLoading(false); return; }
