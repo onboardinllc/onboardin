@@ -1833,6 +1833,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [vaultUploadError, setVaultUploadError] = useState('');
     // COJ formation packet
     const [formationDraft, setFormationDraft] = useState({});
+    const [formationDraftSaveStatus, setFormationDraftSaveStatus] = useState('idle');
     const [showCojPacket, setShowCojPacket] = useState(false);
     const formationDraftSaveTimer = React.useRef(null);
     // Formation assistant
@@ -2771,13 +2772,18 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const handleFormationDraftChange = (patch) => {
         const updated = patch.formation_draft ?? {};
         setFormationDraft(updated);
+        setFormationDraftSaveStatus('saving');
         clearTimeout(formationDraftSaveTimer.current);
         formationDraftSaveTimer.current = setTimeout(async () => {
-            if (!supabase || !session) return;
-            await supabase
+            if (!supabase || !session) {
+                setFormationDraftSaveStatus('error');
+                return;
+            }
+            const { error } = await supabase
                 .from('clients')
                 .update({ formation_draft: updated })
                 .eq('id', session.user.id);
+            setFormationDraftSaveStatus(error ? 'error' : 'saved');
         }, 900);
     };
 
@@ -4371,8 +4377,13 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                     return [doc, ...prev];
                                 });
                             }}
+                            onDocumentRemoved={(doc) => {
+                                if (!doc) return;
+                                setMyDocs((prev) => prev.filter((d) => d.id !== doc.id && d.path !== doc.path));
+                            }}
                             formationDraft={formationDraft}
                             onDraftChange={handleFormationDraftChange}
+                            draftSaveStatus={formationDraftSaveStatus}
                         />
                     )}
 

@@ -4,11 +4,20 @@ import {
   COJ_FORM_IDS,
   COJ_FORM_STATUSES,
   assertWorkingCopyPath,
+  canCojAutofill,
+  isCojTemplateLinked,
 } from '../lib/coj-formation-packet.js';
 import { parseFormationDraft, buildDraftPatch } from '../lib/formation-draft-persist.js';
 import { markFiledManual } from '../lib/filing-adapter.js';
 import { applyCojAutofill } from '../lib/coj-prefill.js';
-import { resolveCompanyContext, resolveCojFieldValues } from '../lib/company-context.js';
+import {
+  reconcileCojJobAfterDocRemoval,
+  removeCojDocuments,
+  sortCojDocsNewestFirst,
+  upsertCojWorkingCopy,
+} from '../lib/coj-documents.js';
+import { workingCopyCanonicalPath } from '../lib/coj-formation-packet.js';
+import { resolveEntityFacts, resolveCojFieldValues } from '../lib/company-context.js';
 
 /**
  * CojFormationPacketPanel
@@ -18,8 +27,10 @@ import { resolveCompanyContext, resolveCojFieldValues } from '../lib/company-con
  *   session             — auth session
  *   onClose             — close callback
  *   onWorkingCopySaved  — callback(doc) called after upload records to vault
+ *   onDocumentRemoved   — callback(doc) after delete from vault
  *   formationDraft      — current local draft state (object)
  *   onDraftChange       — callback(patch) for debounced autosave in parent
+ *   draftSaveStatus     — 'idle' | 'saving' | 'saved' | 'error'
  */
 export default function CojFormationPacketPanel({
   clientProfile,
@@ -27,8 +38,10 @@ export default function CojFormationPacketPanel({
   session,
   onClose,
   onWorkingCopySaved,
+  onDocumentRemoved,
   formationDraft,
   onDraftChange,
+  draftSaveStatus = 'idle',
 }) {
   const clientId = session?.user?.id;
 
@@ -43,6 +56,8 @@ export default function CojFormationPacketPanel({
   const [autofillForm, setAutofillForm] = useState(null);
   const [autofillError, setAutofillError] = useState('');
   const [previewOpen, setPreviewOpen] = useState({});
+  const [deletingDocId, setDeletingDocId] = useState(null);
+  const [deleteError, setDeleteError] = useState('');
 
   const draft = parseFormationDraft(formationDraft);
 
@@ -115,6 +130,9 @@ export default function CojFormationPacketPanel({
       if (!byForm[d.category]) byForm[d.category] = [];
       byForm[d.category].push(d);
     }
+    for (const formId of Object.keys(byForm)) {
+      byForm[formId] = sortCojDocsNewestFirst(byForm[formId]);
+    }
 
     setJobs(jobByKind);
     setDocsByForm(byForm);
@@ -176,60 +194,42 @@ export default function CojFormationPacketPanel({
       return;
     }
 
-    const ts = Date.now();
-    const ext = file.name.split('.').pop() || 'pdf';
-    const path = `${clientId}/articles/${formDef.form_id}/working-${ts}.${ext}`;
+    try {
+      const path = workingCopyCanonicalPath(clientId, formDef.form_id);
+      const buffer = await file.arrayBuffer();
+      const insertedDoc = await upsertCojWorkingCopy(supabase, {
+        clientId,
+        formId: formDef.form_id,
+        pdfBytes: new Uint8Array(buffer),
+        displayName: file.name || `${formDef.label} — working copy.pdf`,
+        fileSize: file.size,
+      });
 
-    const { error: uploadErr } = await supabase.storage
-      .from('client-documents')
-      .upload(path, file, { contentType: file.type || 'application/pdf' });
+      const job = jobs[formDef.form_id];
+      if (job?.id) {
+        await supabase
+          .from('document_jobs')
+          .update({
+            status: COJ_FORM_STATUSES.WORKING_SAVED,
+            filled_path: path,
+            filled_by: 'upload',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', job.id);
+        setJobs((prev) => ({
+          ...prev,
+          [formDef.form_id]: { ...prev[formDef.form_id], status: COJ_FORM_STATUSES.WORKING_SAVED },
+        }));
+      }
 
-    if (uploadErr) {
-      setUploadError(`Upload failed: ${uploadErr.message}`);
-      setUploadingForm(null);
-      return;
+      setDocsByForm((prev) => {
+        const kept = (prev[formDef.form_id] || []).filter((d) => d.path !== path);
+        return { ...prev, [formDef.form_id]: sortCojDocsNewestFirst([insertedDoc, ...kept]) };
+      });
+      onWorkingCopySaved?.(insertedDoc);
+    } catch (e) {
+      setUploadError(e.message || 'Upload failed.');
     }
-
-    const doc = {
-      client_id: clientId,
-      name: file.name,
-      path,
-      size: file.size,
-      category: formDef.form_id,
-      uploaded_by: clientId,
-    };
-
-    const { data: insertedDoc, error: dbErr } = await supabase
-      .from('documents')
-      .insert(doc)
-      .select('id, name, path, size, category, created_at')
-      .maybeSingle();
-
-    if (dbErr) {
-      await supabase.storage.from('client-documents').remove([path]);
-      setUploadError(`Upload failed: could not record in vault (${dbErr.message})`);
-      setUploadingForm(null);
-      return;
-    }
-
-    const job = jobs[formDef.form_id];
-    if (job?.id) {
-      await supabase
-        .from('document_jobs')
-        .update({ status: COJ_FORM_STATUSES.WORKING_SAVED, updated_at: new Date().toISOString() })
-        .eq('id', job.id);
-      setJobs((prev) => ({
-        ...prev,
-        [formDef.form_id]: { ...prev[formDef.form_id], status: COJ_FORM_STATUSES.WORKING_SAVED },
-      }));
-    }
-
-    const newDoc = insertedDoc || { ...doc, created_at: new Date().toISOString() };
-    setDocsByForm((prev) => ({
-      ...prev,
-      [formDef.form_id]: [newDoc, ...(prev[formDef.form_id] || [])],
-    }));
-    onWorkingCopySaved?.(newDoc);
     setUploadingForm(null);
   };
 
@@ -253,11 +253,11 @@ export default function CojFormationPacketPanel({
   const handleAutofill = async (formDef) => {
     const template = templatesByKind[formDef.form_id];
     const job = jobs[formDef.form_id];
-    if (!template || !job?.id) return;
+    if (!canCojAutofill(template, formDef) || !job?.id) return;
     setAutofillForm(formDef.form_id);
     setAutofillError('');
     try {
-      const { doc } = await applyCojAutofill({
+      const { doc, removedLegacy } = await applyCojAutofill({
         supabase,
         session,
         clientProfile,
@@ -268,12 +268,17 @@ export default function CojFormationPacketPanel({
       });
       setJobs((prev) => ({
         ...prev,
-        [formDef.form_id]: { ...prev[formDef.form_id], status: COJ_FORM_STATUSES.PREFILLED },
+        [formDef.form_id]: { ...prev[formDef.form_id], status: COJ_FORM_STATUSES.WORKING_SAVED },
       }));
-      setDocsByForm((prev) => ({
-        ...prev,
-        [formDef.form_id]: [doc, ...(prev[formDef.form_id] || [])],
-      }));
+      setDocsByForm((prev) => {
+        const removedIds = new Set((removedLegacy || []).map((d) => d.id));
+        const removedPaths = new Set((removedLegacy || []).map((d) => d.path));
+        const kept = (prev[formDef.form_id] || []).filter(
+          (d) => !removedIds.has(d.id) && !removedPaths.has(d.path) && d.path !== doc.path,
+        );
+        return { ...prev, [formDef.form_id]: sortCojDocsNewestFirst([doc, ...kept]) };
+      });
+      for (const removed of removedLegacy || []) onDocumentRemoved?.(removed);
       onWorkingCopySaved?.(doc);
     } catch (e) {
       setAutofillError(e.message || 'Autofill failed.');
@@ -284,8 +289,9 @@ export default function CojFormationPacketPanel({
   const resolvedPreview = (formId) => {
     const template = templatesByKind[formId];
     if (!template?.placeholder_map) return {};
-    const context = resolveCompanyContext({
+    const context = resolveEntityFacts({
       client: clientProfile,
+      entityProfile: clientProfile?.entity_profile ?? {},
       formationDraft: draft,
       complianceIntake: {},
     });
@@ -293,15 +299,45 @@ export default function CojFormationPacketPanel({
     return Object.fromEntries(Object.entries(values).filter(([, v]) => String(v).trim()));
   };
 
-  const hasFieldMap = (formId) => {
-    const tm = templatesByKind[formId];
-    return tm && Object.keys(tm.field_map || {}).length > 0;
-  };
+  const templateFor = (formId) => templatesByKind[formId];
+
+  const autofillReady = (formDef) => canCojAutofill(templateFor(formDef.form_id), formDef);
 
   const getSignedUrl = async (path) => {
     if (!supabase) return;
     const { data } = await supabase.storage.from('client-documents').createSignedUrl(path, 300);
     if (data?.signedUrl) window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleDeleteDoc = async (formDef, doc) => {
+    if (!supabase || !doc?.id) return;
+    setDeletingDocId(doc.id);
+    setDeleteError('');
+    try {
+      await removeCojDocuments(supabase, [doc]);
+      const job = jobs[formDef.form_id];
+      const remaining = (docsByForm[formDef.form_id] || []).filter((d) => d.id !== doc.id);
+      const nextStatus = await reconcileCojJobAfterDocRemoval(
+        supabase,
+        job?.id,
+        remaining,
+        COJ_FORM_STATUSES,
+      );
+      if (nextStatus && job?.id) {
+        setJobs((prev) => ({
+          ...prev,
+          [formDef.form_id]: { ...prev[formDef.form_id], status: nextStatus },
+        }));
+      }
+      setDocsByForm((prev) => ({
+        ...prev,
+        [formDef.form_id]: remaining,
+      }));
+      onDocumentRemoved?.(doc);
+    } catch (e) {
+      setDeleteError(e.message || 'Could not remove document.');
+    }
+    setDeletingDocId(null);
   };
 
   const statusLabel = (formId) => {
@@ -358,6 +394,9 @@ export default function CojFormationPacketPanel({
             {autofillError && (
               <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-sm text-red-300">{autofillError}</div>
             )}
+            {deleteError && (
+              <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-3 text-sm text-red-300">{deleteError}</div>
+            )}
 
             {/* Form steps */}
             <div className="space-y-3">
@@ -369,9 +408,14 @@ export default function CojFormationPacketPanel({
                 const isUploading = uploadingForm === formDef.form_id;
                 const isFiling = filingForm === formDef.form_id;
 
+                const template = templateFor(formDef.form_id);
+                const templateLinked = isCojTemplateLinked(template, formDef);
                 const isAutofilling = autofillForm === formDef.form_id;
-                const canAutofill = hasFieldMap(formDef.form_id) && !isAutofilling;
-                const preview = previewOpen[formDef.form_id] ? resolvedPreview(formDef.form_id) : null;
+                const showAutofill = autofillReady(formDef);
+                const canRunAutofill = showAutofill && !isAutofilling;
+                const preview = previewOpen[formDef.form_id] && showAutofill
+                  ? resolvedPreview(formDef.form_id)
+                  : null;
 
                 return (
                   <div key={formDef.form_id} className="border border-white/10 rounded-xl p-4 space-y-3 bg-white/[0.02]">
@@ -386,24 +430,48 @@ export default function CojFormationPacketPanel({
                             {pill.text}
                           </span>
                         )}
+                      </div>
+                    </div>
+
+                    {formDef.step_action && (
+                      <p className="text-xs text-gray-500 leading-relaxed">{formDef.step_action}</p>
+                    )}
+
+                    <div className="flex flex-wrap gap-2">
+                      <a
+                        href={formDef.download_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs text-purple-400 hover:text-purple-300 border border-purple-500/30 hover:border-purple-400/50 bg-purple-500/5 hover:bg-purple-500/10 px-3 py-1.5 rounded-lg transition-all"
+                      >
+                        <i className="ph ph-arrow-square-out text-xs"></i>
+                        {formDef.download_cta || 'Download official PDF'}
+                      </a>
+                      {formDef.portal_url && (
                         <a
-                          href={formDef.download_url}
+                          href={formDef.portal_url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-blue-400/80 hover:text-blue-300 transition-colors"
-                          title="Download official PDF"
+                          className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-300 border border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-lg transition-all"
                         >
-                          <i className="ph ph-file-arrow-down text-base"></i>
+                          <i className="ph ph-globe text-xs"></i>
+                          {formDef.portal_cta || 'COJ portal'}
                         </a>
-                      </div>
+                      )}
                     </div>
 
                     <p className="text-xs text-gray-600 leading-relaxed">
                       This is your working copy. Filing happens at COJ — not through Onboardin until you submit there.
                     </p>
 
-                    {/* Autofill block */}
-                    {hasFieldMap(formDef.form_id) && (
+                    {!templateLinked && !loading && (
+                      <p className="text-xs text-amber-400/80 leading-relaxed">
+                        Official form link above matches your vault. Autofill will appear once the template is linked in your account.
+                      </p>
+                    )}
+
+                    {/* Autofill block — only when DB template matches official PDF */}
+                    {showAutofill && (
                       <div className="space-y-2">
                         <button
                           type="button"
@@ -431,32 +499,53 @@ export default function CojFormationPacketPanel({
 
                         <button
                           type="button"
-                          disabled={!canAutofill}
+                          disabled={!canRunAutofill}
                           onClick={() => handleAutofill(formDef)}
                           className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-purple-400 hover:text-purple-300 transition-colors disabled:opacity-40 disabled:pointer-events-none"
                         >
                           <i className="ph ph-sparkle text-xs"></i>
-                          {isAutofilling ? 'Filling...' : 'Autofill from my info'}
+                          {isAutofilling ? 'Filling...' : formDocs.length > 0 ? 'Re-autofill from my info' : 'Autofill from my info'}
                         </button>
                         <p className="text-xs text-gray-600 leading-relaxed">
-                          Filled from your profile and packet details. Review before filing at COJ. Not legal advice.
+                          Updates your private working copy in the vault (working-latest.pdf). Edits in the browser tab do not auto-save — use Save edited PDF to vault after changing the file locally.
                         </p>
                       </div>
                     )}
 
                     {formDocs.length > 0 && (
                       <div className="space-y-1">
+                        <p className="text-xs text-gray-600">
+                          This is your vault working copy — not the public COJ template. Download, edit in Acrobat or similar, then <span className="text-gray-500">Save edited PDF to vault</span> to replace it in Supabase.
+                        </p>
                         {formDocs.map((doc, i) => (
-                          <button
-                            key={i}
-                            type="button"
-                            onClick={() => getSignedUrl(doc.path)}
-                            className="w-full flex items-center gap-2 p-2 bg-black/20 rounded-lg hover:bg-black/40 cursor-pointer transition-all group text-left"
+                          <div
+                            key={doc.id || doc.path}
+                            className="flex items-center gap-1 p-2 bg-black/20 rounded-lg hover:bg-black/30 transition-all group"
                           >
-                            <i className="ph ph-file text-gray-500 group-hover:text-blue-400 transition-colors flex-shrink-0 text-base"></i>
-                            <span className="text-sm text-gray-400 truncate flex-1 group-hover:text-gray-200">{doc.name}</span>
-                            <i className="ph ph-download-simple text-gray-600 group-hover:text-blue-400 transition-colors flex-shrink-0 text-base"></i>
-                          </button>
+                            <button
+                              type="button"
+                              onClick={() => getSignedUrl(doc.path)}
+                              className="flex items-center gap-2 flex-1 min-w-0 text-left"
+                            >
+                              <i className="ph ph-file text-gray-500 group-hover:text-blue-400 transition-colors flex-shrink-0 text-base"></i>
+                              <span className="text-sm text-gray-400 truncate flex-1 group-hover:text-gray-200">{doc.name}</span>
+                              {i === 0 && (
+                                <span className="text-[10px] uppercase tracking-widest text-purple-400/80 border border-purple-500/20 px-1.5 py-0.5 rounded flex-shrink-0">
+                                  Latest
+                                </span>
+                              )}
+                              <i className="ph ph-download-simple text-gray-600 group-hover:text-blue-400 transition-colors flex-shrink-0 text-base"></i>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={deletingDocId === doc.id}
+                              onClick={() => handleDeleteDoc(formDef, doc)}
+                              className="p-1.5 text-gray-600 hover:text-red-400 transition-colors disabled:opacity-40 flex-shrink-0"
+                              aria-label={`Remove ${doc.name}`}
+                            >
+                              <i className={`ph ${deletingDocId === doc.id ? 'ph-circle-notch animate-spin' : 'ph-trash'} text-sm`}></i>
+                            </button>
+                          </div>
                         ))}
                       </div>
                     )}
@@ -478,7 +567,7 @@ export default function CojFormationPacketPanel({
                           }}
                         />
                         <i className="ph ph-upload text-xs"></i>
-                        {isUploading ? 'Saving...' : formDocs.length > 0 ? 'Upload new version' : 'Upload working copy'}
+                        {isUploading ? 'Saving...' : formDocs.length > 0 ? 'Save edited PDF to vault' : 'Upload working copy'}
                       </label>
 
                       {!isFiled && formDocs.length > 0 && (
@@ -493,17 +582,6 @@ export default function CojFormationPacketPanel({
                         </button>
                       )}
 
-                      {formDef.portal_url && (
-                        <a
-                          href={formDef.portal_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-gray-500 hover:text-gray-300 transition-colors"
-                        >
-                          <i className="ph ph-arrow-square-out text-xs"></i>
-                          COJ portal
-                        </a>
-                      )}
                     </div>
                   </div>
                 );
@@ -525,7 +603,17 @@ export default function CojFormationPacketPanel({
             <div className="space-y-5 border border-white/10 rounded-xl p-5 bg-white/[0.02]">
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-bold text-white uppercase tracking-widest">Company Details</h3>
-                <span className="text-xs text-gray-600">Auto-saved</span>
+                <span className={`text-xs ${
+                  draftSaveStatus === 'error' ? 'text-red-400'
+                    : draftSaveStatus === 'saving' ? 'text-gray-500'
+                      : draftSaveStatus === 'saved' ? 'text-green-400/80'
+                        : 'text-gray-600'
+                }`}>
+                  {draftSaveStatus === 'error' ? 'Save failed — retry'
+                    : draftSaveStatus === 'saving' ? 'Saving...'
+                      : draftSaveStatus === 'saved' ? 'Saved'
+                        : 'Auto-saved'}
+                </span>
               </div>
 
               <div className="space-y-4">

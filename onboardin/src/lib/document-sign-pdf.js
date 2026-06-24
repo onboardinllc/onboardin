@@ -57,7 +57,8 @@ export async function buildSignedPdf({
   signaturePngBytes,
   signaturesByFieldKey,
 }) {
-  const pdfDoc = await PDFDocument.load(templatePdfBytes);
+  // COJ statutory PDFs are often encrypted; ignoreEncryption allows text burn overlay.
+  const pdfDoc = await PDFDocument.load(templatePdfBytes, { ignoreEncryption: true });
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
   // Pre-embed all distinct PNG buffers (deduplicate by identity)
@@ -100,5 +101,5 @@ export async function buildSignedPdf({
     }
   }
 
-  return new Uint8Array(await pdfDoc.save());
+  return new Uint8Array(await pdfDoc.save({ useObjectStreams: false }));
 }

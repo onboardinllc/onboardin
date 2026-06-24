@@ -14,10 +14,10 @@ UPDATE public.legal_templates SET
     "reservation_date":      {"source": "computed.today"}
   }'::jsonb,
   field_map = '{
-    "proposed_company_name": {"page": 0, "x": 120, "y": 200, "w": 320, "h": 18, "type": "text",  "fontSize": 9},
-    "applicant_name":        {"page": 0, "x": 120, "y": 270, "w": 260, "h": 18, "type": "text",  "fontSize": 9},
-    "applicant_address":     {"page": 0, "x": 120, "y": 295, "w": 320, "h": 18, "type": "text",  "fontSize": 9},
-    "reservation_date":      {"page": 0, "x": 120, "y": 320, "w": 160, "h": 18, "type": "date",  "fontSize": 9}
+    "proposed_company_name": {"acroIndex": 15, "type": "text"},
+    "applicant_name":        {"acroIndex": 7,  "type": "text"},
+    "applicant_address":     {"acroIndex": 9,  "type": "text"},
+    "reservation_date":      {"acroIndices": [0, 1, 2], "type": "date"}
   }'::jsonb,
   form_version = '2026-06'
 WHERE kind = 'coj_form_6' AND provider = 'coj';
@@ -37,15 +37,11 @@ UPDATE public.legal_templates SET
     "director_2_trn":           {"source": "formation_draft.directors.1.trn"}
   }'::jsonb,
   field_map = '{
-    "proposed_company_name":    {"page": 0, "x": 120, "y": 185, "w": 330, "h": 18, "type": "text", "fontSize": 9},
-    "registered_office_address":{"page": 0, "x": 120, "y": 215, "w": 330, "h": 18, "type": "text", "fontSize": 9},
-    "authorized_share_capital": {"page": 0, "x": 120, "y": 245, "w": 280, "h": 18, "type": "text", "fontSize": 9},
-    "director_1_name":          {"page": 0, "x": 72,  "y": 380, "w": 200, "h": 16, "type": "text", "fontSize": 8},
-    "director_1_address":       {"page": 0, "x": 280, "y": 380, "w": 180, "h": 16, "type": "text", "fontSize": 8},
-    "director_1_trn":           {"page": 0, "x": 468, "y": 380, "w": 80,  "h": 16, "type": "text", "fontSize": 8},
-    "director_2_name":          {"page": 0, "x": 72,  "y": 400, "w": 200, "h": 16, "type": "text", "fontSize": 8},
-    "director_2_address":       {"page": 0, "x": 280, "y": 400, "w": 180, "h": 16, "type": "text", "fontSize": 8},
-    "director_2_trn":           {"page": 0, "x": 468, "y": 400, "w": 80,  "h": 16, "type": "text", "fontSize": 8}
+    "proposed_company_name":     {"acroField": "COMPANY NAME", "type": "text"},
+    "registered_office_address": {"acroField": "COMPANY REGISTERED OFFICEADDRESSOTHER ADDRESS", "type": "text"},
+    "authorized_share_capital":  {"acroField": "1 ORDINARY2 PREFERENCEOTHER3 Specify", "type": "text"},
+    "director_1_name":           {"acroField": "OFFICER 1", "type": "text"},
+    "director_2_name":           {"acroField": "OFFICER 2", "type": "text"}
   }'::jsonb,
   form_version = '2026-06'
 WHERE kind = 'coj_form_1a' AND provider = 'coj';
@@ -62,8 +58,11 @@ UPDATE public.legal_templates SET
     "bor_notes":               {"source": "formation_draft.bor_notes"}
   }'::jsonb,
   field_map = '{
-    "proposed_company_name":   {"page": 0, "x": 120, "y": 200, "w": 300, "h": 18, "type": "text", "fontSize": 9},
-    "shareholder_1_name":      {"page": 0, "x": 72,  "y": 320, "w": 200, "h": 16, "type": "text", "fontSize": 8}
+    "proposed_company_name": {"acroField": "Text Field16", "type": "text"},
+    "shareholder_1_name":    {"acroField": "Text Field67", "type": "text"},
+    "shareholder_1_address": {"acroField": "Text Field68", "type": "text"},
+    "shareholder_1_trn":     {"acroField": "Text Field69", "type": "text"},
+    "shareholder_1_shares":  {"acroField": "Text Field70", "type": "text"}
   }'::jsonb,
   form_version = '2026-06'
 WHERE kind = 'coj_bor' AND provider = 'coj';
@@ -78,9 +77,6 @@ UPDATE public.legal_templates SET
     "director_1_trn":           {"source": "formation_draft.directors.0.trn"},
     "founder_name":             {"source": "clients.founder_name"}
   }'::jsonb,
-  field_map = '{
-    "proposed_company_name":    {"page": 0, "x": 120, "y": 200, "w": 300, "h": 18, "type": "text", "fontSize": 9},
-    "director_1_name":          {"page": 0, "x": 120, "y": 280, "w": 240, "h": 16, "type": "text", "fontSize": 8}
-  }'::jsonb,
+  field_map = '{}'::jsonb,
   form_version = '2026-06'
 WHERE kind = 'coj_brf1' AND provider = 'coj';

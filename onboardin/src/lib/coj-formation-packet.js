@@ -1,38 +1,61 @@
 /**
  * Pure helpers for the COJ formation packet (Jamaica Ltd).
  * No Supabase imports — data comes in from the caller.
+ * Form URLs/CTAs are sourced from vault procedures (articles process steps).
  */
+import { JAMAICA_LTD } from './procedures.js';
 
-export const COJ_PACKET_FORMS = [
-  {
-    form_id: 'coj_form_6',
-    kind: 'coj_form_6',
-    label: 'Form 6 — Name Reservation',
-    download_url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/form-6.pdf',
-    portal_url: 'https://www.orcjamaica.com',
-  },
-  {
-    form_id: 'coj_brf1',
-    kind: 'coj_brf1',
-    label: 'BRF1 Super Form',
-    download_url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/brf1.pdf',
-    portal_url: 'https://www.orcjamaica.com/Forms.aspx',
-  },
-  {
-    form_id: 'coj_form_1a',
-    kind: 'coj_form_1a',
-    label: 'Form 1A — Articles',
-    download_url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/form-1a.pdf',
-    portal_url: null,
-  },
-  {
-    form_id: 'coj_bor',
-    kind: 'coj_bor',
-    label: 'BOR (Form A)',
-    download_url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/form-a.pdf',
-    portal_url: null,
-  },
-];
+/** Map hosted PDF filename → packet form ids (must match legal_templates.kind). */
+const COJ_URL_FORM_META = {
+  'form-6.pdf': { form_id: 'coj_form_6', kind: 'coj_form_6', label: 'Form 6 — Name Reservation' },
+  'brf1.pdf': { form_id: 'coj_brf1', kind: 'coj_brf1', label: 'BRF1 Super Form' },
+  'form-1a.pdf': { form_id: 'coj_form_1a', kind: 'coj_form_1a', label: 'Form 1A — Articles' },
+  'form-a.pdf': { form_id: 'coj_bor', kind: 'coj_bor', label: 'BOR (Form A)' },
+};
+
+function buildCojPacketFormsFromVault() {
+  const articles = JAMAICA_LTD.find((c) => c.id === 'articles');
+  const steps = articles?.process?.tracks?.[0]?.steps?.filter((s) => s.url) || [];
+  const forms = [];
+  for (const step of steps) {
+    const fileKey = Object.keys(COJ_URL_FORM_META).find((k) => step.url.includes(k));
+    if (!fileKey) continue;
+    const meta = COJ_URL_FORM_META[fileKey];
+    forms.push({
+      form_id: meta.form_id,
+      kind: meta.kind,
+      label: meta.label,
+      download_url: step.url,
+      download_cta: step.cta || 'Download form',
+      portal_url: step.portalUrl || null,
+      portal_cta: step.portalCta || null,
+      step_action: step.action,
+    });
+  }
+  return forms;
+}
+
+export const COJ_PACKET_FORMS = buildCojPacketFormsFromVault();
+
+/** True when legal_templates row points at the same official PDF as the vault step. */
+export function isCojTemplateLinked(template, formDef) {
+  if (!template?.template_path || !formDef?.download_url) return false;
+  return template.template_path === formDef.download_url;
+}
+
+/** Autofill is allowed when template is linked and field_map targets AcroForm fields. */
+export function canCojAutofill(template, formDef) {
+  if (!isCojTemplateLinked(template, formDef)) return false;
+  const fieldMap = template?.field_map;
+  if (!fieldMap || typeof fieldMap !== 'object') return false;
+  return Object.values(fieldMap).some(
+    (def) => def && (
+      def.acroField != null
+      || typeof def.acroIndex === 'number'
+      || Array.isArray(def.acroIndices)
+    ),
+  );
+}
 
 export const COJ_FORM_IDS = COJ_PACKET_FORMS.map((f) => f.form_id);
 
@@ -82,6 +105,11 @@ export function resolvePacketProgress(jobs, docs) {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Canonical editable COJ form path — one per form, upserted on autofill or manual save. */
+export function workingCopyCanonicalPath(clientId, formId) {
+  return `${clientId}/articles/${formId}/working-latest.pdf`;
+}
 
 export function workingCopyPath(clientId, formId, ts, filename) {
   const safeFilename = filename ? filename.replace(/[^a-zA-Z0-9._-]/g, '_') : 'working.pdf';
