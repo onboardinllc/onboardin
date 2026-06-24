@@ -12,6 +12,8 @@ import Step06Panel from './components/Step06Panel';
 import ComplianceCalendar from './components/ComplianceCalendar';
 import AdminObligationsPanel from './components/AdminObligationsPanel';
 import DocumentFillPanel from './components/DocumentFillPanel';
+import SignatureSettings from './components/SignatureSettings';
+import { fetchActiveMemberSignature } from './lib/member-signature.js';
 import { canAccessComplianceCalendar, enrichObligation, obligationStats } from './lib/compliance-obligations';
 import { buildDraftPayload, buildActivePayload, serializeIntake } from './lib/compliance-intake-persist';
 import { legalTemplateUrl, isFillableTemplateUrl } from './lib/template-urls.js';
@@ -1844,6 +1846,8 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [alertDismissed, setAlertDismissed] = useState(false);
     const [expandedVaultCard, setExpandedVaultCard] = useState(null);
     const [vaultFillCat, setVaultFillCat] = useState(null);
+    const [signatureReturnCat, setSignatureReturnCat] = useState(null);
+    const [hasMemberSignature, setHasMemberSignature] = useState(false);
     const [vaultProcess, setVaultProcess] = useState(null);
     const [vaultProcessTrack, setVaultProcessTrack] = useState(0);
     const [vaultStepsDone, setVaultStepsDone] = useState({}); // { catId_trackIdx_stepIdx: true }
@@ -2163,10 +2167,33 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
             .then(({ data }) => setOverdueQueue(data || []));
     }, []);
 
+    const refreshMemberSignature = React.useCallback(() => {
+        if (!supabase || !session?.user?.id || clientProfile?.is_admin) {
+            setHasMemberSignature(false);
+            return Promise.resolve();
+        }
+        return fetchActiveMemberSignature(supabase, session.user.id)
+            .then((row) => setHasMemberSignature(!!row?.storage_path))
+            .catch(() => setHasMemberSignature(false));
+    }, [supabase, session?.user?.id, clientProfile?.is_admin]);
+
+    const continueVaultSigning = React.useCallback(() => {
+        if (!signatureReturnCat) return;
+        const cat = signatureReturnCat;
+        setSignatureReturnCat(null);
+        setVaultProcess(null);
+        switchTab('vault');
+        setVaultFillCat(cat);
+    }, [signatureReturnCat]);
+
     useEffect(() => {
         if (!session || !supabase || !clientProfile || clientProfile.is_admin) return;
         refreshComplianceArtifacts();
     }, [session?.user?.id, clientProfile?.id, clientProfile?.is_admin, refreshComplianceArtifacts]);
+
+    useEffect(() => {
+        refreshMemberSignature();
+    }, [refreshMemberSignature]);
 
     // Flush pending autosave on tab hide or page unload
     useEffect(() => {
@@ -3624,7 +3651,28 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                     )}
 
                     {/* Overview tab. Profile + progress */}
-                    {dashTab === 'overview' && <div className="grid grid-cols-1 md:grid-cols-[2fr_3fr] gap-4">
+                    {dashTab === 'overview' && <>
+                    {signatureReturnCat && (
+                        <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl">
+                            <div>
+                                <p className="text-sm text-gray-300">You were signing <span className="text-white font-medium">{signatureReturnCat.label}</span>.</p>
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                    {hasMemberSignature ? 'Your signature is ready — continue in Vault.' : 'Upload your signature below, then continue.'}
+                                </p>
+                            </div>
+                            {hasMemberSignature && (
+                                <button
+                                    type="button"
+                                    onClick={continueVaultSigning}
+                                    className="flex-shrink-0 text-xs uppercase tracking-widest text-blue-300 border border-blue-500/30 px-3 py-2 rounded-lg hover:bg-blue-500/10 transition-all"
+                                >
+                                    Continue in Vault →
+                                </button>
+                            )}
+                        </div>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-[2fr_3fr] gap-4">
+                        <div className="space-y-4">
                         {/* Client Profile card */}
                         <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
                             <h3 className="text-sm uppercase tracking-widest text-gray-500 mb-4">Client Profile</h3>
@@ -3664,6 +3712,17 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                     )}
                                 </div>
                             )}
+                        </div>
+
+                        {clientProfile && !clientProfile.is_admin && (
+                            <SignatureSettings
+                                supabase={supabase}
+                                session={session}
+                                onUploadSuccess={() => {
+                                    refreshMemberSignature();
+                                }}
+                            />
+                        )}
                         </div>
 
                         {/* Onboarding Progress. Phased tabs with tier gating */}
@@ -3778,7 +3837,8 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                 </div>
                             );
                         })()}
-                    </div>}
+                    </div>
+                    </>}
 
                     {/* Pipeline tab. Full 11-step onboarding detail */}
                     {dashTab === 'pipeline' && (() => {
@@ -3992,6 +4052,21 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                     )}
                                 </div>
 
+                                {!hasMemberSignature && categories.some((c) => c.fillEnabled && isFillableTemplateUrl(c.templateUrl)) && (
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 bg-purple-500/5 border border-purple-500/20 rounded-xl">
+                                        <p className="text-sm text-gray-400">
+                                            Upload your signature on Overview to use <span className="text-gray-300">Fill &amp; sign with my info</span> on legal templates.
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={() => switchTab('overview')}
+                                            className="flex-shrink-0 text-xs uppercase tracking-widest text-purple-300 border border-purple-500/30 px-3 py-2 rounded-lg hover:bg-purple-500/10 transition-all"
+                                        >
+                                            Set up signature →
+                                        </button>
+                                    </div>
+                                )}
+
                                 {/* Jurisdiction setup prompt */}
                                 {!hasJurisdiction && !showJurisdictionSetup && (
                                     <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 space-y-3">
@@ -4131,7 +4206,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                                             className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-blue-400 hover:text-blue-300 transition-colors"
                                                         >
                                                             <i className="ph ph-magic-wand text-xs"></i>
-                                                            Preview with my info
+                                                            Fill &amp; sign with my info
                                                         </button>
                                                     )}
                                                     {!hasDoc && cat.process && (
@@ -4172,10 +4247,21 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                             complianceIntake={complianceIntake}
                             supabase={supabase}
                             session={session}
-                            onClose={() => setVaultFillCat(null)}
-                            onDocumentSigned={(doc) => {
-                                setMyDocs(prev => [doc, ...prev]);
+                            onClose={() => {
                                 setVaultFillCat(null);
+                                setSignatureReturnCat(null);
+                            }}
+                            onDocumentSigned={(doc) => {
+                                setMyDocs((prev) => [doc, ...prev]);
+                            }}
+                            onGoToSignatureSettings={() => {
+                                setSignatureReturnCat(vaultFillCat);
+                                setVaultFillCat(null);
+                                setVaultProcess(null);
+                                switchTab('overview');
+                                setTimeout(() => {
+                                    document.getElementById('signature-settings')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                }, 150);
                             }}
                         />
                     )}

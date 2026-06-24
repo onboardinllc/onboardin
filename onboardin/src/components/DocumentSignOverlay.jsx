@@ -1,18 +1,13 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { fetchTemplatePdfBytes, buildSignedPdf } from '../lib/document-sign-pdf';
+import {
+  fetchActiveMemberSignature,
+  signaturePreviewUrl,
+  uploadMemberSignaturePng,
+} from '../lib/member-signature';
 
 /**
  * DocumentSignOverlay — places signature PNG + date text onto a PDF using pdf-lib.
- * PDF Y-axis origin is bottom-left. field_map coords use top-left UI convention.
- *
- * Props:
- *   job           — document_jobs row (filled status, field_values, template via template_id)
- *   template      — legal_templates row (template_path, field_map, placeholder_map)
- *   clientProfile — clients row
- *   supabase      — Supabase client
- *   session       — auth session
- *   onClose       — close callback
- *   onSigned      — callback(doc) when signed PDF saved to vault
  */
 export default function DocumentSignOverlay({
   job,
@@ -22,8 +17,9 @@ export default function DocumentSignOverlay({
   session,
   onClose,
   onSigned,
+  onGoToSignatureSettings,
 }) {
-  const [phase, setPhase] = useState('ready'); // ready | signing | done | error
+  const [phase, setPhase] = useState('ready');
   const [signError, setSignError] = useState('');
   const [sigPngUrl, setSigPngUrl] = useState(null);
   const [sigStoragePath, setSigStoragePath] = useState(null);
@@ -34,45 +30,40 @@ export default function DocumentSignOverlay({
   const fieldMap = template?.field_map || {};
   const fieldValues = job?.field_values || {};
 
-  const resolveSignedPreviewUrl = useCallback(async (path) => {
-    const { data } = await supabase.storage.from('client-documents').createSignedUrl(path, 3600);
-    return data?.signedUrl || null;
-  }, [supabase]);
+  const loadSignature = useCallback(async () => {
+    if (!supabase || !session?.user?.id) return;
+    const row = await fetchActiveMemberSignature(supabase, session.user.id);
+    if (!row?.storage_path) return;
+    const url = await signaturePreviewUrl(supabase, row.storage_path);
+    setSigStoragePath(row.storage_path);
+    setSigPngUrl(url);
+  }, [supabase, session]);
 
   useEffect(() => {
-    if (!supabase || !session) return;
     let cancelled = false;
     (async () => {
-      const { data } = await supabase
-        .from('member_signatures')
-        .select('storage_path')
-        .eq('user_id', session.user.id)
-        .eq('active', true)
-        .maybeSingle();
-      if (cancelled || !data?.storage_path) return;
-      const url = await resolveSignedPreviewUrl(data.storage_path);
-      if (!cancelled) {
-        setSigStoragePath(data.storage_path);
-        setSigPngUrl(url);
+      try {
+        await loadSignature();
+      } catch {
+        if (!cancelled) setSignError('Could not load your signature.');
       }
     })();
     return () => { cancelled = true; };
-  }, [supabase, session, resolveSignedPreviewUrl]);
+  }, [loadSignature]);
 
   const handleSignatureUpload = useCallback(async (file) => {
-    if (!file || !supabase || !session) return;
+    if (!file) return;
     setUploading(true);
-    const path = `${session.user.id}/signatures/signature.png`;
-    const { error } = await supabase.storage.from('client-documents').upload(path, file, { upsert: true, contentType: 'image/png' });
-    if (!error) {
-      await supabase.from('member_signatures').update({ active: false }).eq('user_id', session.user.id);
-      await supabase.from('member_signatures').insert({ user_id: session.user.id, storage_path: path, mime_type: 'image/png', active: true });
-      const previewUrl = await resolveSignedPreviewUrl(path);
-      setSigStoragePath(path);
-      setSigPngUrl(previewUrl);
-    }
+    setSignError('');
+    const result = await uploadMemberSignaturePng(supabase, session, file);
     setUploading(false);
-  }, [supabase, session, resolveSignedPreviewUrl]);
+    if (result.error) {
+      setSignError(result.error);
+      return;
+    }
+    setSigStoragePath(result.storagePath);
+    setSigPngUrl(result.previewUrl);
+  }, [supabase, session]);
 
   const handlePlaceSignature = useCallback((fieldKey) => {
     const path = sigStoragePath || `${session.user.id}/signatures/signature.png`;
@@ -93,7 +84,7 @@ export default function DocumentSignOverlay({
   const handleSign = async () => {
     const hasSigFields = Object.values(fieldMap).some((f) => f.type === 'signature');
     if (hasSigFields && !sigStoragePath) {
-      setSignError('Upload your signature first.');
+      setSignError('Upload your signature first, or set one up in Overview.');
       return;
     }
     setPhase('signing');
@@ -157,7 +148,7 @@ export default function DocumentSignOverlay({
       }
 
       setPhase('done');
-      if (onSigned && docRow) onSigned(docRow);
+      if (onSigned && docRow) onSigned(docRow, signedPath);
     } catch (e) {
       setSignError(e.message || 'Signing failed. Try again.');
       setPhase('error');
@@ -170,25 +161,23 @@ export default function DocumentSignOverlay({
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-[#03020a]/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto py-16 px-4">
+      <div className="fixed inset-0 z-[60] bg-[#03020a]/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto py-16 px-4">
         <div className="w-full max-w-lg bg-[#0e0c1a] border border-white/10 rounded-2xl shadow-2xl animate-[fadeIn_0.2s_ease-out]">
 
-          {/* Header */}
           <div className="flex items-start justify-between p-6 border-b border-white/5">
             <div>
               <p className="text-xs uppercase tracking-widest text-gray-500 mb-1">{template?.label}</p>
               <h2 className="text-lg font-bold text-white">
                 {phase === 'done' ? 'Document signed.' : 'Place your signature.'}
               </h2>
-              <p className="text-xs text-gray-500 mt-1">Download your signed copy for your records.</p>
+              <p className="text-xs text-gray-500 mt-1">Step 2 of 2 — Sign and save to vault</p>
             </div>
-            <button onClick={onClose} className="text-gray-600 hover:text-gray-300 transition-colors mt-1">
+            <button type="button" onClick={onClose} className="text-gray-600 hover:text-gray-300 transition-colors mt-1">
               <i className="ph ph-x text-lg"></i>
             </button>
           </div>
 
-          {/* Body */}
           <div className="p-6 space-y-5">
 
             {phase === 'done' && (
@@ -200,7 +189,6 @@ export default function DocumentSignOverlay({
 
             {phase !== 'done' && (
               <>
-                {/* Signature upload */}
                 <div className="space-y-2">
                   <p className="text-xs uppercase tracking-widest text-gray-500">Your signature</p>
                   {sigPngUrl ? (
@@ -215,15 +203,26 @@ export default function DocumentSignOverlay({
                       </button>
                     </div>
                   ) : (
-                    <button
-                      type="button"
-                      disabled={uploading}
-                      onClick={() => fileInputRef.current?.click()}
-                      className="flex items-center gap-2 py-2 px-4 border border-dashed border-white/10 rounded-lg text-sm text-gray-500 hover:border-white/20 hover:text-gray-300 transition-all disabled:opacity-40"
-                    >
-                      <i className="ph ph-upload-simple text-base"></i>
-                      {uploading ? 'Uploading…' : 'Upload signature PNG'}
-                    </button>
+                    <div className="space-y-2">
+                      <button
+                        type="button"
+                        disabled={uploading}
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex items-center gap-2 py-2 px-4 border border-dashed border-white/10 rounded-lg text-sm text-gray-500 hover:border-white/20 hover:text-gray-300 transition-all disabled:opacity-40 w-full justify-center"
+                      >
+                        <i className="ph ph-upload-simple text-base"></i>
+                        {uploading ? 'Uploading…' : 'Upload signature PNG'}
+                      </button>
+                      {onGoToSignatureSettings && (
+                        <button
+                          type="button"
+                          onClick={onGoToSignatureSettings}
+                          className="text-xs uppercase tracking-widest text-blue-400 hover:text-blue-300 transition-colors"
+                        >
+                          Set up in Overview →
+                        </button>
+                      )}
+                    </div>
                   )}
                   <input
                     ref={fileInputRef}
@@ -234,7 +233,6 @@ export default function DocumentSignOverlay({
                   />
                 </div>
 
-                {/* Field placement list */}
                 {Object.entries(fieldMap).length > 0 && (
                   <div className="space-y-2">
                     <p className="text-xs uppercase tracking-widest text-gray-500">Fields</p>
@@ -261,9 +259,7 @@ export default function DocumentSignOverlay({
                             </button>
                           )}
                           {placed && (
-                            <span className="text-xs text-green-400">
-                              {placed.value || 'placed'}
-                            </span>
+                            <span className="text-xs text-green-400">{placed.value || 'placed'}</span>
                           )}
                         </div>
                       );
@@ -273,7 +269,7 @@ export default function DocumentSignOverlay({
 
                 {Object.entries(fieldMap).filter(([, f]) => f.type === 'text').length > 0 && (
                   <p className="text-xs text-gray-600">
-                    Text fields ({Object.entries(fieldMap).filter(([, f]) => f.type === 'text').length}) are burned in automatically from your filled values.
+                    Text fields are filled automatically from your profile.
                   </p>
                 )}
 
@@ -287,7 +283,7 @@ export default function DocumentSignOverlay({
                   <button
                     type="button"
                     onClick={handleSign}
-                    disabled={!allSigFieldsPlaced && Object.values(fieldMap).some(f => f.type === 'signature')}
+                    disabled={!allSigFieldsPlaced && Object.values(fieldMap).some((f) => f.type === 'signature')}
                     className="w-full py-2.5 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-xl text-sm uppercase tracking-widest text-purple-200 transition-all disabled:opacity-30"
                   >
                     Sign and save to vault

@@ -15,7 +15,8 @@ const EDGE_BASE = 'https://qatfiicpkunabpphwqee.supabase.co/functions/v1';
  *   supabase      — Supabase client
  *   session       — auth session
  *   onClose       — close callback
- *   onDocumentSigned — callback(doc) when signed PDF saved to vault
+ *   onDocumentSigned — callback(doc) when signed PDF saved to vault (panel stays open)
+ *   onGoToSignatureSettings — navigate to Overview signature card
  */
 export default function DocumentFillPanel({
   cat,
@@ -25,6 +26,7 @@ export default function DocumentFillPanel({
   session,
   onClose,
   onDocumentSigned,
+  onGoToSignatureSettings,
 }) {
   const [phase, setPhase] = useState('preview'); // preview | confirm | filling | filled | signed | error
   const [template, setTemplate] = useState(null);
@@ -296,9 +298,32 @@ export default function DocumentFillPanel({
                 )}
 
                 {phase === 'signed' && (
-                  <div className="flex items-center gap-2 text-green-400 text-sm">
-                    <i className="ph ph-check-circle text-base"></i>
-                    Signed copy saved to your vault. Close this panel to view it in your documents.
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 text-green-400 text-sm">
+                      <i className="ph ph-check-circle text-base"></i>
+                      Signed copy saved to your vault.
+                    </div>
+                    {currentJob?.signed_path && (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const { data } = await supabase.storage
+                            .from('client-documents')
+                            .createSignedUrl(currentJob.signed_path, 3600);
+                          if (data?.signedUrl) window.open(data.signedUrl, '_blank');
+                        }}
+                        className="w-full py-2.5 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-xl text-sm uppercase tracking-widest text-purple-200 transition-all"
+                      >
+                        View signed document
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={onClose}
+                      className="w-full py-2.5 text-center bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm uppercase tracking-widest text-gray-400 transition-all"
+                    >
+                      Close
+                    </button>
                   </div>
                 )}
 
@@ -327,9 +352,22 @@ export default function DocumentFillPanel({
           supabase={supabase}
           session={session}
           onClose={() => setShowSign(false)}
-          onSigned={(doc) => {
+          onGoToSignatureSettings={onGoToSignatureSettings}
+          onSigned={(doc, signedPath) => {
             setShowSign(false);
-            if (onDocumentSigned) onDocumentSigned(doc);
+            const path = signedPath || doc?.path;
+            setCurrentJob((j) => ({
+              ...(j || {
+                id: jobId,
+                client_id: clientProfile.id,
+                template_id: template.id,
+                field_values: fieldValues,
+              }),
+              status: 'signed',
+              signed_path: path,
+            }));
+            setPhase('signed');
+            onDocumentSigned?.(doc);
           }}
         />
       )}
