@@ -53,6 +53,16 @@ serve(async (req) => {
       .maybeSingle();
     if (tErr || !template) return json({ error: 'Template not found' }, 404);
 
+    // COJ forms are deterministic-only (Phase B client-side). Reject any LLM request.
+    if (template.provider === 'coj') {
+      const hasLlmField = Object.values((template.placeholder_map || {}) as Record<string, { llm?: boolean }>)
+        .some((def) => def?.llm === true);
+      if (hasLlmField) {
+        return json({ error: 'COJ templates do not support LLM fill. Use client-side autofill.' }, 400);
+      }
+      return json({ error: 'COJ templates use client-side autofill. Call coj-prefill directly.' }, 400);
+    }
+
     // Load job (must belong to user or admin)
     const { data: job, error: jErr } = await supabase
       .from('document_jobs')

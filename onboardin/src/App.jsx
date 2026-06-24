@@ -5,6 +5,7 @@ import {
     normalizeEntityType,
     displayEntityType,
     ENTITY_TYPE_OPTIONS,
+    isJamaicaProfile,
 } from './lib/procedures';
 import {
     buildIntakeAnswers,
@@ -17,11 +18,14 @@ import Step06Panel from './components/Step06Panel';
 import ComplianceCalendar from './components/ComplianceCalendar';
 import AdminObligationsPanel from './components/AdminObligationsPanel';
 import DocumentFillPanel from './components/DocumentFillPanel';
+import CojFormationPacketPanel from './components/CojFormationPacketPanel';
 import SignatureSettings from './components/SignatureSettings';
 import SignPortal from './components/SignPortal';
 import { fetchActiveMemberSignature, assertSignaturePathForUser } from './lib/member-signature';
 import { canAccessComplianceCalendar, enrichObligation, obligationStats } from './lib/compliance-obligations';
 import { buildDraftPayload, buildActivePayload, serializeIntake } from './lib/compliance-intake-persist';
+import { parseFormationDraft } from './lib/formation-draft-persist';
+import { COJ_FORM_IDS, resolvePacketProgress } from './lib/coj-formation-packet';
 import { legalTemplateUrl, isFillableTemplateUrl } from './lib/template-urls.js';
 
 const LOGO_PNG = '/Onboardin.png';
@@ -1827,6 +1831,10 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [sendingClientMessage, setSendingClientMessage] = useState(false);
     const [clientUploading, setClientUploading] = useState(false);
     const [vaultUploadError, setVaultUploadError] = useState('');
+    // COJ formation packet
+    const [formationDraft, setFormationDraft] = useState({});
+    const [showCojPacket, setShowCojPacket] = useState(false);
+    const formationDraftSaveTimer = React.useRef(null);
     // Formation assistant
     const [agentQuestion, setAgentQuestion] = useState('');
     const [agentLoading, setAgentLoading] = useState(false);
@@ -1990,6 +1998,12 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         setMsgInbox(isPaid ? 'team' : 'assistant');
         msgInboxDefaulted.current = true;
     }, [clientProfile?.id, clientProfile?.plan]);
+
+    // Hydrate formation_draft from profile on load
+    useEffect(() => {
+        if (!clientProfile) return;
+        setFormationDraft(parseFormationDraft(clientProfile.formation_draft));
+    }, [clientProfile?.id]);
 
     // Seed jurisdiction setup form from saved profile so editing pre-fills instead of starting blank
     useEffect(() => {
@@ -2752,6 +2766,19 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const getSignedUrl = async (path) => {
         const { data } = await supabase.storage.from('client-documents').createSignedUrl(path, 60);
         if (data?.signedUrl) window.open(data.signedUrl, '_blank');
+    };
+
+    const handleFormationDraftChange = (patch) => {
+        const updated = patch.formation_draft ?? {};
+        setFormationDraft(updated);
+        clearTimeout(formationDraftSaveTimer.current);
+        formationDraftSaveTimer.current = setTimeout(async () => {
+            if (!supabase || !session) return;
+            await supabase
+                .from('clients')
+                .update({ formation_draft: updated })
+                .eq('id', session.user.id);
+        }, 900);
     };
 
     const handleSignIn = async (e) => {
@@ -4116,6 +4143,32 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                     </div>
                                 )}
 
+                                {/* COJ incorporation resume banner */}
+                                {isJamaicaProfile(country, jurisdiction) && normalizeEntityType(entityType) === 'Ltd' && (() => {
+                                    const cojDocs = myDocs.filter((d) => COJ_FORM_IDS.includes(d.category));
+                                    const hasDraftData = formationDraft && Object.values(formationDraft).some((v) => {
+                                        if (Array.isArray(v)) return v.some((item) => Object.values(item).some((s) => String(s || '').trim()));
+                                        return String(v || '').trim().length > 0;
+                                    });
+                                    const showBanner = cojDocs.length > 0 || hasDraftData;
+                                    if (!showBanner) return null;
+                                    const progress = resolvePacketProgress([], cojDocs);
+                                    return (
+                                        <div className="flex items-center justify-between gap-3 p-3 bg-purple-500/5 border border-purple-500/20 rounded-xl">
+                                            <p className="text-sm text-gray-400">
+                                                <span className="text-gray-300">{progress.saved}/{progress.total} COJ forms saved.</span> Continue your incorporation packet.
+                                            </p>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowCojPacket(true)}
+                                                className="flex-shrink-0 text-xs uppercase tracking-widest text-purple-300 border border-purple-500/30 px-3 py-2 rounded-lg hover:bg-purple-500/10 transition-all whitespace-nowrap"
+                                            >
+                                                Continue →
+                                            </button>
+                                        </div>
+                                    );
+                                })()}
+
                                 {/* Jurisdiction setup prompt */}
                                 {!hasJurisdiction && !showJurisdictionSetup && (
                                     <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 space-y-3">
@@ -4258,6 +4311,22 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                                             Fill &amp; sign with my info
                                                         </button>
                                                     )}
+                                                    {cat.id === 'articles' && isJamaicaProfile(clientProfile?.country, clientProfile?.jurisdiction) && normalizeEntityType(clientProfile?.entity_type) === 'Ltd' && (() => {
+                                                        const cojDocs = myDocs.filter((d) => COJ_FORM_IDS.includes(d.category));
+                                                        const progress = resolvePacketProgress([], cojDocs);
+                                                        return (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setShowCojPacket(true)}
+                                                                className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-purple-400 hover:text-purple-300 transition-colors"
+                                                            >
+                                                                <i className="ph ph-folder-open text-xs"></i>
+                                                                {progress.saved > 0
+                                                                    ? `Continue formation packet (${progress.saved}/${progress.total} saved)`
+                                                                    : 'Continue formation packet'}
+                                                            </button>
+                                                        );
+                                                    })()}
                                                     {!hasDoc && cat.process && (
                                                         <button
                                                             type="button"
@@ -4289,6 +4358,24 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                     })()}
 
                     {/* Document fill panel — preview + assistant fill for fillEnabled cards */}
+                    {showCojPacket && (
+                        <CojFormationPacketPanel
+                            clientProfile={clientProfile}
+                            supabase={supabase}
+                            session={session}
+                            onClose={() => setShowCojPacket(false)}
+                            onWorkingCopySaved={(doc) => {
+                                if (!doc?.path) return;
+                                setMyDocs((prev) => {
+                                    if (prev.some((d) => d.path === doc.path || d.id === doc.id)) return prev;
+                                    return [doc, ...prev];
+                                });
+                            }}
+                            formationDraft={formationDraft}
+                            onDraftChange={handleFormationDraftChange}
+                        />
+                    )}
+
                     {vaultFillCat && (
                         <DocumentFillPanel
                             cat={vaultFillCat}
