@@ -128,7 +128,7 @@ export async function reconcileCojJobAfterDocRemoval(supabase, jobId, remainingD
         status: COJ_FORM_STATUSES.DRAFT,
         filled_path: null,
         filled_by: null,
-        field_values: null,
+        field_values: {},
         updated_at: new Date().toISOString(),
       })
       .eq('id', jobId);
