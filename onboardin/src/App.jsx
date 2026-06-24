@@ -13,7 +13,7 @@ import ComplianceCalendar from './components/ComplianceCalendar';
 import AdminObligationsPanel from './components/AdminObligationsPanel';
 import DocumentFillPanel from './components/DocumentFillPanel';
 import SignatureSettings from './components/SignatureSettings';
-import { fetchActiveMemberSignature } from './lib/member-signature.js';
+import { fetchActiveMemberSignature } from './lib/member-signature';
 import { canAccessComplianceCalendar, enrichObligation, obligationStats } from './lib/compliance-obligations';
 import { buildDraftPayload, buildActivePayload, serializeIntake } from './lib/compliance-intake-persist';
 import { legalTemplateUrl, isFillableTemplateUrl } from './lib/template-urls.js';
@@ -2177,6 +2177,20 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
             .catch(() => setHasMemberSignature(false));
     }, [supabase, session?.user?.id, clientProfile?.is_admin]);
 
+    const scrollToSignatureSettings = React.useCallback(() => {
+        setTimeout(() => {
+            document.getElementById('signature-settings')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 150);
+    }, []);
+
+    const goToSignatureSettings = React.useCallback((preserveVaultCat = null) => {
+        if (preserveVaultCat) setSignatureReturnCat(preserveVaultCat);
+        setVaultFillCat(null);
+        setVaultProcess(null);
+        switchTab('overview');
+        scrollToSignatureSettings();
+    }, [scrollToSignatureSettings]);
+
     const continueVaultSigning = React.useCallback(() => {
         if (!signatureReturnCat) return;
         const cat = signatureReturnCat;
@@ -4059,7 +4073,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                         </p>
                                         <button
                                             type="button"
-                                            onClick={() => switchTab('overview')}
+                                            onClick={() => goToSignatureSettings()}
                                             className="flex-shrink-0 text-xs uppercase tracking-widest text-purple-300 border border-purple-500/30 px-3 py-2 rounded-lg hover:bg-purple-500/10 transition-all"
                                         >
                                             Set up signature →
@@ -4252,17 +4266,14 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                 setSignatureReturnCat(null);
                             }}
                             onDocumentSigned={(doc) => {
-                                setMyDocs((prev) => [doc, ...prev]);
+                                if (!doc?.path) return;
+                                setMyDocs((prev) => {
+                                    if (prev.some((d) => d.path === doc.path || d.id === doc.id)) return prev;
+                                    return [doc, ...prev];
+                                });
                             }}
-                            onGoToSignatureSettings={() => {
-                                setSignatureReturnCat(vaultFillCat);
-                                setVaultFillCat(null);
-                                setVaultProcess(null);
-                                switchTab('overview');
-                                setTimeout(() => {
-                                    document.getElementById('signature-settings')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                                }, 150);
-                            }}
+                            onSignatureUploaded={refreshMemberSignature}
+                            onGoToSignatureSettings={() => goToSignatureSettings(vaultFillCat)}
                         />
                     )}
 

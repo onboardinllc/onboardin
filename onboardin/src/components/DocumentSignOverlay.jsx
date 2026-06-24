@@ -18,6 +18,7 @@ export default function DocumentSignOverlay({
   onClose,
   onSigned,
   onGoToSignatureSettings,
+  onSignatureUploaded,
 }) {
   const [phase, setPhase] = useState('ready');
   const [signError, setSignError] = useState('');
@@ -63,10 +64,12 @@ export default function DocumentSignOverlay({
     }
     setSigStoragePath(result.storagePath);
     setSigPngUrl(result.previewUrl);
-  }, [supabase, session]);
+    onSignatureUploaded?.();
+  }, [supabase, session, onSignatureUploaded]);
 
   const handlePlaceSignature = useCallback((fieldKey) => {
-    const path = sigStoragePath || `${session.user.id}/signatures/signature.png`;
+    if (!sigStoragePath) return;
+    const path = sigStoragePath;
     setPlacements((prev) => ({
       ...prev,
       [fieldKey]: { type: 'signature', placed: true, path },

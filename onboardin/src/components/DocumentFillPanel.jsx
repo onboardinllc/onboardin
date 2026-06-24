@@ -17,6 +17,7 @@ const EDGE_BASE = 'https://qatfiicpkunabpphwqee.supabase.co/functions/v1';
  *   onClose       — close callback
  *   onDocumentSigned — callback(doc) when signed PDF saved to vault (panel stays open)
  *   onGoToSignatureSettings — navigate to Overview signature card
+ *   onSignatureUploaded — parent refreshes signature-on-file state after overlay upload
  */
 export default function DocumentFillPanel({
   cat,
@@ -27,6 +28,7 @@ export default function DocumentFillPanel({
   onClose,
   onDocumentSigned,
   onGoToSignatureSettings,
+  onSignatureUploaded,
 }) {
   const [phase, setPhase] = useState('preview'); // preview | confirm | filling | filled | signed | error
   const [template, setTemplate] = useState(null);
@@ -353,6 +355,7 @@ export default function DocumentFillPanel({
           session={session}
           onClose={() => setShowSign(false)}
           onGoToSignatureSettings={onGoToSignatureSettings}
+          onSignatureUploaded={onSignatureUploaded}
           onSigned={(doc, signedPath) => {
             setShowSign(false);
             const path = signedPath || doc?.path;

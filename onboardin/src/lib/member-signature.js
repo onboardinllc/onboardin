@@ -1,13 +1,13 @@
 /** Member signature PNG — server-side only (client-documents + member_signatures). */
 
-export function signatureStoragePath(userId) {
-  return `${userId}/signatures/signature.png`;
+export function signatureStoragePath(userId, timestamp = Date.now()) {
+  return `${userId}/signatures/signature-${timestamp}.png`;
 }
 
 export async function fetchActiveMemberSignature(supabase, userId) {
   const { data, error } = await supabase
     .from('member_signatures')
-    .select('storage_path, uploaded_at')
+    .select('id, storage_path, uploaded_at')
     .eq('user_id', userId)
     .eq('active', true)
     .maybeSingle();
@@ -25,25 +25,37 @@ export async function signaturePreviewUrl(supabase, storagePath) {
 }
 
 /**
- * Upload/replace signature PNG. Uses remove+upload (storage has no client UPDATE policy).
- * DB: insert new active row, then deactivate others.
+ * Upload/replace signature PNG. Versioned storage path; deactivate-before-insert (unique index).
+ * Old storage object removed only after new row is saved.
  */
 export async function uploadMemberSignaturePng(supabase, session, file) {
   if (!file || !session?.user?.id) return { error: 'Not signed in.' };
   if (file.type && file.type !== 'image/png') return { error: 'Please upload a PNG file.' };
 
   const userId = session.user.id;
-  const path = signatureStoragePath(userId);
-
   const existing = await fetchActiveMemberSignature(supabase, userId).catch(() => null);
-  if (existing?.storage_path) {
-    await supabase.storage.from('client-documents').remove([existing.storage_path]);
+  const previousId = existing?.id || null;
+  const previousPath = existing?.storage_path || null;
+
+  const { error: deactivateErr } = await supabase
+    .from('member_signatures')
+    .update({ active: false })
+    .eq('user_id', userId)
+    .eq('active', true);
+  if (deactivateErr) {
+    return { error: deactivateErr.message || 'Could not replace signature record.' };
   }
 
+  const path = signatureStoragePath(userId);
   const { error: uploadErr } = await supabase.storage
     .from('client-documents')
     .upload(path, file, { contentType: 'image/png', upsert: false });
-  if (uploadErr) return { error: uploadErr.message || 'Upload failed.' };
+  if (uploadErr) {
+    if (previousId) {
+      await supabase.from('member_signatures').update({ active: true }).eq('id', previousId);
+    }
+    return { error: uploadErr.message || 'Upload failed.' };
+  }
 
   const { data: inserted, error: insertErr } = await supabase
     .from('member_signatures')
@@ -57,15 +69,14 @@ export async function uploadMemberSignaturePng(supabase, session, file) {
     .single();
   if (insertErr) {
     await supabase.storage.from('client-documents').remove([path]);
+    if (previousId) {
+      await supabase.from('member_signatures').update({ active: true }).eq('id', previousId);
+    }
     return { error: insertErr.message || 'Could not save signature record.' };
   }
 
-  if (inserted?.id) {
-    await supabase
-      .from('member_signatures')
-      .update({ active: false })
-      .eq('user_id', userId)
-      .neq('id', inserted.id);
+  if (previousPath && previousPath !== path) {
+    await supabase.storage.from('client-documents').remove([previousPath]);
   }
 
   const previewUrl = await signaturePreviewUrl(supabase, path);
