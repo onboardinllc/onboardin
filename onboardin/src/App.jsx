@@ -25,7 +25,7 @@ import { fetchActiveMemberSignature, assertSignaturePathForUser } from './lib/me
 import { canAccessComplianceCalendar, enrichObligation, obligationStats } from './lib/compliance-obligations';
 import { buildDraftPayload, buildActivePayload, serializeIntake } from './lib/compliance-intake-persist';
 import { parseFormationDraft } from './lib/formation-draft-persist';
-import { openDocumentUrl } from './lib/open-document-url.js';
+import { openStorageDocument } from './lib/open-document-url.js';
 import { COJ_FORM_IDS, resolvePacketProgress } from './lib/coj-formation-packet';
 import { legalTemplateUrl, isFillableTemplateUrl } from './lib/template-urls.js';
 
@@ -2766,8 +2766,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     };
 
     const getSignedUrl = async (path) => {
-        const { data } = await supabase.storage.from('client-documents').createSignedUrl(path, 60);
-        if (data?.signedUrl) openDocumentUrl(data.signedUrl);
+        await openStorageDocument(supabase, path, 60);
     };
 
     const handleFormationDraftChange = (patch) => {
@@ -4404,6 +4403,13 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                 setMyDocs((prev) => {
                                     if (prev.some((d) => d.path === doc.path || d.id === doc.id)) return prev;
                                     return [doc, ...prev];
+                                });
+                            }}
+                            onDocumentSaved={(doc) => {
+                                if (!doc?.path) return;
+                                setMyDocs((prev) => {
+                                    const without = prev.filter((d) => d.path !== doc.path && d.id !== doc.id);
+                                    return [doc, ...without];
                                 });
                             }}
                             onSignatureUploaded={refreshMemberSignature}

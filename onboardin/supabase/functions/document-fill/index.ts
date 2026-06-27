@@ -147,7 +147,11 @@ function fillAcroPdfMupdf(templateBytes: Uint8Array, pdfFieldValues: Record<stri
       filledCount += 1;
     }
   }
-  const buffer = doc.saveToBuffer('pdf');
+  // Source COJ templates (e.g. Form 6) carry an /Encrypt dict that MuPDF
+  // preserves by default, producing a working copy mobile/desktop viewers
+  // refuse to open or edit. Decrypt and clean on write so the saved copy opens
+  // everywhere and stays editable in the vault.
+  const buffer = doc.saveToBuffer({ decrypt: true, garbage: 4, clean: true });
   const pdfBytes = buffer.asUint8Array ? new Uint8Array(buffer.asUint8Array()) : new Uint8Array(buffer);
   return { pdfBytes, filledCount };
 }

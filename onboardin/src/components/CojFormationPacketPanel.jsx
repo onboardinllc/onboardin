@@ -18,7 +18,7 @@ import {
 } from '../lib/coj-documents.js';
 import { workingCopyCanonicalPath } from '../lib/coj-formation-packet.js';
 import { resolveEntityFacts, resolveCojFieldValues } from '../lib/company-context.js';
-import { openDocumentUrl } from '../lib/open-document-url.js';
+import { openStorageDocument } from '../lib/open-document-url.js';
 
 /**
  * CojFormationPacketPanel
@@ -306,8 +306,7 @@ export default function CojFormationPacketPanel({
 
   const getSignedUrl = async (path) => {
     if (!supabase) return;
-    const { data } = await supabase.storage.from('client-documents').createSignedUrl(path, 300);
-    if (data?.signedUrl) openDocumentUrl(data.signedUrl);
+    await openStorageDocument(supabase, path, 300);
   };
 
   const handleDeleteDoc = async (formDef, doc) => {
@@ -516,7 +515,7 @@ export default function CojFormationPacketPanel({
                     {formDocs.length > 0 && (
                       <div className="space-y-1">
                         <p className="text-xs text-gray-600">
-                          This is your vault working copy - not the public COJ template. Download, edit in Acrobat or similar, then <span className="text-gray-500">Save edited PDF to vault</span> to replace it in Supabase.
+                          This is your vault working copy - not the public COJ template. Download, edit in Acrobat or similar, then <span className="text-gray-500">Save edited PDF to vault</span> to replace it in your account.
                         </p>
                         {formDocs.map((doc, i) => (
                           <div

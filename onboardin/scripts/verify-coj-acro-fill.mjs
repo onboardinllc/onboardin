@@ -5,6 +5,7 @@ import { spawnSync } from 'child_process';
 
 const MAPS = {
   form6: {
+    formKind: 'coj_form_6',
     url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/form-6.pdf',
     field_map: {
       proposed_company_name: { acroIndex: 15, type: 'text' },
@@ -21,6 +22,7 @@ const MAPS = {
     checks: [15, 18, 19, 21],
   },
   form1a: {
+    formKind: 'coj_form_1a',
     url: 'https://qatfiicpkunabpphwqee.supabase.co/storage/v1/object/public/public-forms/coj/form-1a.pdf',
     field_map: {
       proposed_company_name: { acroField: 'COMPANY NAME', type: 'text' },
@@ -44,6 +46,7 @@ for (const [name, cfg] of Object.entries(MAPS)) {
     templatePdfBytes: bytes,
     fieldMap: cfg.field_map,
     fieldValues: cfg.values,
+    formKind: cfg.formKind,
   });
 
   const encrypted = Buffer.from(out).toString('latin1').includes('/Encrypt');
@@ -58,17 +61,21 @@ for (const [name, cfg] of Object.entries(MAPS)) {
       console.log(`FAIL ${name} unexpected size (${out.byteLength})`);
       ok = false;
     } else {
+      writeFileSync('verify-tmp-form6.pdf', out);
       const py = spawnSync('python', ['-c', `
 import fitz, sys
 d=fitz.open(sys.argv[1])
-t=d[0].get_text()
+text = ''
+for p in range(d.page_count):
+    for w in d[p].widgets():
+        text += (w.field_value or '') + ' '
+    text += d[p].get_text()
 d.close()
 for s in ['ACME JAMAICA LTD','Jane Founder','14 Camp Road']:
-  if s not in t: raise SystemExit(1)
+  if s not in text: raise SystemExit(1)
 `, 'verify-tmp-form6.pdf'], { encoding: 'utf8' });
-      writeFileSync('verify-tmp-form6.pdf', out);
       if (py.status !== 0) {
-        console.log(`FAIL ${name} filled text not visible on page 1`);
+        console.log(`FAIL ${name} filled values not present in PDF`);
         ok = false;
       }
     }

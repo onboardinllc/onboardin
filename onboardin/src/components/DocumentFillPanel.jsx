@@ -16,7 +16,8 @@ import DocumentSignOverlay from './DocumentSignOverlay';
 import EnvelopeSignersPanel from './EnvelopeSignersPanel';
 import { runDocumentAutofill } from '../lib/autofill-service.js';
 import { canAutofillTemplate } from '../lib/pdf-field-map.js';
-import { openDocumentUrl } from '../lib/open-document-url.js';
+import { openStorageDocument } from '../lib/open-document-url.js';
+import { upsertWorkingCopy, workingCopyCanonicalPath } from '../lib/document-vault.js';
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhdGZpaWNwa3VuYWJwcGh3cWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzgyOTEsImV4cCI6MjA5NTkxNDI5MX0.00A9OEwex4Yeb4EXCy8vUtRXpCVPXmZDyXVHxl6XiVA';
 const EDGE_BASE = 'https://qatfiicpkunabpphwqee.supabase.co/functions/v1';
@@ -51,6 +52,7 @@ function storeInitiatorUrl(envelopeId, url) {
  *   session - auth session
  *   onClose - close callback
  *   onDocumentSigned - callback(doc) when signed PDF saved to vault (panel stays open)
+ *   onDocumentSaved - callback(doc) when an edited working copy is saved back to vault
  *   onGoToSignatureSettings - navigate to Overview signature card
  *   onSignatureUploaded - parent refreshes signature-on-file state after overlay upload
  */
@@ -62,6 +64,7 @@ export default function DocumentFillPanel({
   session,
   onClose,
   onDocumentSigned,
+  onDocumentSaved,
   onGoToSignatureSettings,
   onSignatureUploaded,
 }) {
@@ -75,6 +78,11 @@ export default function DocumentFillPanel({
   const [loading, setLoading] = useState(true);
   const [showSign, setShowSign] = useState(false);
   const [currentJob, setCurrentJob] = useState(null);
+
+  // Save-back: user uploads an edited copy of their working document
+  const [savingEdit, setSavingEdit] = useState(false);
+  const [saveEditError, setSaveEditError] = useState('');
+  const [saveEditDone, setSaveEditDone] = useState(false);
 
   // Envelope state
   const [activeEnvelope, setActiveEnvelope] = useState(null);
@@ -273,6 +281,40 @@ export default function DocumentFillPanel({
     }
   };
 
+  // Save an edited copy back to the member's vault (same per-user working copy).
+  const handleSaveEdited = async (file) => {
+    if (!file || !supabase || !template || !clientProfile?.id) return;
+    setSavingEdit(true);
+    setSaveEditError('');
+    setSaveEditDone(false);
+    try {
+      const buffer = await file.arrayBuffer();
+      const doc = await upsertWorkingCopy(supabase, {
+        clientId: clientProfile.id,
+        template,
+        pdfBytes: new Uint8Array(buffer),
+        displayName: file.name || `${template.label || cat?.label || 'Document'} - working copy.pdf`,
+        fileSize: file.size,
+      });
+      if (currentJob?.id) {
+        await supabase
+          .from('document_jobs')
+          .update({
+            status: 'filled',
+            filled_path: workingCopyCanonicalPath(clientProfile.id, template),
+            filled_by: 'upload',
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', currentJob.id);
+      }
+      setSaveEditDone(true);
+      onDocumentSaved?.(doc);
+    } catch (e) {
+      setSaveEditError(e.message || 'Save failed. Try again.');
+    }
+    setSavingEdit(false);
+  };
+
   const handleCreateEnvelope = async (signers) => {
     setEnvelopeError('');
     setEnvelopeLoading(true);
@@ -369,6 +411,37 @@ export default function DocumentFillPanel({
   const hasLlm = template ? hasLlmKey(template) : false;
   const displayFields = Object.entries(fieldValues).filter(([, v]) => v !== '__llm__' || phase === 'filled');
   const llmFields = Object.entries(fieldValues).filter(([, v]) => v === '__llm__');
+
+  const saveEditBlock = (
+    <div className="pt-3 mt-1 border-t border-white/5 space-y-2">
+      <p className="text-xs text-gray-500">
+        Edited this on your device? Save it back to your copy. The original template stays untouched.
+      </p>
+      <label
+        className={`w-full py-2.5 flex items-center justify-center gap-2 border border-white/10 rounded-xl text-sm uppercase tracking-widest transition-all ${
+          savingEdit ? 'opacity-40 cursor-wait' : 'bg-white/5 hover:bg-white/10 text-gray-300 cursor-pointer'
+        }`}
+      >
+        <i className={`ph ${savingEdit ? 'ph-spinner-gap animate-spin' : 'ph-upload-simple'} text-base`}></i>
+        {savingEdit ? 'Saving…' : 'Save edited PDF to vault'}
+        <input
+          type="file"
+          accept="application/pdf,.pdf"
+          className="hidden"
+          disabled={savingEdit}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            if (file) handleSaveEdited(file);
+          }}
+        />
+      </label>
+      {saveEditError && <p className="text-xs text-red-300">{saveEditError}</p>}
+      {saveEditDone && !saveEditError && (
+        <p className="text-xs text-green-400">Saved to your vault. Reopen any time to keep editing.</p>
+      )}
+    </div>
+  );
 
   return (
     <>
@@ -611,6 +684,8 @@ export default function DocumentFillPanel({
                     >
                       Download blank template
                     </a>
+
+                    {saveEditBlock}
                   </div>
                 )}
 
@@ -640,10 +715,11 @@ export default function DocumentFillPanel({
                               vaultCardId,
                               currentJob.signed_path,
                             );
-                            const { data } = await supabase.storage
-                              .from('client-documents')
-                              .createSignedUrl(currentJob.signed_path, SIGNED_DOC_PREVIEW_TTL_SEC);
-                            if (data?.signedUrl) openDocumentUrl(data.signedUrl);
+                            await openStorageDocument(
+                              supabase,
+                              currentJob.signed_path,
+                              SIGNED_DOC_PREVIEW_TTL_SEC,
+                            );
                           } catch {
                             // Malformed path - do not open preview
                           }

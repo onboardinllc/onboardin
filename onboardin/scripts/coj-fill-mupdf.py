@@ -63,7 +63,16 @@ def fill_pdf(input_path: Path, output_path: Path, pdf_field_values: dict[str, st
             widget.field_value = pdf_field_values[name]
             widget.update()
             filled += 1
-    doc.save(output_path, garbage=4, deflate=True)
+    # Source COJ templates (e.g. Form 6) ship with an /Encrypt dict that PyMuPDF
+    # preserves on save by default, producing a working copy mobile/desktop
+    # viewers refuse to open or edit. Force a clean, unencrypted rewrite.
+    doc.save(
+        output_path,
+        garbage=4,
+        deflate=True,
+        clean=True,
+        encryption=fitz.PDF_ENCRYPT_NONE,
+    )
     doc.close()
     return filled
 
