@@ -28,9 +28,29 @@ import { parseFormationDraft } from './lib/formation-draft-persist';
 import { openStorageDocument } from './lib/open-document-url.js';
 import { COJ_FORM_IDS, resolvePacketProgress } from './lib/coj-formation-packet';
 import { legalTemplateUrl, isFillableTemplateUrl } from './lib/template-urls.js';
+import { harvestAfterDraftSave } from './lib/profile-harvest.js';
 
 const LOGO_PNG = '/Onboardin.png';
 const LOGO_SVG = '/favicon.svg';
+
+// Hero crop — trims baked-in "Ai" suffix on video/PNG until CoJ branding releases full wordmark.
+// Set both to 0 to show full assets.
+const LOGO_CROP_LEFT = 0.15;
+const LOGO_CROP_RIGHT = 0.30;
+
+function logoCropSourceRect(width) {
+    return {
+        sourceX: width * LOGO_CROP_LEFT,
+        sourceWidth: width * (1 - LOGO_CROP_LEFT - LOGO_CROP_RIGHT),
+    };
+}
+
+function drawCroppedLogoFrame(ctx, canvas, image, width, height) {
+    const { sourceX, sourceWidth } = logoCropSourceRect(width);
+    if (canvas.width !== sourceWidth) canvas.width = sourceWidth;
+    if (canvas.height !== height) canvas.height = height;
+    ctx.drawImage(image, sourceX, 0, sourceWidth, height, 0, 0, sourceWidth, height);
+}
 
 // GreenScreen : chroma-key video first; PNG/SVG fades up only if MP4 cannot play
 const GreenScreen = ({ videoUrl, onVideoEnd }) => {
@@ -52,6 +72,30 @@ const GreenScreen = ({ videoUrl, onVideoEnd }) => {
     }, [useLogo]);
 
     useEffect(() => {
+        if (!useLogo) return;
+        let cancelled = false;
+
+        const draw = (src) => {
+            const img = new Image();
+            img.onload = () => {
+                if (cancelled) return;
+                const canvas = canvasRef.current;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                drawCroppedLogoFrame(ctx, canvas, img, img.naturalWidth, img.naturalHeight);
+            };
+            img.onerror = () => {
+                if (cancelled || src === LOGO_SVG) return;
+                draw(LOGO_SVG);
+            };
+            img.src = src;
+        };
+
+        draw(LOGO_PNG);
+        return () => { cancelled = true; };
+    }, [useLogo]);
+
+    useEffect(() => {
         let animationFrameId;
 
         const processFrame = () => {
@@ -63,17 +107,9 @@ const GreenScreen = ({ videoUrl, onVideoEnd }) => {
             const width = video.videoWidth;
             const height = video.videoHeight;
 
-            // VIDEO CROP : trim right to remove suffix text, trim left to re-center
-            const cropLeft = 0.15;
-            const cropRight = 0.30;
-            const sourceX = width * cropLeft;
-            const sourceWidth = width * (1 - cropLeft - cropRight);
+            drawCroppedLogoFrame(ctx, canvas, video, width, height);
 
-            if (canvas.width !== sourceWidth) canvas.width = sourceWidth;
-            if (canvas.height !== height) canvas.height = height;
-
-            ctx.drawImage(video, sourceX, 0, sourceWidth, height, 0, 0, sourceWidth, height);
-
+            const { sourceWidth } = logoCropSourceRect(width);
             const frame = ctx.getImageData(0, 0, sourceWidth, height);
             const data = frame.data;
 
@@ -105,12 +141,12 @@ const GreenScreen = ({ videoUrl, onVideoEnd }) => {
             animationFrameId = requestAnimationFrame(processFrame);
         };
 
-        if (isPlaying) {
+        if (isPlaying && !useLogo) {
             processFrame();
         }
 
         return () => cancelAnimationFrame(animationFrameId);
-    }, [isPlaying]);
+    }, [isPlaying, useLogo]);
 
     const handlePlay = () => {
         if(videoRef.current) {
@@ -132,24 +168,17 @@ const GreenScreen = ({ videoUrl, onVideoEnd }) => {
 
     return (
         <div className="relative flex justify-center items-center w-full max-w-xl h-[35vh] md:h-[45vh]">
-            {useLogo ? (
-                <img
-                    src={LOGO_PNG}
-                    alt="Onboardin"
-                    className={`w-full h-full object-contain drop-shadow-[0_0_20px_rgba(255,255,255,0.15)] transition-all duration-[1500ms] ease-out ${
-                        logoEntered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
-                    }`}
-                    onError={(e) => {
-                        if (!e.currentTarget.src.endsWith('favicon.svg')) e.currentTarget.src = LOGO_SVG;
-                    }}
-                />
-            ) : (
-                <canvas
-                    ref={canvasRef}
-                    className="w-full h-full object-contain drop-shadow-[0_0_20px_rgba(255,255,255,0.15)] transition-opacity duration-1000"
-                    style={{ opacity: isPlaying ? 1 : 0 }}
-                />
-            )}
+            <canvas
+                ref={canvasRef}
+                role="img"
+                aria-label="Onboardin"
+                className={`w-full h-full object-contain drop-shadow-[0_0_20px_rgba(255,255,255,0.15)] ${
+                    useLogo
+                        ? `transition-all duration-[1500ms] ease-out ${logoEntered ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'}`
+                        : 'transition-opacity duration-1000'
+                }`}
+                style={useLogo ? undefined : { opacity: isPlaying ? 1 : 0 }}
+            />
             <video
                 ref={videoRef}
                 src={videoUrl}
@@ -2784,6 +2813,19 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                 .update({ formation_draft: updated })
                 .eq('id', session.user.id);
             setFormationDraftSaveStatus(error ? 'error' : 'saved');
+            if (error) return;
+            // Keep the saved draft on clientProfile so panels that read
+            // clientProfile.formation_draft (e.g. the vault DocumentFillPanel) stay
+            // in sync with Company Details edits without a reload.
+            setClientProfile((prev) => (prev ? { ...prev, formation_draft: updated } : prev));
+            // Harvest the saved draft into the reusable profile so other forms reuse
+            // it. Same debounce; harvest failure never blocks the draft save itself.
+            try {
+                const merged = await harvestAfterDraftSave(supabase, session.user.id, updated, undefined, { jurisdiction: clientProfile?.jurisdiction, entityType: clientProfile?.entity_type });
+                if (merged) setClientProfile((prev) => (prev ? { ...prev, entity_profile: merged } : prev));
+            } catch (err) {
+                console.warn('[draft] profile harvest failed:', err?.message || err);
+            }
         }, 900);
     };
 
@@ -4381,6 +4423,10 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                 if (!doc) return;
                                 setMyDocs((prev) => prev.filter((d) => d.id !== doc.id && d.path !== doc.path));
                             }}
+                            onProfileHarvested={(entityProfile) => {
+                                if (!entityProfile) return;
+                                setClientProfile((prev) => (prev ? { ...prev, entity_profile: entityProfile } : prev));
+                            }}
                             formationDraft={formationDraft}
                             onDraftChange={handleFormationDraftChange}
                             draftSaveStatus={formationDraftSaveStatus}
@@ -4411,6 +4457,10 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                     const without = prev.filter((d) => d.path !== doc.path && d.id !== doc.id);
                                     return [doc, ...without];
                                 });
+                            }}
+                            onProfileHarvested={(entityProfile) => {
+                                if (!entityProfile) return;
+                                setClientProfile((prev) => (prev ? { ...prev, entity_profile: entityProfile } : prev));
                             }}
                             onSignatureUploaded={refreshMemberSignature}
                             onGoToSignatureSettings={() => goToSignatureSettings(vaultFillCat)}

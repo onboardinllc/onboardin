@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { resolveCompanyContext, resolveFieldValues } from '../lib/company-context';
+import { resolveEntityFacts, resolveFieldValues } from '../lib/company-context';
 import { resolveTemplate } from '../lib/document-templates';
 import {
   assertSignedDocumentPath,
@@ -65,6 +65,7 @@ export default function DocumentFillPanel({
   onClose,
   onDocumentSigned,
   onDocumentSaved,
+  onProfileHarvested,
   onGoToSignatureSettings,
   onSignatureUploaded,
 }) {
@@ -117,8 +118,9 @@ export default function DocumentFillPanel({
         setTemplate(t);
 
         const formation_draft = clientProfile?.formation_draft || {};
-        const ctx = resolveCompanyContext({
+        const ctx = resolveEntityFacts({
           client: clientProfile,
+          entityProfile: clientProfile?.entity_profile ?? {},
           formationDraft: formation_draft,
           complianceIntake: complianceIntake || {},
         });
@@ -255,7 +257,7 @@ export default function DocumentFillPanel({
       }
 
       const formation_draft = clientProfile?.formation_draft || {};
-      await runDocumentAutofill({
+      const { entityProfile } = await runDocumentAutofill({
         supabase,
         session: authSession,
         clientProfile,
@@ -265,6 +267,9 @@ export default function DocumentFillPanel({
         jobId,
         fieldValues: valuesToFill,
       });
+      // Refresh harvested profile in app state so other surfaces reuse the values
+      // without a reload (mirrors the COJ packet panel).
+      if (entityProfile) onProfileHarvested?.(entityProfile);
 
       setFieldValues(valuesToFill);
       setCurrentJob({

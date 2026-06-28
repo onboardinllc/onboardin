@@ -40,6 +40,7 @@ export default function CojFormationPacketPanel({
   onClose,
   onWorkingCopySaved,
   onDocumentRemoved,
+  onProfileHarvested,
   formationDraft,
   onDraftChange,
   draftSaveStatus = 'idle',
@@ -258,7 +259,7 @@ export default function CojFormationPacketPanel({
     setAutofillForm(formDef.form_id);
     setAutofillError('');
     try {
-      const { doc, removedLegacy } = await applyCojAutofill({
+      const { doc, removedLegacy, entityProfile } = await applyCojAutofill({
         supabase,
         session,
         clientProfile,
@@ -267,6 +268,9 @@ export default function CojFormationPacketPanel({
         jobId: job.id,
         formId: formDef.form_id,
       });
+      // Refresh the harvested profile in app state so the next form's preview
+      // (e.g. Form 1A) shows the company name without a reload.
+      if (entityProfile) onProfileHarvested?.(entityProfile);
       setJobs((prev) => ({
         ...prev,
         [formDef.form_id]: { ...prev[formDef.form_id], status: COJ_FORM_STATUSES.WORKING_SAVED },

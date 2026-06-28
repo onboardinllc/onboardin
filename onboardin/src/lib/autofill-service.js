@@ -2,7 +2,8 @@
  * Unified autofill service - all vault templates with acro or coordinate field_map.
  * Deterministic (0 credits). LLM fields are filled separately before calling with full values.
  */
-import { resolveCojFieldValues, resolveEntityFacts, syncFormationDraftToProfile } from './company-context.js';
+import { resolveCojFieldValues, resolveEntityFacts } from './company-context.js';
+import { harvestAfterAutofill } from './profile-harvest.js';
 import { buildFilledPdf, canAutofillTemplate } from './pdf-fill.js';
 import { removeLegacyPrefilledCojDocs } from './coj-documents.js';
 import { COJ_FORM_STATUSES } from './coj-formation-packet.js';
@@ -97,9 +98,20 @@ export async function runDocumentAutofill({
     if (jobErr) throw new Error(`Job update failed: ${jobErr.message}`);
   }
 
-  syncFormationDraftToProfile(supabase, clientId, formationDraft, fieldValues).catch((err) => {
+  // Harvest filled values into the reusable profile so the next form already knows
+  // them. Awaited so the caller can refresh React state with the merged profile,
+  // but a harvest failure never fails the autofill the member just ran.
+  let harvestedProfile = null;
+  try {
+    harvestedProfile = await harvestAfterAutofill(supabase, clientId, {
+      fieldValues,
+      formationDraft,
+      template,
+      scope: { jurisdiction: clientProfile?.jurisdiction, entityType: clientProfile?.entity_type },
+    });
+  } catch (err) {
     console.warn('[autofill] profile harvest failed:', err?.message || err);
-  });
+  }
 
   return {
     doc: insertedDoc,
@@ -108,5 +120,6 @@ export async function runDocumentAutofill({
     filledBy: 'autofill',
     creditsCharged: 0,
     removedLegacy,
+    entityProfile: harvestedProfile,
   };
 }
