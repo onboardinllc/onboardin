@@ -45,7 +45,7 @@ export function profileFactsToFlat(facts) {
 }
 
 /**
- * Superset of resolveCompanyContext - includes entity_profile.facts in merge chain.
+ * Canonical company context builder - includes entity_profile.facts in merge chain.
  * Called by autofill-service; replaces ad-hoc context builds in coj-prefill.
  * merge order: clients.* → entity_profile.facts → formation_draft → compliance_intake
  */
@@ -112,38 +112,6 @@ export async function syncFormationDraftToProfile(supabase, clientId, formationD
     formationDraft,
     template,
   });
-}
-
-export function resolveCompanyContext({ client, formationDraft, complianceIntake }) {
-  const base = {
-    company_name: client?.company_name || '',
-    founder_name: client?.founder_name || '',
-    jurisdiction: client?.jurisdiction || '',
-    country: client?.country || '',
-    entity_type: client?.entity_type || '',
-    business_intent: client?.business_intent || '',
-    sells_to: client?.sells_to || '',
-  };
-
-  const draft = typeof formationDraft === 'string'
-    ? safeParseJson(formationDraft)
-    : (formationDraft || {});
-
-  const intake = typeof complianceIntake === 'string'
-    ? safeParseJson(complianceIntake)
-    : (complianceIntake || {});
-
-  const merged = { ...base, ...draft, ...intake };
-
-  merged._computed = {
-    today: new Date().toISOString().slice(0, 10),
-    governing_law: resolveGoverningLaw(merged),
-  };
-
-  // Preserve raw draft for dotted-path resolution in resolveCojFieldValues
-  merged._rawDraft = draft;
-
-  return merged;
 }
 
 function resolveGoverningLaw(ctx) {

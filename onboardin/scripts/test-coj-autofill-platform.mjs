@@ -14,7 +14,7 @@ import { createClient } from '@supabase/supabase-js';
 import { resolveEntityFacts, resolveCojFieldValues } from '../src/lib/company-context.js';
 import { fillAcroPdfViaEdge } from '../src/lib/pdf-autofill-edge.js';
 import { runDocumentAutofill } from '../src/lib/autofill-service.js';
-import { workingCopyCanonicalPath } from '../src/lib/coj-formation-packet.js';
+import { cojWorkingCopyCanonicalPath } from '../src/lib/coj-formation-packet.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = join(__dirname, 'local-output');
@@ -179,7 +179,7 @@ if (doUpload) {
       formId: 'coj_form_6',
     });
     console.log('\nVault upload OK:', result.storagePath);
-    console.log('Canonical path:', workingCopyCanonicalPath(clientId, 'coj_form_6'));
+    console.log('Canonical path:', cojWorkingCopyCanonicalPath(clientId, 'coj_form_6'));
   } finally {
     if (savedWindow === undefined) delete globalThis.window;
     else globalThis.window = savedWindow;

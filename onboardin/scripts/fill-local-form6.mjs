@@ -11,7 +11,7 @@ import { fileURLToPath } from 'url';
 import { execSync, spawnSync } from 'child_process';
 import { resolveEntityFacts, resolveCojFieldValues } from '../src/lib/company-context.js';
 import { fillCojPdfWithMupdf } from './coj-mupdf-bridge.mjs';
-import { workingCopyCanonicalPath } from '../src/lib/coj-formation-packet.js';
+import { cojWorkingCopyCanonicalPath } from '../src/lib/coj-formation-packet.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = join(__dirname, 'local-output');
@@ -108,7 +108,7 @@ if (!vis.ok || filledCount === 0) {
 }
 
 if (doUpload) {
-  const storagePath = workingCopyCanonicalPath(clientId, 'coj_form_6');
+  const storagePath = cojWorkingCopyCanonicalPath(clientId, 'coj_form_6');
   await fetch(`${baseUrl}/storage/v1/object/client-documents/${storagePath}`, {
     method: 'DELETE',
     headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}` },

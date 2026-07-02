@@ -1,7 +1,7 @@
 /**
  * COJ formation packet - vault document helpers (storage + documents rows).
  */
-import { workingCopyCanonicalPath } from './coj-formation-packet.js';
+import { cojWorkingCopyCanonicalPath } from './coj-formation-packet.js';
 import { pdfBytesToUploadBody } from './pdf-bytes.js';
 
 export function isPrefilledCojPath(path) {
@@ -66,7 +66,7 @@ export async function upsertCojWorkingCopy(supabase, {
   displayName,
   fileSize,
 }) {
-  const path = workingCopyCanonicalPath(clientId, formId);
+  const path = cojWorkingCopyCanonicalPath(clientId, formId);
   const bytes = pdfBytes instanceof Uint8Array ? pdfBytes : new Uint8Array(pdfBytes);
   const size = fileSize ?? bytes.byteLength;
   const body = pdfBytesToUploadBody(bytes);

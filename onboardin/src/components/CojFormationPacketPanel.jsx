@@ -16,7 +16,7 @@ import {
   sortCojDocsNewestFirst,
   upsertCojWorkingCopy,
 } from '../lib/coj-documents.js';
-import { workingCopyCanonicalPath } from '../lib/coj-formation-packet.js';
+import { cojWorkingCopyCanonicalPath } from '../lib/coj-formation-packet.js';
 import { resolveEntityFacts, resolveCojFieldValues } from '../lib/company-context.js';
 import { openStorageDocument } from '../lib/open-document-url.js';
 
@@ -197,7 +197,7 @@ export default function CojFormationPacketPanel({
     }
 
     try {
-      const path = workingCopyCanonicalPath(clientId, formDef.form_id);
+      const path = cojWorkingCopyCanonicalPath(clientId, formDef.form_id);
       const buffer = await file.arrayBuffer();
       const insertedDoc = await upsertCojWorkingCopy(supabase, {
         clientId,

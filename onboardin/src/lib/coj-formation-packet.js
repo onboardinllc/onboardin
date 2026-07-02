@@ -100,7 +100,7 @@ export function resolvePacketProgress(jobs, docs) {
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Canonical editable COJ form path - one per form, upserted on autofill or manual save. */
-export function workingCopyCanonicalPath(clientId, formId) {
+export function cojWorkingCopyCanonicalPath(clientId, formId) {
   return `${clientId}/articles/${formId}/working-latest.pdf`;
 }
 

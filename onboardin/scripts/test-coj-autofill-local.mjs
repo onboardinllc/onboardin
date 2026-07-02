@@ -17,7 +17,7 @@ import { PDFDocument } from '../src/vendor/pdf-lib.esm.min.js';
 import { resolveEntityFacts, resolveCojFieldValues } from '../src/lib/company-context.js';
 import { buildCojFilledPdf } from './pdf-fill-node.mjs';
 import { clearForm6ShellCache } from '../src/lib/coj-pdf-fill.js';
-import { workingCopyCanonicalPath } from '../src/lib/coj-formation-packet.js';
+import { cojWorkingCopyCanonicalPath } from '../src/lib/coj-formation-packet.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const OUT_DIR = join(__dirname, 'local-output');
@@ -157,7 +157,7 @@ const { pdfBytes, filledCount } = await buildCojFilledPdf({
 
 writeFileSync(filledPath, pdfBytes);
 
-const vaultPath = workingCopyCanonicalPath(clientId, formKind);
+const vaultPath = cojWorkingCopyCanonicalPath(clientId, formKind);
 let vaultBytes = null;
 try {
   const vaultRes = await fetch(`${baseUrl}/storage/v1/object/client-documents/${vaultPath}`, {
