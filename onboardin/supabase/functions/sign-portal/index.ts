@@ -349,7 +349,7 @@ serve(async (req) => {
 
       if (allSigned) {
         const finalizeUrl = `${SUPABASE_URL}/functions/v1/finalize-envelope`;
-        fetch(finalizeUrl, {
+        const finalizeCall = fetch(finalizeUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -357,7 +357,11 @@ serve(async (req) => {
             'apikey': SUPABASE_SERVICE_ROLE_KEY,
           },
           body: JSON.stringify({ envelope_id: envelope.id }),
-        }).catch(() => { /* fire-and-forget */ });
+        }).catch(() => { /* recovered by check_finalize from the initiator's panel */ });
+        // waitUntil keeps the call alive after this response returns;
+        // without it the runtime may kill the pending fetch.
+        const runtime = (globalThis as { EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void } }).EdgeRuntime;
+        if (runtime?.waitUntil) runtime.waitUntil(finalizeCall);
       }
 
       return json({ ok: true, storage_path: storagePath });

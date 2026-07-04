@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { fetchTemplatePdfBytes, buildSignedPdf } from '../lib/document-sign-pdf';
 import { pdfBytesToUploadBody } from '../lib/pdf-bytes.js';
 import {
@@ -88,7 +89,7 @@ export default function DocumentSignOverlay({
       ...prev,
       [fieldKey]: { type: 'signature', placed: true, path },
     }));
-  }, [session, sigStoragePath]);
+  }, [sigStoragePath]);
 
   const handlePlaceDate = useCallback((fieldKey) => {
     const today = new Date().toISOString().slice(0, 10);
@@ -122,18 +123,27 @@ export default function DocumentSignOverlay({
         signaturePngBytes = new Uint8Array(await sigBlob.arrayBuffer());
       }
 
+      const now = new Date().toISOString();
       const signedPdfBytes = await buildSignedPdf({
         templatePdfBytes,
         fieldMap,
         fieldValues,
         placements,
         signaturePngBytes,
+        audit: {
+          docLabel: template.label,
+          referenceId: job.id,
+          signers: [{
+            name: clientProfile.founder_name || '',
+            email: session.user.email || '',
+            signedAt: now,
+          }],
+        },
       });
 
       const timestamp = Date.now();
       const signedPath = `${clientProfile.id}/${template.vault_card_id}/signed-${timestamp}.pdf`;
       assertSignedDocumentPath(clientProfile.id, template.vault_card_id, signedPath);
-      const now = new Date().toISOString();
 
       const { error: uploadErr } = await supabase.storage
         .from('client-documents')
@@ -181,10 +191,11 @@ export default function DocumentSignOverlay({
     .filter(([, f]) => f.type === 'signature')
     .every(([k]) => placements[k]?.placed);
 
-  return (
+  // Portal escapes ancestor stacking contexts so the overlay covers the fixed nav
+  return createPortal(
     <>
-      <div className="fixed inset-0 z-[60] bg-[#03020a]/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto py-16 px-4">
+      <div className="fixed inset-0 z-[80] bg-[#03020a]/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-[80] flex items-start justify-center overflow-y-auto py-16 px-4">
         <div className="w-full max-w-lg bg-[#0e0c1a] border border-white/10 rounded-2xl shadow-2xl animate-[fadeIn_0.2s_ease-out]">
 
           <div className="flex items-start justify-between p-6 border-b border-white/5">
@@ -337,6 +348,7 @@ export default function DocumentSignOverlay({
           </div>
         </div>
       </div>
-    </>
+    </>,
+    document.body,
   );
 }

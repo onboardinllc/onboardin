@@ -30,14 +30,23 @@ async function releaseFinalizeLock(
   await supabase.from('document_envelopes').update({ finalize_lock: null }).eq('id', envelopeId);
 }
 
+async function sha256HexOfBytes(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+interface AuditSigner { name: string; email: string; signedAt: string | null }
+interface AuditInfo { docLabel: string; referenceId: string; signers: AuditSigner[] }
+
 async function buildSignedPdf(opts: {
   templatePdfBytes: Uint8Array;
   fieldMap: Record<string, { page?: number; x?: number; y?: number; w?: number; h?: number; fontSize?: number; type: string }>;
   fieldValues: Record<string, string>;
   placements: Record<string, { placed?: boolean; value?: string; path?: string }>;
   signaturesByFieldKey: Record<string, Uint8Array>;
+  audit?: AuditInfo;
 }): Promise<Uint8Array> {
-  const { templatePdfBytes, fieldMap, fieldValues, placements, signaturesByFieldKey } = opts;
+  const { templatePdfBytes, fieldMap, fieldValues, placements, signaturesByFieldKey, audit } = opts;
   const pdfDoc = await PDFDocument.load(templatePdfBytes);
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
@@ -74,6 +83,36 @@ async function buildSignedPdf(opts: {
         page.drawImage(img, { x, y: pdfY, width: w, height: h });
       }
     }
+  }
+
+  // Signature certificate page: attribution + integrity record in the artifact itself
+  if (audit) {
+    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const templateSha256 = await sha256HexOfBytes(templatePdfBytes);
+    const page = pdfDoc.addPage([612, 792]);
+    let y = 720;
+    const left = 72;
+    const line = (text: string, size = 10, bold = false, gap = 18) => {
+      page.drawText(text, { x: left, y, size, font: bold ? boldFont : font });
+      y -= gap;
+    };
+    line('Signature Certificate', 18, true, 30);
+    line(`Document: ${audit.docLabel || 'Untitled document'}`, 11, false, 20);
+    line(`Reference: ${audit.referenceId}`, 10, false, 20);
+    line(`Generated: ${new Date().toISOString()}`, 10, false, 28);
+    line('Signed by', 12, true, 22);
+    for (const s of audit.signers) {
+      line(`${s.name ? s.name + '  ' : ''}${s.email ? '<' + s.email + '>' : ''}`, 11, false, 16);
+      if (s.signedAt) line(`Signed at ${s.signedAt}`, 9, false, 22);
+      else y -= 6;
+    }
+    y -= 10;
+    line('Integrity', 12, true, 22);
+    line('SHA-256 of source document before signing:', 9, false, 14);
+    line(templateSha256, 9, false, 14);
+    y -= 14;
+    line('Recorded by Onboardin (onboardin.llc). Signature placements and timestamps', 8, false, 12);
+    line('are stored with this document record and available on request.', 8, false, 12);
   }
 
   return new Uint8Array(await pdfDoc.save());
@@ -113,7 +152,7 @@ serve(async (req) => {
     // Check all signers signed
     const { data: signers, error: sigErr } = await supabase
       .from('envelope_signers')
-      .select('id, status, field_keys, field_placements, signature_storage_path, is_initiator')
+      .select('id, status, field_keys, field_placements, signature_storage_path, is_initiator, email, display_name, signed_at')
       .eq('envelope_id', envelope_id);
 
     if (sigErr || !signers?.length) return json({ error: 'No signers found.' }, 400);
@@ -210,6 +249,15 @@ serve(async (req) => {
       fieldValues: job.field_values ?? {},
       placements: mergedPlacements,
       signaturesByFieldKey,
+      audit: {
+        docLabel: template.label,
+        referenceId: envelope_id,
+        signers: signers.map((s) => ({
+          name: (s.display_name as string) || '',
+          email: (s.email as string) || '',
+          signedAt: (s.signed_at as string) || null,
+        })),
+      },
     });
 
     // Upload to client path (initiator path, same as solo)
@@ -227,14 +275,14 @@ serve(async (req) => {
 
     const now = new Date().toISOString();
 
-    // Insert documents row (vault visibility)
+    // Insert documents row (vault visibility). Column set must match live
+    // public.documents schema (no mime_type column).
     const { error: docErr } = await supabase.from('documents').insert({
       client_id: envelope.client_id,
       category: vaultCardId,
       name: `${template.label} - signed`,
       path: signedPath,
       size: signedPdfBytes.byteLength,
-      mime_type: 'application/pdf',
       created_at: now,
     });
     if (docErr) {

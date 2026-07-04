@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   COJ_PACKET_FORMS,
   COJ_FORM_IDS,
@@ -358,8 +359,9 @@ export default function CojFormationPacketPanel({
 
   const savedCount = COJ_FORM_IDS.filter((id) => (docsByForm[id] || []).length > 0).length;
 
-  return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#03020a]/95 backdrop-blur-xl overflow-y-auto">
+  // Portal escapes ancestor stacking contexts so the overlay covers the fixed nav
+  return createPortal(
+    <div className="fixed inset-0 z-[70] flex flex-col bg-[#03020a]/95 backdrop-blur-xl overflow-y-auto">
       <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-white/10 bg-[#03020a]/80 backdrop-blur-sm">
         <div>
           <p className="text-xs uppercase tracking-widest text-purple-400">Formation Packet</p>
@@ -768,6 +770,7 @@ export default function CojFormationPacketPanel({
           </>
         )}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

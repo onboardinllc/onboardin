@@ -64,7 +64,56 @@ serve(async (req) => {
     );
     if (authError || !user) return json({ error: 'Unauthorized' }, 401);
 
-    // Paid plan gate
+    const body = await req.json().catch(() => ({}));
+    const { action, job_id, template_id, signers, origin } = body;
+    const inviteOrigin = resolveInviteOrigin(origin);
+
+    // check_finalize: initiator-triggered recovery when all signers signed but
+    // the async finalize was dropped. Idempotent (finalize-envelope no-ops on
+    // completed envelopes and takes a lock while running).
+    if (action === 'check_finalize') {
+      const { envelope_id } = body;
+      if (!envelope_id) return json({ error: 'envelope_id required.' }, 400);
+
+      const { data: envelope } = await supabase
+        .from('document_envelopes')
+        .select('id, status, client_id')
+        .eq('id', envelope_id)
+        .eq('client_id', user.id)
+        .maybeSingle();
+      if (!envelope) return json({ error: 'Envelope not found.' }, 404);
+      if (envelope.status === 'completed') return json({ ok: true, already_completed: true });
+      if (envelope.status !== 'pending') {
+        return json({ error: `Envelope is not pending (${envelope.status}).` }, 400);
+      }
+
+      const { data: allSigners } = await supabase
+        .from('envelope_signers')
+        .select('status')
+        .eq('envelope_id', envelope_id);
+      const allSigned = allSigners?.length && allSigners.every((s) => s.status === 'signed');
+      if (!allSigned) return json({ ok: false, message: 'Not all signers have signed yet.' });
+
+      const res = await fetch(`${SUPABASE_URL}/functions/v1/finalize-envelope`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+          'apikey': SUPABASE_SERVICE_ROLE_KEY,
+        },
+        body: JSON.stringify({ envelope_id }),
+      });
+      const finalizeJson = await res.json().catch(() => ({}));
+      if (!res.ok) return json({ error: finalizeJson.error || 'Finalize failed.' }, 502);
+      return json(finalizeJson);
+    }
+
+    if (action !== 'create') {
+      return json({ error: 'Unknown action.' }, 400);
+    }
+
+    // Paid plan gate applies to creating envelopes only; recovering an
+    // already-signed envelope (check_finalize) stays open if a plan lapses.
     const { data: isPaid } = await supabase
       .rpc('client_has_paid_plan', { p_client_id: user.id });
     if (!isPaid) {
@@ -72,14 +121,6 @@ serve(async (req) => {
         error: 'Request signatures requires a Growth or Enterprise plan.',
         code: 'upgrade_required',
       }, 403);
-    }
-
-    const body = await req.json().catch(() => ({}));
-    const { action, job_id, template_id, signers, origin } = body;
-    const inviteOrigin = resolveInviteOrigin(origin);
-
-    if (action !== 'create') {
-      return json({ error: 'Unknown action.' }, 400);
     }
 
     if (!job_id || !template_id) {

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { resolveEntityFacts, resolveFieldValues } from '../lib/company-context';
 import { resolveTemplate } from '../lib/document-templates';
 import {
@@ -11,6 +12,7 @@ import {
   fetchEnvelopeSigners,
   voidEnvelope,
   sendInvites,
+  checkFinalize,
 } from '../lib/document-envelope';
 import DocumentSignOverlay from './DocumentSignOverlay';
 import EnvelopeSignersPanel from './EnvelopeSignersPanel';
@@ -180,6 +182,32 @@ export default function DocumentFillPanel({
         const storedInitiatorUrl = readStoredInitiatorUrl(env.id);
         if (storedInitiatorUrl) {
           setInviteUrls((prev) => prev ?? { initiator: storedInitiatorUrl });
+        }
+        // All signed but envelope still pending: the async finalize was
+        // dropped. Nudge it (idempotent), then reload the envelope state.
+        if (env.status === 'pending' && signers.length && signers.every((s) => s.status === 'signed')) {
+          try {
+            const result = await checkFinalize(supabase, env.id);
+            if (result?.ok || result?.already_completed) {
+              const refreshed = await fetchActiveEnvelope(supabase, jobId);
+              setActiveEnvelope(refreshed);
+              if (!refreshed) {
+                const { data: job } = await supabase
+                  .from('document_jobs')
+                  .select('*')
+                  .eq('id', jobId)
+                  .maybeSingle();
+                if (job?.status === 'signed') {
+                  setCurrentJob(job);
+                  if (job.field_values) setFieldValues(job.field_values);
+                  setPhase('signed');
+                }
+                return;
+              }
+            }
+          } catch {
+            // Finalize nudge is best-effort; panel keeps showing pending state
+          }
         }
         if (env.status === 'pending') {
           const { data: job } = await supabase
@@ -448,10 +476,11 @@ export default function DocumentFillPanel({
     </div>
   );
 
-  return (
+  // Portal escapes ancestor stacking contexts so the overlay covers the fixed nav
+  return createPortal(
     <>
-      <div className="fixed inset-0 z-40 bg-[#03020a]/80 backdrop-blur-sm" onClick={onClose} />
-      <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto py-16 px-4">
+      <div className="fixed inset-0 z-[70] bg-[#03020a]/80 backdrop-blur-sm" onClick={onClose} />
+      <div className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto py-16 px-4">
         <div className="w-full max-w-lg bg-[#0e0c1a] border border-white/10 rounded-2xl shadow-2xl animate-[fadeIn_0.2s_ease-out]">
 
           {/* Header */}
@@ -789,6 +818,7 @@ export default function DocumentFillPanel({
           }}
         />
       )}
-    </>
+    </>,
+    document.body,
   );
 }

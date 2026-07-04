@@ -35,6 +35,48 @@ export async function fetchTemplatePdfBytes(template, supabase) {
   return base64ToBytes(json.pdf_base64);
 }
 
+async function sha256HexOfBytes(bytes) {
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * Append a signature certificate page: document, reference id, each signer
+ * (name, email, timestamp), and the SHA-256 of the source template so the
+ * artifact carries its own attribution and integrity record.
+ */
+async function appendCertificatePage(pdfDoc, font, boldFont, audit, templateSha256) {
+  const page = pdfDoc.addPage([612, 792]); // Letter
+  let y = 720;
+  const left = 72;
+  const line = (text, { size = 10, bold = false, gap = 18 } = {}) => {
+    page.drawText(text, { x: left, y, size, font: bold ? boldFont : font });
+    y -= gap;
+  };
+
+  line('Signature Certificate', { size: 18, bold: true, gap: 30 });
+  line(`Document: ${audit.docLabel || 'Untitled document'}`, { size: 11, gap: 20 });
+  if (audit.referenceId) line(`Reference: ${audit.referenceId}`, { gap: 20 });
+  line(`Generated: ${new Date().toISOString()}`, { gap: 28 });
+
+  line('Signed by', { size: 12, bold: true, gap: 22 });
+  for (const signer of audit.signers || []) {
+    const name = (signer.name || '').trim();
+    const email = (signer.email || '').trim();
+    line(`${name ? name + '  ' : ''}${email ? '<' + email + '>' : ''}`, { size: 11, gap: 16 });
+    if (signer.signedAt) line(`Signed at ${signer.signedAt}`, { size: 9, gap: 22 });
+    else y -= 6;
+  }
+
+  y -= 10;
+  line('Integrity', { size: 12, bold: true, gap: 22 });
+  line('SHA-256 of source document before signing:', { size: 9, gap: 14 });
+  line(templateSha256.slice(0, 64), { size: 9, gap: 14 });
+  y -= 14;
+  line('Recorded by Onboardin (onboardin.llc). Signature placements and timestamps', { size: 8, gap: 12 });
+  line('are stored with this document record and available on request.', { size: 8, gap: 12 });
+}
+
 /**
  * Burn field_values, placements, and signature PNG(s) onto template PDF.
  * field_map y is top-left UI coords; pdf-lib uses bottom-left origin.
@@ -42,6 +84,8 @@ export async function fetchTemplatePdfBytes(template, supabase) {
  * Solo path:  pass signaturePngBytes (single Uint8Array) - all signature fields get the same image.
  * Multi path: pass signaturesByFieldKey ({ [fieldKey]: Uint8Array }) - each field gets its own image.
  * Both are backward compatible; multi path takes precedence when provided.
+ * audit (optional): { docLabel, referenceId, signers: [{ name, email, signedAt }] }
+ * appends a signature certificate page when provided.
  */
 export async function buildSignedPdf({
   templatePdfBytes,
@@ -50,10 +94,12 @@ export async function buildSignedPdf({
   placements,
   signaturePngBytes,
   signaturesByFieldKey,
+  audit,
 }) {
   // COJ statutory PDFs are often encrypted; ignoreEncryption allows text burn overlay.
   const pdfDoc = await PDFDocument.load(templatePdfBytes, { ignoreEncryption: true });
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  const boldFont = audit ? await pdfDoc.embedFont(StandardFonts.HelveticaBold) : null;
 
   // Pre-embed all distinct PNG buffers (deduplicate by identity)
   const embeddedImages = new Map();
@@ -93,6 +139,11 @@ export async function buildSignedPdf({
       const img = fieldBytes?.length ? await getEmbedded(fieldBytes) : soloImage;
       if (img) page.drawImage(img, { x, y: pdfY, width: w, height: h });
     }
+  }
+
+  if (audit) {
+    const templateSha256 = await sha256HexOfBytes(templatePdfBytes);
+    await appendCertificatePage(pdfDoc, font, boldFont, audit, templateSha256);
   }
 
   return new Uint8Array(await pdfDoc.save({ useObjectStreams: false }));

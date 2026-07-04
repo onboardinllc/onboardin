@@ -46,6 +46,20 @@ export async function createEnvelope(supabase, { jobId, templateId, signers, ori
 }
 
 /**
+ * Recovery nudge: when every signer has signed but the envelope is still
+ * pending (async finalize was dropped), ask the edge to finalize now.
+ * Idempotent server-side; safe to call repeatedly.
+ */
+export async function checkFinalize(supabase, envelopeId) {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) throw new Error('Not signed in.');
+  return callEdge(session.access_token, {
+    action: 'check_finalize',
+    envelope_id: envelopeId,
+  });
+}
+
+/**
  * Fetch the active envelope for a document job (initiator SELECT, RLS enforced).
  * Returns the envelope row or null.
  */

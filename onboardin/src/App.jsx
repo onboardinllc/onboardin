@@ -1,4 +1,5 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { supabase } from './lib/supabase';
 import {
     getCategories as getProcedureCategories,
@@ -2516,7 +2517,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
 
     if (session && clientProfile?.is_admin) {
         return (
-            <div className="pt-32 px-8 md:px-16 animate-[fadeIn_1s_ease-out] min-h-screen relative z-10">
+            <div className="pt-32 px-4 sm:px-8 md:px-16 animate-[fadeIn_1s_ease-out] min-h-screen relative z-10">
                 <div className="max-w-6xl mx-auto">
                     <div className="flex flex-wrap justify-between items-start gap-4 mb-12">
                         <div>
@@ -2909,7 +2910,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                     {/* Messages */}
                                     <div className="p-6 flex flex-col min-h-0">
                                         {/* Tab switcher */}
-                                        <div className="flex gap-1 border-b border-white/5 mb-4 pb-px">
+                                        <div className="flex gap-1 border-b border-white/5 mb-4 pb-px overflow-x-auto scrollbar-hide">
                                             {[
                                                 { id: 'team', label: 'Team', count: clientMessages.filter(m => msgThread(m) === 'team').length },
                                                 { id: 'ai', label: 'AI', count: clientMessages.filter(m => msgThread(m) === 'assistant' && m.share_with_admin !== false).length },
@@ -3109,7 +3110,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
 
         return (
             <>
-            <div className="pt-32 px-8 md:px-16 animate-[fadeIn_1s_ease-out] min-h-screen relative z-10 overflow-x-hidden">
+            <div className="pt-32 px-4 sm:px-8 md:px-16 animate-[fadeIn_1s_ease-out] min-h-screen relative z-10 overflow-x-hidden">
                 <div className="max-w-3xl mx-auto space-y-4">
                     <div className="flex justify-between items-center mb-8 min-w-0">
                         <div className="min-w-0 overflow-hidden">
@@ -3182,7 +3183,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
 
                     {/* Tab nav */}
                     {!profileLoading && (
-                        <div className="flex gap-1 mb-6 border-b border-white/5 overflow-x-auto pb-px scrollbar-hide" style={{scrollbarWidth:'none',msOverflowStyle:'none'}}>
+                        <div className="flex gap-1 mb-6 border-b border-white/5 overflow-x-auto pb-px scrollbar-hide">
                             {(() => {
                                 const complianceBadge = canAccessComplianceCalendar(clientProfile)
                                     ? obligationStats(clientObligations.map(enrichObligation)).overdue
@@ -3310,7 +3311,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                         />
                                     </div>
                                     {/* Phase tabs */}
-                                    <div className="flex gap-1 mb-5 border-b border-white/5">
+                                    <div className="flex gap-1 mb-5 border-b border-white/5 overflow-x-auto scrollbar-hide">
                                         {phases.map(p => {
                                             const active = activePhaseTab === p.id;
                                             const phaseSteps = onboardingSteps.filter(s => s.phase === p.id);
@@ -3418,7 +3419,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                 <div className="w-full h-1 bg-white/5 rounded-full mb-5 overflow-hidden">
                                     <div className="h-full bg-gradient-to-r from-blue-400 to-purple-500 rounded-full transition-all duration-700" style={{ width: `${(currentStep / onboardingSteps.length) * 100}%` }} />
                                 </div>
-                                <div className="flex gap-1 mb-5 border-b border-white/5">
+                                <div className="flex gap-1 mb-5 border-b border-white/5 overflow-x-auto scrollbar-hide">
                                     {phases.map(p => {
                                         const active = activePhaseTab === p.id;
                                         const phaseSteps = onboardingSteps.filter(s => s.phase === p.id);
@@ -3920,12 +3921,13 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                             }
                             setClientUploading(false);
                         };
-                        return (
+                        // Portal escapes the z-10 stacking contexts so the overlay covers the fixed nav
+                        return createPortal(
                             <>
                                 {/* Backdrop */}
-                                <div className="fixed inset-0 z-40 bg-[#03020a]/80 backdrop-blur-sm" onClick={() => setVaultProcess(null)} />
+                                <div className="fixed inset-0 z-[70] bg-[#03020a]/80 backdrop-blur-sm" onClick={() => setVaultProcess(null)} />
                                 {/* Panel */}
-                                <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto py-16 px-4">
+                                <div className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto py-16 px-4">
                                     <div className="w-full max-w-lg bg-[#0e0c1a] border border-white/10 rounded-2xl shadow-2xl animate-[fadeIn_0.2s_ease-out]">
                                         {/* Header */}
                                         <div className="flex items-start justify-between p-6 border-b border-white/5">
@@ -4046,7 +4048,8 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                         </div>
                                     </div>
                                 </div>
-                            </>
+                            </>,
+                            document.body,
                         );
                     })()}</>}
 
@@ -4074,7 +4077,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                         return (
                         <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
                             {/* Sub-tab nav */}
-                            <div className="flex gap-1 border-b border-white/5 mb-5 pb-px">
+                            <div className="flex gap-1 border-b border-white/5 mb-5 pb-px overflow-x-auto scrollbar-hide">
                                 {/* Assistant first */}
                                 {[
                                     { id: 'assistant', icon: 'ph-sparkle', label: 'Assistant', badge: assistantMessages.filter(m => m.is_admin_message && !m.seen).length },
@@ -4907,7 +4910,14 @@ const App = () => {
 
     useEffect(() => {
         if (!supabase) return;
-        supabase.auth.getSession().then(({ data: { session } }) => setAppSession(session));
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            setAppSession(session);
+            // Signed-in members land in their console, not the marketing page
+            if (session) {
+                setCurrentView((v) => (v === 'landing' ? 'dashboard' : v));
+                setVisibleView((v) => (v === 'landing' ? 'dashboard' : v));
+            }
+        });
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
             setAppSession(session);
             if (!session) setAppProfile(null);
@@ -4988,9 +4998,13 @@ const App = () => {
 
                 {appSession ? (/* Authenticated nav, identity + sign out */
                     <div className="flex items-center gap-4 md:gap-6 text-sm md:text-base tracking-widest uppercase font-bold">
-                        <span className="nav-link text-purple-200 hidden sm:inline truncate max-w-[200px]" title={appProfile?.company_name || appSession.user.email}>
+                        <button
+                            onClick={() => navigateTo('dashboard')}
+                            className="nav-link text-purple-200 truncate max-w-[140px] sm:max-w-[200px] uppercase"
+                            title={appProfile?.company_name || appSession.user.email}
+                        >
                             {appProfile?.is_admin ? 'Admin Console' : (appProfile?.company_name || appSession.user.email)}
-                        </span>
+                        </button>
                         <button onClick={toggleTheme}
                             className="nav-link text-gray-500 hover:text-white transition-colors flex items-center gap-1.5">
                             {theme === 'space'
@@ -5001,10 +5015,10 @@ const App = () => {
                         <button onClick={handleAppSignOut} className="nav-link text-gray-500 hover:text-white transition-colors">Sign Out</button>
                     </div>
                 ) : (/* Marketing nav, pre-auth */
-                    <div className="flex items-center gap-6 md:gap-10 text-sm md:text-base tracking-widest uppercase font-bold">
-                        <button onClick={() => navigateTo('features')} className={`nav-link transition-opacity hidden sm:block ${currentView === 'features' ? 'text-purple-300 opacity-100' : 'opacity-60 hover:opacity-100'}`}>Features</button>
-                        <button onClick={() => navigateTo('pricing')} className={`nav-link transition-opacity hidden sm:block ${currentView === 'pricing' ? 'text-purple-300 opacity-100' : 'opacity-60 hover:opacity-100'}`}>Pricing</button>
-                        <button onClick={() => navigateTo('support')} className={`nav-link transition-opacity hidden sm:block relative ${currentView === 'support' ? 'text-purple-300 opacity-100' : 'opacity-60 hover:opacity-100'}`}>
+                    <div className="flex items-center gap-3 sm:gap-6 md:gap-10 text-xs sm:text-sm md:text-base tracking-wider sm:tracking-widest uppercase font-bold">
+                        <button onClick={() => navigateTo('features')} className={`nav-link transition-opacity ${currentView === 'features' ? 'text-purple-300 opacity-100' : 'opacity-60 hover:opacity-100'}`}>Features</button>
+                        <button onClick={() => navigateTo('pricing')} className={`nav-link transition-opacity ${currentView === 'pricing' ? 'text-purple-300 opacity-100' : 'opacity-60 hover:opacity-100'}`}>Pricing</button>
+                        <button onClick={() => navigateTo('support')} className={`nav-link transition-opacity relative ${currentView === 'support' ? 'text-purple-300 opacity-100' : 'opacity-60 hover:opacity-100'}`}>
                             Support
                             {unreadCount > 0 && <span className="absolute -top-2 -right-3 w-4 h-4 bg-blue-500 text-white text-sm flex items-center justify-center rounded-full animate-pulse tracking-none">{unreadCount}</span>}
                         </button>

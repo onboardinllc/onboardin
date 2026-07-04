@@ -66,3 +66,11 @@ body {
   background: #4c1d95; 
   border-radius: 4px;
 }
+/* Horizontal tab strips: scrollable on narrow screens, no visible scrollbar */
+.scrollbar-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
