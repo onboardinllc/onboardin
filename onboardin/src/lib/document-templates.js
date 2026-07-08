@@ -50,12 +50,18 @@ export async function resolveTemplate({ vaultCardId, jurisdiction, country, enti
   }
 
   if (isJamaica && entity === 'Ltd') {
-    query = query.eq('jurisdiction', 'Jamaica');
+    // Jamaica-specific rows win, but 'all' templates (founder agreement)
+    // still apply to Jamaican companies - mirror resolveTemplateOffline.
+    query = query.in('jurisdiction', ['Jamaica', 'all']);
   }
 
-  const { data, error } = await query.limit(1).maybeSingle();
+  const { data, error } = await query.limit(10);
   if (error) throw error;
-  return data || null;
+  if (!data?.length) return null;
+  if (isJamaica && entity === 'Ltd') {
+    return data.find((t) => t.jurisdiction === 'Jamaica') || data[0];
+  }
+  return data[0];
 }
 
 /**

@@ -15,9 +15,10 @@ import {
   checkFinalize,
 } from '../lib/document-envelope';
 import DocumentSignOverlay from './DocumentSignOverlay';
+import DocumentEditor from './DocumentEditor';
 import EnvelopeSignersPanel from './EnvelopeSignersPanel';
 import { runDocumentAutofill } from '../lib/autofill-service.js';
-import { canAutofillTemplate } from '../lib/pdf-field-map.js';
+import { canAutofillTemplate, hasCoordinateFieldMap } from '../lib/pdf-field-map.js';
 import { openStorageDocument } from '../lib/open-document-url.js';
 import { upsertWorkingCopy, workingCopyCanonicalPath } from '../lib/document-vault.js';
 
@@ -80,6 +81,7 @@ export default function DocumentFillPanel({
   const [loadError, setLoadError] = useState('');
   const [loading, setLoading] = useState(true);
   const [showSign, setShowSign] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
   const [currentJob, setCurrentJob] = useState(null);
 
   // Save-back: user uploads an edited copy of their working document
@@ -441,6 +443,10 @@ export default function DocumentFillPanel({
     }
   };
 
+  // In-app editor replaces the file-upload save-back when the template has
+  // coordinate field regions to draw. Upload stays for un-indexed templates.
+  const canUseEditor = hasCoordinateFieldMap(template?.field_map);
+
   const hasLlm = template ? hasLlmKey(template) : false;
   const displayFields = Object.entries(fieldValues).filter(([, v]) => v !== '__llm__' || phase === 'filled');
   const llmFields = Object.entries(fieldValues).filter(([, v]) => v === '__llm__');
@@ -609,6 +615,19 @@ export default function DocumentFillPanel({
 
                 {phase === 'filled' && !showSignersPanel && (
                   <div className="flex flex-col gap-2">
+                    {/* Primary: open the working copy inside Onboardin */}
+                    {canUseEditor && (
+                      <button
+                        type="button"
+                        onClick={() => setShowEditor(true)}
+                        disabled={!!envelopeActive}
+                        title={envelopeActive ? 'Void the active envelope to edit.' : undefined}
+                        className="w-full py-2.5 bg-purple-600/30 hover:bg-purple-600/40 border border-purple-500/40 rounded-xl text-sm uppercase tracking-widest text-purple-100 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        Open &amp; edit document
+                      </button>
+                    )}
+
                     {/* Solo sign - disabled when envelope is active */}
                     <button
                       type="button"
@@ -719,7 +738,7 @@ export default function DocumentFillPanel({
                       Download blank template
                     </a>
 
-                    {saveEditBlock}
+                    {!canUseEditor && saveEditBlock}
                   </div>
                 )}
 
@@ -763,6 +782,15 @@ export default function DocumentFillPanel({
                         View signed document
                       </button>
                     )}
+                    {canUseEditor && currentJob && (
+                      <button
+                        type="button"
+                        onClick={() => setShowEditor(true)}
+                        className="w-full py-2.5 text-center bg-white/5 hover:bg-white/10 border border-white/10 rounded-xl text-sm uppercase tracking-widest text-gray-400 transition-all"
+                      >
+                        Open in Onboardin
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={onClose}
@@ -789,6 +817,30 @@ export default function DocumentFillPanel({
           </div>
         </div>
       </div>
+
+      {showEditor && currentJob && template && (
+        <DocumentEditor
+          job={currentJob}
+          template={template}
+          clientProfile={clientProfile}
+          supabase={supabase}
+          session={session}
+          onClose={() => setShowEditor(false)}
+          onGoToSignatureSettings={onGoToSignatureSettings}
+          onSignatureUploaded={onSignatureUploaded}
+          onSaved={(doc, { fieldValues: savedValues, placements } = {}) => {
+            if (savedValues) setFieldValues(savedValues);
+            setCurrentJob((j) => ({
+              ...(j || {}),
+              status: 'filled',
+              filled_path: workingCopyCanonicalPath(clientProfile.id, template),
+              field_values: savedValues || j?.field_values,
+              field_placements: placements || j?.field_placements,
+            }));
+            onDocumentSaved?.(doc);
+          }}
+        />
+      )}
 
       {showSign && currentJob && template && (
         <DocumentSignOverlay
