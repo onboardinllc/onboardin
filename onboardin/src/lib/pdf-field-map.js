@@ -36,5 +36,11 @@ export function canAutofillTemplate(template, { requireLinkedUrl } = {}) {
   return getPdfFillStrategy(template.field_map) != null;
 }
 
+/** True when the template's field_map supports the in-app document editor. */
+export function canOpenInAppEditor(template) {
+  const fieldMap = template?.field_map;
+  return hasCoordinateFieldMap(fieldMap) || hasAcroFieldMap(fieldMap);
+}
+
 /** @deprecated use hasAcroFieldMap */
 export const hasCojAcroFieldMap = hasAcroFieldMap;

@@ -18,7 +18,7 @@ import DocumentSignOverlay from './DocumentSignOverlay';
 import DocumentEditor from './DocumentEditor';
 import EnvelopeSignersPanel from './EnvelopeSignersPanel';
 import { runDocumentAutofill } from '../lib/autofill-service.js';
-import { canAutofillTemplate, hasCoordinateFieldMap } from '../lib/pdf-field-map.js';
+import { canAutofillTemplate, canOpenInAppEditor } from '../lib/pdf-field-map.js';
 import { openStorageDocument } from '../lib/open-document-url.js';
 import { upsertWorkingCopy, workingCopyCanonicalPath } from '../lib/document-vault.js';
 
@@ -444,8 +444,8 @@ export default function DocumentFillPanel({
   };
 
   // In-app editor replaces the file-upload save-back when the template has
-  // coordinate field regions to draw. Upload stays for un-indexed templates.
-  const canUseEditor = hasCoordinateFieldMap(template?.field_map);
+  // coordinate or acro field regions. Upload stays for un-indexed templates.
+  const canUseEditor = canOpenInAppEditor(template);
 
   const hasLlm = template ? hasLlmKey(template) : false;
   const displayFields = Object.entries(fieldValues).filter(([, v]) => v !== '__llm__' || phase === 'filled');

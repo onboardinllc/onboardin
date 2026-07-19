@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Onboardin HTML Logo Test</title>
+    <!-- Google Fonts: Jost (Futura Alternative) and Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Jost:wght@700;800;900&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --brand-bg: #03020A;
+            --logo-blue: #3DAEDD;     /* sky blue from brand guide */
+            --logo-magenta: #B73698;  /* brand magenta */
+            --logo-white: #ffffff;
+            --logo-text-color: #1b8dcd; /* classic brand wordmark text blue */
+        }
+
+        body {
+            background-color: var(--brand-bg);
+            color: #ffffff;
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            gap: 40px;
+            align-items: center;
+        }
+
+        .container {
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255, 255, 255, 0.02);
+            backdrop-filter: blur(8px);
+            border-radius: 12px;
+            padding: 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            width: 100%;
+            max-width: 500px;
+        }
+
+        h2 {
+            margin: 0;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: rgba(255, 255, 255, 0.4);
+            font-weight: 600;
+        }
+
+        /* --- THE HTML LOGO SYSTEM --- */
+        .onboardin-logo {
+            display: inline-flex;
+            align-items: center;
+            line-height: 1;
+            
+            /* Core customizable parameters via CSS custom properties */
+            --logo-height: 48px;
+            --logo-gap: 6px;                  /* horizontal gap between SVG O and text */
+            --logo-text-size: 27px;            /* relative scale to fit baseline */
+            --logo-kerning: -0.015em;          /* text letter spacing */
+            --logo-text-weight: 800;           /* bold geometry weight */
+            --logo-offset-y: 1px;              /* fine-tune baseline visual alignment */
+
+            height: var(--logo-height);
+            font-family: 'Jost', 'Futura', -apple-system, sans-serif;
+            text-rendering: optimizeLegibility;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        .onboardin-logo-svg {
+            height: 100%;
+            width: auto;
+            aspect-ratio: 73 / 85.4;
+            margin-right: var(--logo-gap);
+            flex-shrink: 0;
+        }
+
+        .onboardin-logo-text {
+            font-size: var(--logo-text-size);
+            font-weight: var(--logo-text-weight);
+            letter-spacing: var(--logo-kerning);
+            color: var(--logo-text-color);
+            transform: translateY(var(--logo-offset-y));
+            user-select: none;
+        }
+
+        /* Helper variation: dark mode white text */
+        .onboardin-logo.text-white {
+            --logo-text-color: #ffffff;
+        }
+
+        /* Helper variation: custom spacing override example */
+        .onboardin-logo.custom-spacing {
+            --logo-gap: 12px;
+            --logo-kerning: 0.05em;
+            --logo-text-size: 26px;
+            --logo-offset-y: 0px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h2>Default Wordmark (Blue text, standard spacing)</h2>
+        <div>
+            <!-- Replicating Onboardin's logo visuals using pure HTML and CSS -->
+            <div class="onboardin-logo">
+                <svg class="onboardin-logo-svg" viewBox="0 0 73 85.4" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <!-- Layer 1: Outer magenta ellipse -->
+                    <path fill="var(--logo-magenta)" d="M36.9,8.7c-44.4.8-44.4,66.8,0,67.6,44.4-.8,44.4-66.8,0-67.6Z"/>
+                    <!-- Layer 2: Blue crescent wrapping top-left -->
+                    <path fill="var(--logo-blue)" d="M1.3,41c.2,13.9,6.6,23.6,15.5,29.2C-3.3,53.8,3.4,13.9,36.9,13.3c31.9.5,39.5,36.8,22.8,54.3,7-5.8,11.8-14.7,12-26.7C70.9-5.3,2.1-5.3,1.3,41Z"/>
+                    <!-- Layer 3: White inner mask -->
+                    <path fill="var(--logo-white)" d="M36.9,23c-35.4.6-35.4,53.3,0,53.9,35.4-.6,35.4-53.3,0-53.9Z"/>
+                    <!-- Layer 4: Magenta inner solid dot -->
+                    <path fill="var(--logo-magenta)" d="M36.9,33.1c-22.2.4-22.2,33.4,0,33.7,22.2-.4,22.2-33.4,0-33.7Z"/>
+                </svg>
+                <span class="onboardin-logo-text">nboardin</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>White Wordmark (Standard spacing)</h2>
+        <div>
+            <div class="onboardin-logo text-white">
+                <svg class="onboardin-logo-svg" viewBox="0 0 73 85.4" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path fill="var(--logo-magenta)" d="M36.9,8.7c-44.4.8-44.4,66.8,0,67.6,44.4-.8,44.4-66.8,0-67.6Z"/>
+                    <path fill="var(--logo-blue)" d="M1.3,41c.2,13.9,6.6,23.6,15.5,29.2C-3.3,53.8,3.4,13.9,36.9,13.3c31.9.5,39.5,36.8,22.8,54.3,7-5.8,11.8-14.7,12-26.7C70.9-5.3,2.1-5.3,1.3,41Z"/>
+                    <path fill="var(--logo-white)" d="M36.9,23c-35.4.6-35.4,53.3,0,53.9,35.4-.6,35.4-53.3,0-53.9Z"/>
+                    <path fill="var(--logo-magenta)" d="M36.9,33.1c-22.2.4-22.2,33.4,0,33.7,22.2-.4,22.2-33.4,0-33.7Z"/>
+                </svg>
+                <span class="onboardin-logo-text">nboardin</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <h2>Spaced-out Wordmark (Overridden variables)</h2>
+        <div>
+            <div class="onboardin-logo custom-spacing">
+                <svg class="onboardin-logo-svg" viewBox="0 0 73 85.4" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path fill="var(--logo-magenta)" d="M36.9,8.7c-44.4.8-44.4,66.8,0,67.6,44.4-.8,44.4-66.8,0-67.6Z"/>
+                    <path fill="var(--logo-blue)" d="M1.3,41c.2,13.9,6.6,23.6,15.5,29.2C-3.3,53.8,3.4,13.9,36.9,13.3c31.9.5,39.5,36.8,22.8,54.3,7-5.8,11.8-14.7,12-26.7C70.9-5.3,2.1-5.3,1.3,41Z"/>
+                    <path fill="var(--logo-white)" d="M36.9,23c-35.4.6-35.4,53.3,0,53.9,35.4-.6,35.4-53.3,0-53.9Z"/>
+                    <path fill="var(--logo-magenta)" d="M36.9,33.1c-22.2.4-22.2,33.4,0,33.7,22.2-.4,22.2-33.4,0-33.7Z"/>
+                </svg>
+                <span class="onboardin-logo-text">nboardin</span>
+            </div>
+        </div>
+    </div>
+
+</body>
+</html>

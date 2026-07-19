@@ -19,6 +19,19 @@ export function computeObligationStatus(obligation) {
   return 'upcoming';
 }
 
+/**
+ * Reverse a mistaken "filed" mark on an obligation: done -> upcoming.
+ * Attached proof stays on the row so re-marking keeps the paper trail.
+ */
+export async function reopenObligation(supabase, obligationId) {
+  const { error } = await supabase
+    .from('compliance_obligations')
+    .update({ status: 'upcoming', completed_at: null })
+    .eq('id', obligationId)
+    .eq('status', 'done');
+  if (error) throw new Error(error.message);
+}
+
 export function daysUntilDue(dueDate) {
   if (!dueDate) return null;
   const today = new Date();

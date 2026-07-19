@@ -5,6 +5,7 @@ import {
   categoryIcon,
   categoryIconBg,
   enrichObligation,
+  reopenObligation,
   formatDueDateParts,
   groupObligationsForCalendar,
   obligationStats,
@@ -16,6 +17,7 @@ import {
 function ObligationRow({ ob, onMarkFiled, markingId, confirmId, setConfirmId, supabase, session, clientId }) {
   const [proofUploading, setProofUploading] = useState(false);
   const [markError, setMarkError] = useState('');
+  const [reopening, setReopening] = useState(false);
   const status = ob.effectiveStatus;
   const { day, month } = formatDueDateParts(ob.due_date);
   const isConfirming = confirmId === ob.id;
@@ -67,6 +69,20 @@ function ObligationRow({ ob, onMarkFiled, markingId, confirmId, setConfirmId, su
     setProofUploading(false);
   };
 
+  // Marked filed by mistake: put the deadline back on the calendar.
+  const handleReopen = async () => {
+    if (!supabase || reopening) return;
+    setReopening(true);
+    setMarkError('');
+    try {
+      await reopenObligation(supabase, ob.id);
+      await onMarkFiled();
+    } catch (e) {
+      setMarkError(e.message || 'Could not reopen');
+    }
+    setReopening(false);
+  };
+
   return (
     <div className={`bg-white/5 border border-white/10 rounded-xl border-l-[3px] ${statusBorderClass(status)} overflow-hidden`}>
       <div className="flex flex-wrap items-center gap-3 p-4">
@@ -109,7 +125,18 @@ function ObligationRow({ ob, onMarkFiled, markingId, confirmId, setConfirmId, su
             Mark filed
           </button>
         )}
+        {status === 'done' && (
+          <button
+            type="button"
+            onClick={handleReopen}
+            disabled={reopening}
+            className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded-lg border border-white/10 text-gray-400 hover:text-white hover:bg-white/5 transition-all flex-shrink-0 disabled:opacity-40"
+          >
+            {reopening ? 'Reopening…' : 'Reopen'}
+          </button>
+        )}
       </div>
+      {markError && isDone && <p className="text-xs text-red-400 px-4 pb-3">{markError}</p>}
 
       {isConfirming && (
         <div className="px-4 pb-4 border-t border-white/5 pt-3 bg-black/20">

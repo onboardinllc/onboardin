@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { fetchTemplatePdfBytes, buildSignedPdf } from '../lib/document-sign-pdf';
+import { buildFilledPdf } from '../lib/pdf-fill.js';
+import { getPdfFillStrategy } from '../lib/pdf-field-map.js';
+import { indexTemplateFields, fieldIndexToFieldMap } from '../lib/pdf-field-index.js';
+import { unfileManual } from '../lib/filing-adapter.js';
 import { upsertWorkingCopy, workingCopyCanonicalPath } from '../lib/document-vault.js';
 import {
   fetchActiveMemberSignature,
@@ -25,6 +29,7 @@ const PAGE_MAX_WIDTH = 760;
  *   supabase, session - auth context
  *   onClose - close callback
  *   onSaved - callback(doc, { fieldValues, placements }) after save to vault
+ *   onUnfiled - callback after a filed_pending job is reopened for editing
  *   onGoToSignatureSettings - navigate to Overview signature card
  *   onSignatureUploaded - parent refreshes signature-on-file state
  */
@@ -36,6 +41,7 @@ export default function DocumentEditor({
   session,
   onClose,
   onSaved,
+  onUnfiled,
   onGoToSignatureSettings,
   onSignatureUploaded,
 }) {
@@ -46,7 +52,6 @@ export default function DocumentEditor({
   const [placements, setPlacements] = useState(
     job?.field_placements && !Array.isArray(job.field_placements) ? job.field_placements : {},
   );
-  const [activeField, setActiveField] = useState(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -55,6 +60,9 @@ export default function DocumentEditor({
   const [sigPngUrl, setSigPngUrl] = useState(null);
   const [sigStoragePath, setSigStoragePath] = useState(null);
   const [sigUploading, setSigUploading] = useState(false);
+  const [overlayMap, setOverlayMap] = useState(null);
+  const [jobStatus, setJobStatus] = useState(job?.status || null);
+  const [unfiling, setUnfiling] = useState(false);
 
   const containerRef = useRef(null);
   const canvasRefs = useRef([]);
@@ -62,11 +70,13 @@ export default function DocumentEditor({
   const sigFileRef = useRef(null);
 
   const fieldMap = template?.field_map || {};
-  const readOnly = job?.status === 'signed';
-  const hasBounds = useMemo(
-    () => Object.values(fieldMap).some((d) => typeof d?.x === 'number' && typeof d?.y === 'number'),
-    [fieldMap],
-  );
+  const strategy = useMemo(() => getPdfFillStrategy(fieldMap), [fieldMap]);
+  const isCoj = template?.provider === 'coj';
+  // signed = immutable legal artifact; filed = soft lock, reversible via unfile
+  const signedLock = jobStatus === 'signed';
+  const filedLock = jobStatus === 'filed_pending';
+  const genericMode = !strategy;
+  const readOnly = signedLock || filedLock || genericMode;
 
   const markDirty = useCallback(() => {
     setDirty(true);
@@ -152,11 +162,25 @@ export default function DocumentEditor({
       setLoading(true);
       setLoadError('');
       try {
-        if (!hasBounds) {
-          setLoadError('This document is not indexed for in-app editing yet. Download it instead.');
-          return;
-        }
         const bytes = await loadDocumentBytes();
+        if (cancelled) return;
+
+        if (strategy === 'coordinate') {
+          setOverlayMap(fieldMap);
+        } else if (strategy === 'acro') {
+          // Acro maps carry field names/indices; widget scan supplies bounds.
+          // Saved values in the working copy pin each key to its true widget.
+          const idx = await indexTemplateFields(bytes, fieldMap, { valueHints: job?.field_values });
+          const curated = idx.fields.filter((f) => fieldMap[f.fieldKey] && typeof f.x === 'number');
+          if (!curated.length) {
+            setLoadError('This document is not indexed for in-app editing yet. Download it instead.');
+            return;
+          }
+          setOverlayMap(fieldIndexToFieldMap(curated));
+        } else {
+          setOverlayMap({});
+        }
+
         if (cancelled) return;
         await renderPdf(bytes);
       } catch (e) {
@@ -169,7 +193,10 @@ export default function DocumentEditor({
       cancelled = true;
       pdfDocRef.current?.destroy?.();
     };
-  }, [hasBounds, loadDocumentBytes, renderPdf]);
+    // Load once per editor open. Parent re-renders hand down fresh prop
+    // identities; re-running the load would tear pages down mid-edit.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSignatureUpload = useCallback(async (file) => {
     if (!file) return;
@@ -185,9 +212,7 @@ export default function DocumentEditor({
 
   const handleFieldTap = useCallback((fieldKey, def) => {
     if (readOnly) return;
-    if (def.type === 'text') {
-      setActiveField(fieldKey);
-    } else if (def.type === 'date') {
+    if (def.type === 'date') {
       const today = new Date().toISOString().slice(0, 10);
       setPlacements((prev) => ({ ...prev, [fieldKey]: { type: 'date', value: today } }));
       markDirty();
@@ -212,27 +237,46 @@ export default function DocumentEditor({
     setSaving(true);
     setSaveError('');
     try {
-      // Burn from the clean master template so values never double-print
-      const templatePdfBytes = await fetchTemplatePdfBytes(template, supabase);
+      let pdfBytes;
+      if (strategy === 'acro') {
+        // Acro forms fill real form fields; date taps fold into values
+        const effectiveValues = { ...fieldValues };
+        for (const [key, p] of Object.entries(placements)) {
+          if (p?.type === 'date' && p.value) effectiveValues[key] = p.value;
+        }
+        const filled = await buildFilledPdf({
+          templatePdfBytes: null,
+          fieldMap,
+          fieldValues: effectiveValues,
+          formKind: template.kind,
+          supabase,
+          template,
+        });
+        if (!filled.pdfBytes?.length) throw new Error('Fill produced no document. Try again.');
+        pdfBytes = filled.pdfBytes;
+      } else {
+        // Burn from the clean master template so values never double-print
+        const templatePdfBytes = await fetchTemplatePdfBytes(template, supabase);
 
-      let signaturePngBytes = null;
-      const hasPlacedSignature = Object.values(placements).some((p) => p?.placed);
-      if (hasPlacedSignature && sigStoragePath) {
-        assertSignaturePathForUser(session.user.id, sigStoragePath);
-        const { data: sigBlob, error: sigErr } = await supabase.storage
-          .from('client-documents')
-          .download(sigStoragePath);
-        if (sigErr) throw new Error(sigErr.message || 'Could not load signature image.');
-        signaturePngBytes = new Uint8Array(await sigBlob.arrayBuffer());
+        let signaturePngBytes = null;
+        const hasPlacedSignature = Object.values(placements).some((p) => p?.placed);
+        if (hasPlacedSignature && sigStoragePath) {
+          assertSignaturePathForUser(session.user.id, sigStoragePath);
+          const { data: sigBlob, error: sigErr } = await supabase.storage
+            .from('client-documents')
+            .download(sigStoragePath);
+          if (sigErr) throw new Error(sigErr.message || 'Could not load signature image.');
+          signaturePngBytes = new Uint8Array(await sigBlob.arrayBuffer());
+        }
+
+        pdfBytes = await buildSignedPdf({
+          templatePdfBytes,
+          fieldMap,
+          fieldValues,
+          placements,
+          signaturePngBytes,
+        });
       }
-
-      const pdfBytes = await buildSignedPdf({
-        templatePdfBytes,
-        fieldMap,
-        fieldValues,
-        placements,
-        signaturePngBytes,
-      });
 
       const doc = await upsertWorkingCopy(supabase, {
         clientId: clientProfile.id,
@@ -242,9 +286,10 @@ export default function DocumentEditor({
       });
 
       const now = new Date().toISOString();
+      const savedStatus = isCoj ? 'working_saved' : 'filled';
       if (job?.id) {
         const { error: jobErr } = await supabase.from('document_jobs').update({
-          status: 'filled',
+          status: savedStatus,
           filled_path: workingCopyCanonicalPath(clientProfile.id, template),
           filled_by: 'editor',
           field_values: fieldValues,
@@ -252,11 +297,11 @@ export default function DocumentEditor({
           updated_at: now,
         }).eq('id', job.id);
         if (jobErr) throw new Error(jobErr.message || 'Could not update document record.');
+        setJobStatus(savedStatus);
       }
 
       setDirty(false);
       setSaveDone(true);
-      setActiveField(null);
       await renderPdf(pdfBytes);
       onSaved?.(doc, { fieldValues, placements });
     } catch (e) {
@@ -273,11 +318,25 @@ export default function DocumentEditor({
     onClose?.();
   };
 
+  const handleUnfile = async () => {
+    if (!job?.id || unfiling) return;
+    setUnfiling(true);
+    setSaveError('');
+    try {
+      await unfileManual(supabase, job.id);
+      setJobStatus('working_saved');
+      onUnfiled?.();
+    } catch (e) {
+      setSaveError(e.message || 'Could not reopen this document.');
+    }
+    setUnfiling(false);
+  };
+
   const fieldsForPage = useCallback(
-    (pageIndex) => Object.entries(fieldMap).filter(
+    (pageIndex) => Object.entries(overlayMap || {}).filter(
       ([, d]) => (d.page ?? 0) === pageIndex && typeof d.x === 'number' && typeof d.y === 'number',
     ),
-    [fieldMap],
+    [overlayMap],
   );
 
   return createPortal(
@@ -290,7 +349,10 @@ export default function DocumentEditor({
           <div className="min-w-0">
             <p className="text-xs uppercase tracking-widest text-gray-500 truncate">{template?.label}</p>
             <p className="text-sm text-white truncate">
-              {readOnly ? 'Signed - view only' : dirty ? 'Unsaved changes' : saveDone ? 'Saved to your vault' : 'Tap a field to edit'}
+              {signedLock ? 'Signed - view only'
+                : filedLock ? 'Filed - reopen to edit'
+                  : genericMode ? 'Limited editor - view only'
+                    : dirty ? 'Unsaved changes' : saveDone ? 'Saved to your vault' : 'Tap a field to edit'}
             </p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
@@ -318,9 +380,32 @@ export default function DocumentEditor({
           </div>
         </div>
 
-        {(saveError || saveDone) && (
-          <div className="px-4 py-2 bg-[#0e0c1a] border-b border-white/5">
-            {saveError && <p className="text-xs text-red-300">{saveError}</p>}
+        {(saveError || saveDone || filedLock || signedLock || genericMode) && (
+          <div className="px-4 py-2 bg-[#0e0c1a] border-b border-white/5 flex flex-wrap items-center gap-3">
+            {filedLock && (
+              <>
+                <p className="text-xs text-amber-300 flex-1 min-w-[180px]">
+                  Marked filed at the registry. Reopen if you filed by mistake or need to fix a detail.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleUnfile}
+                  disabled={unfiling}
+                  className="py-1.5 px-3 border border-amber-500/40 rounded-lg text-xs uppercase tracking-widest text-amber-200 hover:bg-amber-500/10 transition-all disabled:opacity-40"
+                >
+                  {unfiling ? 'Reopening…' : 'Reopen for editing'}
+                </button>
+              </>
+            )}
+            {signedLock && (
+              <p className="text-xs text-gray-400">
+                Signed copies cannot be changed. Start a new working copy from the template to make edits.
+              </p>
+            )}
+            {genericMode && !filedLock && !signedLock && (
+              <p className="text-xs text-gray-400">Limited editor: field autofill is not available for this document.</p>
+            )}
+            {saveError && <p className="text-xs text-red-300 w-full">{saveError}</p>}
             {saveDone && !saveError && (
               <p className="text-xs text-green-400">Saved. Reopen any time to keep editing.</p>
             )}
@@ -349,6 +434,7 @@ export default function DocumentEditor({
               style={{ width: `${pg.width * pg.scale}px`, height: `${pg.height * pg.scale}px` }}
             >
               <canvas
+                key={`page-canvas-${pageIndex}`}
                 ref={(el) => { canvasRefs.current[pageIndex] = el; }}
                 className="absolute inset-0"
               />
@@ -391,6 +477,7 @@ export default function DocumentEditor({
 
                 if (def.type === 'date') {
                   const value = placed?.value || fieldValues[fieldKey] || '';
+                  const dateFontPx = Math.min(14, Math.max(9, Math.round(def.h * s * 0.52)));
                   return (
                     <button
                       key={fieldKey}
@@ -403,50 +490,49 @@ export default function DocumentEditor({
                         value ? 'border-green-500/40 bg-white' : 'border-dashed border-blue-400/70 bg-blue-500/5 hover:bg-blue-500/15'
                       } ${readOnly ? 'cursor-default' : 'cursor-pointer'}`}
                     >
-                      <span className={`text-xs ${value ? 'text-gray-900' : 'text-blue-500 text-[10px] uppercase tracking-widest'}`}>
+                      <span
+                        style={{ fontSize: value ? `${dateFontPx}px` : undefined }}
+                        className={value ? 'text-gray-900' : 'text-blue-500 text-[10px] uppercase tracking-widest'}
+                      >
                         {value || 'Tap for today'}
                       </span>
                     </button>
                   );
                 }
 
-                // text
                 const value = fieldValues[fieldKey] ?? '';
-                if (activeField === fieldKey && !readOnly) {
-                  return (
-                    <input
-                      key={fieldKey}
-                      autoFocus
-                      style={style}
-                      value={value}
-                      onFocus={(e) => e.target.scrollIntoView({ block: 'center', behavior: 'smooth' })}
-                      onInput={(e) => {
-                        const v = e.target.value;
-                        setFieldValues((prev) => ({ ...prev, [fieldKey]: v }));
-                        markDirty();
-                      }}
-                      onBlur={() => setActiveField(null)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') setActiveField(null); }}
-                      className="absolute rounded border border-purple-500 bg-white px-1 text-xs text-gray-900 outline-none shadow"
-                    />
-                  );
-                }
+                const boxH = def.h * s;
+                const inputFontPx = Math.min(14, Math.max(9, Math.round(boxH * 0.52)));
                 return (
-                  <button
+                  <textarea
                     key={fieldKey}
-                    type="button"
-                    onClick={() => handleFieldTap(fieldKey, def)}
+                    style={{
+                      ...style,
+                      fontSize: `${inputFontPx}px`,
+                      lineHeight: 1.25,
+                      padding: '2px 4px',
+                      resize: 'none',
+                      overflowY: 'auto',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-word',
+                      overflowWrap: 'anywhere',
+                    }}
+                    value={value}
                     disabled={readOnly}
-                    style={style}
                     title={fieldKey.replace(/_/g, ' ')}
-                    className={`absolute rounded border text-left px-1 overflow-hidden ${
-                      value ? 'border-white/0 bg-white hover:border-purple-400/60' : 'border-dashed border-purple-500/70 bg-purple-500/5 hover:bg-purple-500/15'
-                    } ${readOnly ? 'cursor-default' : 'cursor-pointer'}`}
-                  >
-                    <span className={`text-xs whitespace-nowrap ${value ? 'text-gray-900' : 'text-purple-500 text-[10px] uppercase tracking-widest'}`}>
-                      {value || fieldKey.replace(/_/g, ' ')}
-                    </span>
-                  </button>
+                    placeholder={fieldKey.replace(/_/g, ' ')}
+                    onFocus={(e) => e.target.scrollIntoView({ block: 'center', behavior: 'smooth' })}
+                    onInput={(e) => {
+                      const v = e.target.value;
+                      setFieldValues((prev) => ({ ...prev, [fieldKey]: v }));
+                      markDirty();
+                    }}
+                    className={`absolute rounded border text-gray-900 outline-none ${
+                      value
+                        ? 'border-white/0 bg-white focus:border-purple-500 hover:border-purple-400/60'
+                        : 'border-dashed border-purple-500/70 bg-purple-500/5 focus:bg-white focus:border-purple-500 placeholder:text-purple-500 placeholder:uppercase placeholder:tracking-widest placeholder:text-[10px]'
+                    } ${readOnly ? 'cursor-default' : ''}`}
+                  />
                 );
               })}
             </div>

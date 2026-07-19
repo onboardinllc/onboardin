@@ -20,7 +20,9 @@ import Step06Panel from './components/Step06Panel';
 import ComplianceCalendar from './components/ComplianceCalendar';
 import AdminObligationsPanel from './components/AdminObligationsPanel';
 import DocumentFillPanel from './components/DocumentFillPanel';
+import DocumentEditor from './components/DocumentEditor';
 import CojFormationPacketPanel from './components/CojFormationPacketPanel';
+import { resolveEditorContext } from './lib/document-editor-launcher.js';
 import SignatureSettings from './components/SignatureSettings';
 import SignPortal from './components/SignPortal';
 import { fetchActiveMemberSignature, assertSignaturePathForUser } from './lib/member-signature';
@@ -1346,6 +1348,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [alertDismissed, setAlertDismissed] = useState(false);
     const [expandedVaultCard, setExpandedVaultCard] = useState(null);
     const [vaultFillCat, setVaultFillCat] = useState(null);
+    const [vaultEditorContext, setVaultEditorContext] = useState(null);
     const [signatureReturnCat, setSignatureReturnCat] = useState(null);
     const [hasMemberSignature, setHasMemberSignature] = useState(false);
     const [vaultProcess, setVaultProcess] = useState(null);
@@ -2231,6 +2234,20 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
 
     const getSignedUrl = async (path) => {
         await openStorageDocument(supabase, path, 60);
+    };
+
+    // Vault file rows: open in Onboardin when a template resolves; external otherwise
+    const openDocumentInApp = async (doc) => {
+        try {
+            const ctx = await resolveEditorContext({ supabase, clientProfile, document: doc });
+            if (ctx) {
+                setVaultEditorContext(ctx);
+                return;
+            }
+        } catch {
+            /* resolution failed - fall back to external open */
+        }
+        await getSignedUrl(doc.path);
     };
 
     const handleFormationDraftChange = (patch) => {
@@ -3823,10 +3840,17 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                                     {hasDoc && (
                                                         <div className="space-y-1.5">
                                                             {catDocs.map((doc, i) => (
-                                                                <div key={i} onClick={() => getSignedUrl(doc.path)} className="flex items-center gap-2 p-2 bg-black/20 rounded-lg hover:bg-black/40 cursor-pointer transition-all group">
+                                                                <div key={i} onClick={() => openDocumentInApp(doc)} className="flex items-center gap-2 p-2 bg-black/20 rounded-lg hover:bg-black/40 cursor-pointer transition-all group">
                                                                     <i className="ph ph-file text-gray-500 group-hover:text-blue-400 transition-colors flex-shrink-0 text-base"></i>
                                                                     <span className="text-sm text-gray-400 truncate flex-1 group-hover:text-gray-200">{doc.name}</span>
-                                                                    <i className="ph ph-download-simple text-gray-600 group-hover:text-blue-400 transition-colors flex-shrink-0 text-base"></i>
+                                                                    <button
+                                                                        type="button"
+                                                                        title="Download"
+                                                                        onClick={(e) => { e.stopPropagation(); getSignedUrl(doc.path); }}
+                                                                        className="flex-shrink-0 text-gray-600 hover:text-blue-400 transition-colors"
+                                                                    >
+                                                                        <i className="ph ph-download-simple text-base"></i>
+                                                                    </button>
                                                                 </div>
                                                             ))}
                                                         </div>
@@ -3899,6 +3923,26 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                             }}
                             onSignatureUploaded={refreshMemberSignature}
                             onGoToSignatureSettings={() => goToSignatureSettings(vaultFillCat)}
+                        />
+                    )}
+
+                    {/* Universal in-app editor for vault file rows */}
+                    {vaultEditorContext && (
+                        <DocumentEditor
+                            job={vaultEditorContext.job}
+                            template={vaultEditorContext.template}
+                            clientProfile={clientProfile}
+                            supabase={supabase}
+                            session={session}
+                            onClose={() => setVaultEditorContext(null)}
+                            onSaved={(doc) => {
+                                if (!doc?.path) return;
+                                setMyDocs((prev) => {
+                                    const without = prev.filter((d) => d.path !== doc.path && d.id !== doc.id);
+                                    return [doc, ...without];
+                                });
+                            }}
+                            onSignatureUploaded={refreshMemberSignature}
                         />
                     )}
 

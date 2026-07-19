@@ -9,7 +9,9 @@ import {
   isCojTemplateLinked,
 } from '../lib/coj-formation-packet.js';
 import { parseFormationDraft, buildDraftPatch } from '../lib/formation-draft-persist.js';
-import { markFiledManual } from '../lib/filing-adapter.js';
+import { markFiledManual, unfileManual } from '../lib/filing-adapter.js';
+import { canOpenInAppEditor } from '../lib/pdf-field-map.js';
+import DocumentEditor from './DocumentEditor';
 import { applyCojAutofill } from '../lib/coj-prefill.js';
 import {
   reconcileCojJobAfterDocRemoval,
@@ -61,6 +63,8 @@ export default function CojFormationPacketPanel({
   const [previewOpen, setPreviewOpen] = useState({});
   const [deletingDocId, setDeletingDocId] = useState(null);
   const [deleteError, setDeleteError] = useState('');
+  const [editorForm, setEditorForm] = useState(null);
+  const [unfilingForm, setUnfilingForm] = useState(null);
 
   const draft = parseFormationDraft(formationDraft);
 
@@ -84,7 +88,7 @@ export default function CojFormationPacketPanel({
 
     const { data: existingJobs } = await supabase
       .from('document_jobs')
-      .select('id, template_id, status, created_at, updated_at')
+      .select('id, template_id, status, field_values, field_placements, filled_path, created_at, updated_at')
       .eq('client_id', clientId)
       .in('template_id', Object.values(templateByKind).map((t) => t.id));
 
@@ -104,7 +108,7 @@ export default function CojFormationPacketPanel({
           template_id: template.id,
           status: COJ_FORM_STATUSES.DRAFT,
         })
-        .select('id, template_id, status, created_at, updated_at')
+        .select('id, template_id, status, field_values, field_placements, filled_path, created_at, updated_at')
         .maybeSingle();
       if (newJob) {
         jobByKind[kind] = { ...newJob, kind };
@@ -113,7 +117,7 @@ export default function CojFormationPacketPanel({
       if (insertErr) {
         const { data: existing } = await supabase
           .from('document_jobs')
-          .select('id, template_id, status, created_at, updated_at')
+          .select('id, template_id, status, field_values, field_placements, filled_path, created_at, updated_at')
           .eq('client_id', clientId)
           .eq('template_id', template.id)
           .neq('status', COJ_FORM_STATUSES.VOIDED)
@@ -251,6 +255,24 @@ export default function CojFormationPacketPanel({
       setFilingError(e.message);
     }
     setFilingForm(null);
+  };
+
+  // Filed by mistake: reopen the job so editing resumes.
+  const handleUnfile = async (formDef) => {
+    const job = jobs[formDef.form_id];
+    if (!job?.id || !supabase) return;
+    setUnfilingForm(formDef.form_id);
+    setFilingError('');
+    try {
+      await unfileManual(supabase, job.id);
+      setJobs((prev) => ({
+        ...prev,
+        [formDef.form_id]: { ...prev[formDef.form_id], status: COJ_FORM_STATUSES.WORKING_SAVED },
+      }));
+    } catch (e) {
+      setFilingError(e.message);
+    }
+    setUnfilingForm(null);
   };
 
   const handleAutofill = async (formDef) => {
@@ -416,6 +438,7 @@ export default function CojFormationPacketPanel({
 
                 const template = templateFor(formDef.form_id);
                 const templateLinked = isCojTemplateLinked(template, formDef);
+                const editorAvailable = templateLinked && canOpenInAppEditor(template) && formDocs.length > 0;
                 const isAutofilling = autofillForm === formDef.form_id;
                 const showAutofill = autofillReady(formDef);
                 const canRunAutofill = showAutofill && !isAutofilling;
@@ -518,10 +541,38 @@ export default function CojFormationPacketPanel({
                       </div>
                     )}
 
+                    {editorAvailable && !isFiled && (
+                      <button
+                        type="button"
+                        onClick={() => setEditorForm(formDef.form_id)}
+                        className="w-full py-2.5 bg-purple-600/30 hover:bg-purple-600/40 border border-purple-500/40 rounded-xl text-sm uppercase tracking-widest text-purple-100 transition-all"
+                      >
+                        Open &amp; edit in Onboardin
+                      </button>
+                    )}
+
+                    {isFiled && (
+                      <div className="flex flex-wrap items-center gap-3 p-3 rounded-lg border border-amber-500/20 bg-amber-500/5">
+                        <p className="text-xs text-amber-300/90 flex-1 min-w-[180px]">
+                          Marked filed at COJ. Reopen if you filed by mistake or need to fix a detail.
+                        </p>
+                        <button
+                          type="button"
+                          disabled={unfilingForm === formDef.form_id}
+                          onClick={() => handleUnfile(formDef)}
+                          className="py-1.5 px-3 border border-amber-500/40 rounded-lg text-xs uppercase tracking-widest text-amber-200 hover:bg-amber-500/10 transition-all disabled:opacity-40"
+                        >
+                          {unfilingForm === formDef.form_id ? 'Reopening…' : 'Reopen for editing'}
+                        </button>
+                      </div>
+                    )}
+
                     {formDocs.length > 0 && (
                       <div className="space-y-1">
                         <p className="text-xs text-gray-600">
-                          This is your vault working copy - not the public COJ template. Download, edit in Acrobat or similar, then <span className="text-gray-500">Save edited PDF to vault</span> to replace it in your account.
+                          {editorAvailable
+                            ? 'This is your vault working copy. Open it in Onboardin to type into the form and save.'
+                            : <>This is your vault working copy - not the public COJ template. Download, edit in Acrobat or similar, then <span className="text-gray-500">Save edited PDF to vault</span> to replace it in your account.</>}
                         </p>
                         {formDocs.map((doc, i) => (
                           <div
@@ -558,7 +609,7 @@ export default function CojFormationPacketPanel({
 
                     <div className="flex items-center gap-3 flex-wrap">
                       <label
-                        className={`flex items-center gap-1.5 text-xs uppercase tracking-widest cursor-pointer transition-colors ${isUploading ? 'text-gray-600 pointer-events-none' : 'text-purple-400 hover:text-purple-300'}`}
+                        className={`items-center gap-1.5 text-xs uppercase tracking-widest cursor-pointer transition-colors ${editorAvailable ? 'hidden' : 'flex'} ${isUploading ? 'text-gray-600 pointer-events-none' : 'text-purple-400 hover:text-purple-300'}`}
                       >
                         <input
                           ref={(el) => { fileInputRefs.current[formDef.form_id] = el; }}
@@ -770,6 +821,40 @@ export default function CojFormationPacketPanel({
           </>
         )}
       </div>
+
+      {editorForm && jobs[editorForm] && templatesByKind[editorForm] && (
+        <DocumentEditor
+          job={jobs[editorForm]}
+          template={{ ...templatesByKind[editorForm], provider: 'coj' }}
+          clientProfile={clientProfile}
+          supabase={supabase}
+          session={session}
+          onClose={() => setEditorForm(null)}
+          onUnfiled={() => {
+            setJobs((prev) => ({
+              ...prev,
+              [editorForm]: { ...prev[editorForm], status: COJ_FORM_STATUSES.WORKING_SAVED },
+            }));
+          }}
+          onSaved={(doc, { fieldValues } = {}) => {
+            setJobs((prev) => ({
+              ...prev,
+              [editorForm]: {
+                ...prev[editorForm],
+                status: COJ_FORM_STATUSES.WORKING_SAVED,
+                ...(fieldValues ? { field_values: fieldValues } : {}),
+              },
+            }));
+            if (doc?.path) {
+              setDocsByForm((prev) => {
+                const kept = (prev[editorForm] || []).filter((d) => d.path !== doc.path);
+                return { ...prev, [editorForm]: sortCojDocsNewestFirst([doc, ...kept]) };
+              });
+              onWorkingCopySaved?.(doc);
+            }
+          }}
+        />
+      )}
     </div>,
     document.body,
   );

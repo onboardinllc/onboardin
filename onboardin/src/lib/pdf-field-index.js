@@ -9,7 +9,7 @@
  * matching legal_templates.field_map and the burn-in math in
  * document-sign-pdf.js (pdfY = pageHeight - y - h).
  */
-import { PDFDocument } from '../vendor/pdf-lib.esm.min.js';
+import { PDFDocument, PDFTextField, PDFCheckBox, PDFSignature } from '../vendor/pdf-lib.esm.min.js';
 
 const KNOWN_TYPES = ['text', 'signature', 'date', 'checkbox'];
 
@@ -21,10 +21,10 @@ function inferTypeFromName(name) {
 }
 
 function acroFieldType(field, fieldKey) {
-  const ctor = field?.constructor?.name || '';
-  if (ctor.includes('Signature')) return 'signature';
-  if (ctor.includes('CheckBox')) return 'checkbox';
-  if (ctor.includes('TextField')) return inferTypeFromName(fieldKey);
+  // instanceof, not constructor.name - the vendored bundle is minified
+  if (PDFSignature && field instanceof PDFSignature) return 'signature';
+  if (PDFCheckBox && field instanceof PDFCheckBox) return 'checkbox';
+  if (PDFTextField && field instanceof PDFTextField) return inferTypeFromName(fieldKey);
   return inferTypeFromName(fieldKey);
 }
 
@@ -78,9 +78,33 @@ export async function scanAcroFormFields(pdfDoc) {
   const pages = pdfDoc.getPages();
   const pageRefs = pages.map((p) => p.ref);
 
+  // Widgets often omit /P; resolve pages from each page's /Annots instead.
+  const widgetDictToPage = new Map();
+  pages.forEach((page, pageIndex) => {
+    let annots;
+    try {
+      annots = page.node.Annots();
+    } catch {
+      return;
+    }
+    if (!annots) return;
+    for (let i = 0; i < annots.size(); i += 1) {
+      try {
+        const dict = pdfDoc.context.lookup(annots.get(i));
+        if (dict) widgetDictToPage.set(dict, pageIndex);
+      } catch {
+        /* skip unresolvable annot */
+      }
+    }
+  });
+
+  const seenKeys = new Set();
   fields.forEach((field, acroIndex) => {
     const name = field.getName();
-    const fieldKey = normalizeKey(name) || `field_${acroIndex}`;
+    let fieldKey = normalizeKey(name) || `field_${acroIndex}`;
+    // Encrypted PDFs (COJ Form 6) garble names; keep every widget addressable
+    if (seenKeys.has(fieldKey)) fieldKey = `${fieldKey}_${acroIndex}`;
+    seenKeys.add(fieldKey);
     const widgets = field.acroField?.getWidgets?.() || [];
     widgets.forEach((widget) => {
       let rect;
@@ -89,10 +113,19 @@ export async function scanAcroFormFields(pdfDoc) {
       } catch {
         return;
       }
-      const pRef = widget.P();
-      let pageIndex = pRef ? pageRefs.findIndex((r) => r === pRef || String(r) === String(pRef)) : -1;
+      let pageIndex = widgetDictToPage.has(widget.dict) ? widgetDictToPage.get(widget.dict) : -1;
+      if (pageIndex < 0) {
+        const pRef = widget.P();
+        pageIndex = pRef ? pageRefs.findIndex((r) => r === pRef || String(r) === String(pRef)) : -1;
+      }
       if (pageIndex < 0) pageIndex = 0;
       const pageHeight = pages[pageIndex].getSize().height;
+      let value = null;
+      try {
+        value = typeof field.getText === 'function' ? field.getText() : null;
+      } catch {
+        /* non-text or unreadable */
+      }
       entries.push({
         fieldKey,
         type: acroFieldType(field, fieldKey),
@@ -103,6 +136,7 @@ export async function scanAcroFormFields(pdfDoc) {
         h: rect.height,
         acroField: name,
         acroIndex,
+        ...(value ? { value } : {}),
       });
     });
   });
@@ -115,7 +149,7 @@ export async function scanAcroFormFields(pdfDoc) {
  *
  * @returns {{ pageCount: number, pages: {width:number,height:number}[], fields: object[] }}
  */
-export async function indexTemplateFields(pdfBytes, existingMap = {}) {
+export async function indexTemplateFields(pdfBytes, existingMap = {}, { valueHints } = {}) {
   const pdfDoc = await PDFDocument.load(pdfBytes, { ignoreEncryption: true });
   const pages = pdfDoc.getPages().map((p) => {
     const { width, height } = p.getSize();
@@ -124,12 +158,45 @@ export async function indexTemplateFields(pdfBytes, existingMap = {}) {
 
   const scanned = await scanAcroFormFields(pdfDoc);
   const curated = normalizeFieldIndex(existingMap);
-  const byKey = new Map();
-  for (const entry of scanned) byKey.set(entry.fieldKey, entry);
-  for (const entry of curated) {
-    const prior = byKey.get(entry.fieldKey);
-    byKey.set(entry.fieldKey, prior ? { ...prior, ...entry } : entry);
+
+  // Curated acro entries carry no bounds; adopt page + rect from the widget
+  // they target (by field name, or by index for encrypted-name PDFs).
+  const byAcroName = new Map();
+  const byAcroIndex = new Map();
+  for (const entry of scanned) {
+    if (entry.acroField != null && !byAcroName.has(entry.acroField)) byAcroName.set(entry.acroField, entry);
+    if (typeof entry.acroIndex === 'number' && !byAcroIndex.has(entry.acroIndex)) byAcroIndex.set(entry.acroIndex, entry);
   }
+  // Filled working copies carry the fill engine's own output; a unique value
+  // match is ground truth for where a key actually lands (index order can
+  // differ between fill engines on encrypted PDFs).
+  const byValue = new Map();
+  for (const entry of scanned) {
+    if (!entry.value) continue;
+    const key = entry.value.trim();
+    if (!key) continue;
+    byValue.set(key, byValue.has(key) ? null : entry);
+  }
+
+  const withBounds = (entry) => {
+    if (typeof entry.x === 'number') return entry;
+    const src = existingMap?.[entry.fieldKey] || {};
+    const hint = String(valueHints?.[entry.fieldKey] ?? '').trim();
+    const targetIndex = typeof entry.acroIndex === 'number'
+      ? entry.acroIndex
+      : (Array.isArray(src.acroIndices) ? src.acroIndices[0] : undefined);
+    const widget = (hint && byValue.get(hint))
+      || (entry.acroField != null && byAcroName.get(entry.acroField))
+      || (typeof targetIndex === 'number' && byAcroIndex.get(targetIndex))
+      || null;
+    if (!widget) return entry;
+    return { ...entry, page: widget.page, x: widget.x, y: widget.y, w: widget.w, h: widget.h };
+  };
+
+  const byKey = new Map();
+  const curatedKeys = new Set(curated.map((c) => c.fieldKey));
+  for (const entry of scanned) if (!curatedKeys.has(entry.fieldKey)) byKey.set(entry.fieldKey, entry);
+  for (const entry of curated) byKey.set(entry.fieldKey, withBounds(entry));
 
   const fields = Array.from(byKey.values()).filter((f) => {
     if (typeof f.x === 'number') {

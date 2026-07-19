@@ -22,6 +22,20 @@ export async function markFiledManual(supabase, jobId) {
   if (error) throw new Error(error.message);
 }
 
+/**
+ * Reverse a mistaken "filed" mark so the member can edit again.
+ * filed_pending -> working_saved. Idempotent: rows already editable are
+ * untouched, and signed jobs are never unlocked.
+ */
+export async function unfileManual(supabase, jobId) {
+  const { error } = await supabase
+    .from('document_jobs')
+    .update({ status: 'working_saved', updated_at: new Date().toISOString() })
+    .eq('id', jobId)
+    .eq('status', 'filed_pending');
+  if (error) throw new Error(error.message);
+}
+
 export function submitViaApi() {
   throw new Error('not_implemented');
 }
