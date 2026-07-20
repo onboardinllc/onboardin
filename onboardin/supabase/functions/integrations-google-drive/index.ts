@@ -80,7 +80,33 @@ function resolveSubfolderForCategory(categoryId: string | null | undefined): str
   return 'Other';
 }
 
-function handleOauthStart(): Response {
+function buildOauthRedirectUri(): string {
+  const explicit = Deno.env.get('GOOGLE_OAUTH_REDIRECT_URI');
+  if (explicit) return explicit;
+  const base = Deno.env.get('SUPABASE_URL') ?? '';
+  return `${base}/functions/v1/integrations-google-drive`;
+}
+
+function handleOauthStart(userId: string): Response {
+  const clientId = Deno.env.get('GOOGLE_CLIENT_ID');
+  const redirectUri = buildOauthRedirectUri();
+  if (clientId && redirectUri) {
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      scope: 'https://www.googleapis.com/auth/drive.file',
+      access_type: 'offline',
+      prompt: 'consent',
+      state: userId,
+    });
+    return jsonResponse({
+      auth_url: `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`,
+      scope: 'https://www.googleapis.com/auth/drive.file',
+      redirect_uri: redirectUri,
+    });
+  }
+
   return jsonResponse({
     status: 'pending',
     message: PENDING_ERROR,
@@ -113,8 +139,8 @@ function handleOauthStart(): Response {
   });
 }
 
-function dispatch(action: HandlerAction): Response {
-  if (action === 'oauth_start') return handleOauthStart();
+function dispatch(action: HandlerAction, userId: string): Response {
+  if (action === 'oauth_start') return handleOauthStart(userId);
   return pendingResponse();
 }
 
@@ -146,7 +172,7 @@ serve(async (req) => {
       }, 400);
     }
 
-    return dispatch(action as HandlerAction);
+    return dispatch(action as HandlerAction, user.id);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return jsonResponse({ error: message }, 500);

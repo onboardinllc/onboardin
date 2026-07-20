@@ -1,0 +1,17 @@
+{
+  "root": "Onboardin/{company_slug}",
+  "subfolders": {
+    "Registration": ["articles", "registered_agent", "jam_brc", "name_reservation"],
+    "Legal": ["operating_agreement", "founder_docs", "bylaws_governance", "founder_stock"],
+    "Tax": ["personal_trn", "tax_id", "gct_registration", "us_annual_tax", "de_franchise_tax", "wy_annual_report"],
+    "Identity": ["gov_id"],
+    "Statutory": ["nis_nht_heart", "coj_annual_return", "boi_report"],
+    "Banking": ["banking"],
+    "Marketing": [],
+    "Compliance": [],
+    "Deliverables": ["_admin_deliverable"],
+    "Other": ["other", null]
+  },
+  "file_name_pattern": "{category_id}-{YYYYMMDD}-{original_base_name}.{ext}",
+  "notes": "Single source for Ticket #06 edge function and reviewer doc §4. Marketing/Compliance accept future category ids. Admin uploads use step_index → Deliverables. Null/unknown category → Other."
+}

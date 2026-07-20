@@ -25,6 +25,7 @@ import CojFormationPacketPanel from './CojFormationPacketPanel';
 import {
   LazyDocumentEditor,
   LazyDocumentFillPanel,
+  LazyGoogleDriveConnectPanel,
 } from '../lib/lazy-document-ui.jsx';
 import SignatureSettings from './SignatureSettings';
 import { fetchActiveMemberSignature, assertSignaturePathForUser } from '../lib/member-signature';
@@ -2122,6 +2123,14 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                 </div>
                             )}
                         </div>
+
+                        {clientProfile && !clientProfile.is_admin && (
+                            <LazyGoogleDriveConnectPanel
+                                supabase={supabase}
+                                session={session}
+                                clientProfile={clientProfile}
+                            />
+                        )}
 
                         {clientProfile && !clientProfile.is_admin && (
                             <SignatureSettings

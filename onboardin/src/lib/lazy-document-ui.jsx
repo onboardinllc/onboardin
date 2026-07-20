@@ -39,6 +39,15 @@ export function LazySignPortal(props) {
   );
 }
 
+const GoogleDriveConnectPanelInner = lazy(() => import('../components/GoogleDriveConnectPanel.jsx'));
+export function LazyGoogleDriveConnectPanel(props) {
+  return (
+    <Suspense fallback={<DocumentUiLoading label="Loading Drive settings…" />}>
+      <GoogleDriveConnectPanelInner {...props} />
+    </Suspense>
+  );
+}
+
 const SignatureCanvasInner = lazy(() => import('../components/SignatureCanvas.jsx'));
 export function LazySignatureCanvas(props) {
   return (

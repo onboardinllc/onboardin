@@ -14,7 +14,9 @@
     "verify:envelope": "node ../scaffolds/tickets/verify-envelope-security.mjs",
     "verify:sign-portal": "node ../scaffolds/tickets/verify-sign-portal.mjs",
     "verify:envelope-browser": "node ../scaffolds/tickets/verify-envelope-browser.mjs",
-    "ci:verify": "node scripts/ci-verify.mjs"
+    "ci:verify": "node scripts/ci-verify.mjs",
+    "verify:google-processor": "node scripts/verify-google-processor-terms.mjs",
+    "verify:google-drive": "node scripts/verify-google-drive.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.4",
