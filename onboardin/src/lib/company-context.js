@@ -84,6 +84,12 @@ export function resolveEntityFacts({ client, entityProfile, formationDraft, comp
   mergeNonEmpty(merged, draftFlat);
   mergeNonEmpty(merged, intake);
 
+  // Signup company_name seeds formation_draft.proposed_company_name when Company
+  // Details left the name blank (Phase D Story 1 browser prep).
+  if (!String(merged.proposed_company_name ?? '').trim() && String(merged.company_name ?? '').trim()) {
+    merged.proposed_company_name = merged.company_name;
+  }
+
   merged._computed = {
     today: new Date().toISOString().slice(0, 10),
     governing_law: resolveGoverningLaw(merged),

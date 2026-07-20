@@ -19,8 +19,10 @@ import {
 import Step06Panel from './components/Step06Panel';
 import ComplianceCalendar from './components/ComplianceCalendar';
 import AdminObligationsPanel from './components/AdminObligationsPanel';
+import AdminMfaGate from './components/AdminMfaGate';
 import DocumentFillPanel from './components/DocumentFillPanel';
 import CojFormationPacketPanel from './components/CojFormationPacketPanel';
+import DocumentEditor from './components/DocumentEditor';
 import SignatureSettings from './components/SignatureSettings';
 import SignPortal from './components/SignPortal';
 import { fetchActiveMemberSignature, assertSignaturePathForUser } from './lib/member-signature';
@@ -28,6 +30,7 @@ import { canAccessComplianceCalendar, enrichObligation, obligationStats } from '
 import { buildDraftPayload, buildActivePayload, serializeIntake } from './lib/compliance-intake-persist';
 import { parseFormationDraft } from './lib/formation-draft-persist';
 import { openStorageDocument } from './lib/open-document-url.js';
+import { resolveEditorContext } from './lib/document-editor-launcher.js';
 import { COJ_FORM_IDS, resolvePacketProgress } from './lib/coj-formation-packet';
 import { legalTemplateUrl, isFillableTemplateUrl } from './lib/template-urls.js';
 import { harvestAfterDraftSave } from './lib/profile-harvest.js';
@@ -1265,6 +1268,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [profileError, setProfileError] = useState(false);
     const [allClients, setAllClients] = useState([]);
     const [adminLoading, setAdminLoading] = useState(false);
+    const [adminMfaReady, setAdminMfaReady] = useState(false);
     const [advancingId, setAdvancingId] = useState(null);
     const [armedDeleteId, setArmedDeleteId] = useState(null);
     const [deletingId, setDeletingId] = useState(null);
@@ -1346,6 +1350,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     const [alertDismissed, setAlertDismissed] = useState(false);
     const [expandedVaultCard, setExpandedVaultCard] = useState(null);
     const [vaultFillCat, setVaultFillCat] = useState(null);
+    const [vaultEditorContext, setVaultEditorContext] = useState(null);
     const [signatureReturnCat, setSignatureReturnCat] = useState(null);
     const [hasMemberSignature, setHasMemberSignature] = useState(false);
     const [vaultProcess, setVaultProcess] = useState(null);
@@ -1382,6 +1387,10 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     }, []);
 
     useEffect(() => {
+        setAdminMfaReady(false);
+    }, [session?.user?.id]);
+
+    useEffect(() => {
         if (!session || !supabase) return;
         setProfileLoading(true);
         setProfileError(false);
@@ -1415,6 +1424,12 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                     }
 
                     if (data?.is_admin) {
+                        if (!adminMfaReady) {
+                            setAllClients([]);
+                            setOverdueQueue([]);
+                            setAdminLoading(false);
+                            return;
+                        }
                         setAdminLoading(true);
                         Promise.all([
                             supabase.from('clients').select('*').order('created_at', { ascending: false }),
@@ -1427,7 +1442,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                     }
                 }
             });
-    }, [session]);
+    }, [session, adminMfaReady]);
 
     useEffect(() => {
         if (!session || !supabase) return;
@@ -2233,6 +2248,28 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
         await openStorageDocument(supabase, path, 60);
     };
 
+    const openDocumentInApp = async (doc) => {
+        if (!supabase || !clientProfile || !doc?.path) {
+            if (doc?.path) await getSignedUrl(doc.path);
+            return;
+        }
+        try {
+            const ctx = await resolveEditorContext({
+                supabase,
+                session,
+                clientProfile,
+                document: doc,
+            });
+            if (!ctx) {
+                await getSignedUrl(doc.path);
+                return;
+            }
+            setVaultEditorContext(ctx);
+        } catch {
+            await getSignedUrl(doc.path);
+        }
+    };
+
     const handleFormationDraftChange = (patch) => {
         const updated = patch.formation_draft ?? {};
         setFormationDraft(updated);
@@ -2514,6 +2551,17 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
     };
 
     const stepLabels = ['Account Created','Entity Formation','Tax Registration','Business Banking','IP & Contract Templates','Privacy & Compliance','Landing Page Deployed','Repository Provision','CRM Connection','Analytics Live','First AI Agent Deployed'];
+
+    if (session && clientProfile?.is_admin && !adminMfaReady) {
+        return (
+            <AdminMfaGate
+                supabase={supabase}
+                session={session}
+                onReady={() => setAdminMfaReady(true)}
+                onSignOut={() => supabase.auth.signOut()}
+            />
+        );
+    }
 
     if (session && clientProfile?.is_admin) {
         return (
@@ -3823,7 +3871,7 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                                                     {hasDoc && (
                                                         <div className="space-y-1.5">
                                                             {catDocs.map((doc, i) => (
-                                                                <div key={i} onClick={() => getSignedUrl(doc.path)} className="flex items-center gap-2 p-2 bg-black/20 rounded-lg hover:bg-black/40 cursor-pointer transition-all group">
+                                                                <div key={i} onClick={() => openDocumentInApp(doc)} className="flex items-center gap-2 p-2 bg-black/20 rounded-lg hover:bg-black/40 cursor-pointer transition-all group">
                                                                     <i className="ph ph-file text-gray-500 group-hover:text-blue-400 transition-colors flex-shrink-0 text-base"></i>
                                                                     <span className="text-sm text-gray-400 truncate flex-1 group-hover:text-gray-200">{doc.name}</span>
                                                                     <i className="ph ph-download-simple text-gray-600 group-hover:text-blue-400 transition-colors flex-shrink-0 text-base"></i>
@@ -3899,6 +3947,33 @@ const Dashboard = ({ setCurrentView, setUnreadCount }) => {
                             }}
                             onSignatureUploaded={refreshMemberSignature}
                             onGoToSignatureSettings={() => goToSignatureSettings(vaultFillCat)}
+                        />
+                    )}
+
+                    {vaultEditorContext && (
+                        <DocumentEditor
+                            job={vaultEditorContext.job}
+                            template={vaultEditorContext.template}
+                            mode={vaultEditorContext.mode}
+                            clientProfile={clientProfile}
+                            supabase={supabase}
+                            session={session}
+                            onClose={() => setVaultEditorContext(null)}
+                            onUnfiled={() => {
+                                if (!vaultEditorContext?.job?.id) return;
+                                setVaultEditorContext((prev) => (
+                                    prev ? { ...prev, job: { ...prev.job, status: 'working_saved' } } : prev
+                                ));
+                            }}
+                            onSaved={(doc) => {
+                                if (!doc?.path) return;
+                                setMyDocs((prev) => {
+                                    const without = prev.filter((d) => d.path !== doc.path && d.id !== doc.id);
+                                    return [doc, ...without];
+                                });
+                            }}
+                            onGoToSignatureSettings={() => goToSignatureSettings(null)}
+                            onSignatureUploaded={refreshMemberSignature}
                         />
                     )}
 

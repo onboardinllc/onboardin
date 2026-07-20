@@ -11,10 +11,12 @@ import {
   statusBorderClass,
   statusLabel,
   statusPillClass,
+  reopenObligation,
 } from '../lib/compliance-obligations';
 
-function ObligationRow({ ob, onMarkFiled, markingId, confirmId, setConfirmId, supabase, session, clientId }) {
+function ObligationRow({ ob, onMarkFiled, onReopen, markingId, confirmId, setConfirmId, supabase, session, clientId }) {
   const [proofUploading, setProofUploading] = useState(false);
+  const [reopening, setReopening] = useState(false);
   const [markError, setMarkError] = useState('');
   const status = ob.effectiveStatus;
   const { day, month } = formatDueDateParts(ob.due_date);
@@ -67,6 +69,19 @@ function ObligationRow({ ob, onMarkFiled, markingId, confirmId, setConfirmId, su
     setProofUploading(false);
   };
 
+  const handleReopen = async () => {
+    if (!supabase || !ob?.id) return;
+    setReopening(true);
+    setMarkError('');
+    try {
+      await reopenObligation(supabase, ob.id);
+      await onReopen?.();
+    } catch (e) {
+      setMarkError(e.message || 'Could not reopen obligation');
+    }
+    setReopening(false);
+  };
+
   return (
     <div className={`bg-white/5 border border-white/10 rounded-xl border-l-[3px] ${statusBorderClass(status)} overflow-hidden`}>
       <div className="flex flex-wrap items-center gap-3 p-4">
@@ -107,6 +122,16 @@ function ObligationRow({ ob, onMarkFiled, markingId, confirmId, setConfirmId, su
             className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded-lg border border-white/10 text-gray-300 hover:bg-white/5 transition-all flex-shrink-0 disabled:opacity-40"
           >
             Mark filed
+          </button>
+        )}
+        {status === 'done' && (
+          <button
+            type="button"
+            onClick={handleReopen}
+            disabled={reopening}
+            className="px-3 py-1.5 text-xs font-semibold uppercase tracking-wider rounded-lg border border-amber-500/30 text-amber-300 hover:bg-amber-500/10 transition-all flex-shrink-0 disabled:opacity-40"
+          >
+            {reopening ? 'Reopening…' : 'Reopen'}
           </button>
         )}
       </div>
@@ -333,6 +358,7 @@ export default function ComplianceCalendar({
                     key={ob.id}
                     ob={ob}
                     onMarkFiled={onRefresh}
+                    onReopen={onRefresh}
                     markingId={null}
                     confirmId={confirmId}
                     setConfirmId={setConfirmId}
@@ -356,6 +382,7 @@ export default function ComplianceCalendar({
                     key={ob.id}
                     ob={ob}
                     onMarkFiled={onRefresh}
+                    onReopen={onRefresh}
                     markingId={null}
                     confirmId={confirmId}
                     setConfirmId={setConfirmId}
@@ -379,6 +406,7 @@ export default function ComplianceCalendar({
                     key={ob.id}
                     ob={ob}
                     onMarkFiled={onRefresh}
+                    onReopen={onRefresh}
                     markingId={null}
                     confirmId={confirmId}
                     setConfirmId={setConfirmId}

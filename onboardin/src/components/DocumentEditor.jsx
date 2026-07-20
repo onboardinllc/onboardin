@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import { fetchTemplatePdfBytes, buildSignedPdf } from '../lib/document-sign-pdf';
 import { upsertWorkingCopy, workingCopyCanonicalPath } from '../lib/document-vault.js';
+import { unfileManual } from '../lib/filing-adapter.js';
 import {
   fetchActiveMemberSignature,
   signaturePreviewUrl,
@@ -25,7 +26,9 @@ const PAGE_MAX_WIDTH = 760;
  *   supabase, session - auth context
  *   onClose - close callback
  *   onSaved - callback(doc, { fieldValues, placements }) after save to vault
+ *   onUnfiled - callback after filed_pending is reversed
  *   onGoToSignatureSettings - navigate to Overview signature card
+ *   mode - 'fielded' | 'generic'
  *   onSignatureUploaded - parent refreshes signature-on-file state
  */
 export default function DocumentEditor({
@@ -36,8 +39,10 @@ export default function DocumentEditor({
   session,
   onClose,
   onSaved,
+  onUnfiled,
   onGoToSignatureSettings,
   onSignatureUploaded,
+  mode = 'fielded',
 }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
@@ -56,13 +61,19 @@ export default function DocumentEditor({
   const [sigStoragePath, setSigStoragePath] = useState(null);
   const [sigUploading, setSigUploading] = useState(false);
 
+  const [unfiling, setUnfiling] = useState(false);
+
   const containerRef = useRef(null);
   const canvasRefs = useRef([]);
   const pdfDocRef = useRef(null);
   const sigFileRef = useRef(null);
 
   const fieldMap = template?.field_map || {};
-  const readOnly = job?.status === 'signed';
+  const jobStatus = job?.status;
+  const signedLock = jobStatus === 'signed';
+  const filedLock = jobStatus === 'filed_pending';
+  const genericMode = mode === 'generic';
+  const readOnly = signedLock || filedLock || genericMode;
   const hasBounds = useMemo(
     () => Object.values(fieldMap).some((d) => typeof d?.x === 'number' && typeof d?.y === 'number'),
     [fieldMap],
@@ -152,7 +163,7 @@ export default function DocumentEditor({
       setLoading(true);
       setLoadError('');
       try {
-        if (!hasBounds) {
+        if (!hasBounds && !genericMode) {
           setLoadError('This document is not indexed for in-app editing yet. Download it instead.');
           return;
         }
@@ -169,7 +180,20 @@ export default function DocumentEditor({
       cancelled = true;
       pdfDocRef.current?.destroy?.();
     };
-  }, [hasBounds, loadDocumentBytes, renderPdf]);
+  }, [hasBounds, genericMode, loadDocumentBytes, renderPdf]);
+
+  const handleUnfile = async () => {
+    if (!job?.id || !supabase || unfiling) return;
+    setUnfiling(true);
+    setSaveError('');
+    try {
+      await unfileManual(supabase, job.id);
+      onUnfiled?.();
+    } catch (e) {
+      setSaveError(e.message || 'Could not reopen this document.');
+    }
+    setUnfiling(false);
+  };
 
   const handleSignatureUpload = useCallback(async (file) => {
     if (!file) return;
@@ -184,7 +208,7 @@ export default function DocumentEditor({
   }, [supabase, session, onSignatureUploaded]);
 
   const handleFieldTap = useCallback((fieldKey, def) => {
-    if (readOnly) return;
+    if (signedLock || filedLock) return;
     if (def.type === 'text') {
       setActiveField(fieldKey);
     } else if (def.type === 'date') {
@@ -205,10 +229,10 @@ export default function DocumentEditor({
       });
       markDirty();
     }
-  }, [readOnly, sigStoragePath, markDirty]);
+  }, [signedLock, filedLock, sigStoragePath, markDirty]);
 
   const handleSave = async () => {
-    if (readOnly || saving) return;
+    if (signedLock || filedLock || saving) return;
     setSaving(true);
     setSaveError('');
     try {
@@ -290,11 +314,21 @@ export default function DocumentEditor({
           <div className="min-w-0">
             <p className="text-xs uppercase tracking-widest text-gray-500 truncate">{template?.label}</p>
             <p className="text-sm text-white truncate">
-              {readOnly ? 'Signed - view only' : dirty ? 'Unsaved changes' : saveDone ? 'Saved to your vault' : 'Tap a field to edit'}
+              {signedLock
+                ? 'Signed - view only'
+                : filedLock
+                  ? 'Filed at COJ - reopen to edit'
+                  : dirty
+                    ? 'Unsaved changes'
+                    : saveDone
+                      ? 'Saved to your vault'
+                      : genericMode
+                        ? 'Limited editor - field autofill not available'
+                        : 'Tap a field to edit'}
             </p>
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
-            {!readOnly && (
+            {!signedLock && !filedLock && (
               <button
                 type="button"
                 onClick={handleSave}
@@ -317,6 +351,27 @@ export default function DocumentEditor({
             </button>
           </div>
         </div>
+
+        {(signedLock || filedLock) && (
+          <div className="px-4 py-3 bg-[#0e0c1a] border-b border-white/5 flex flex-wrap items-center justify-between gap-3">
+            {signedLock && (
+              <p className="text-xs text-amber-300">Signed copies cannot be changed. Start a new working copy from the template.</p>
+            )}
+            {filedLock && (
+              <>
+                <p className="text-xs text-amber-300">This form is marked filed at COJ. Reopen it to edit again.</p>
+                <button
+                  type="button"
+                  onClick={handleUnfile}
+                  disabled={unfiling}
+                  className="py-2 px-3 border border-amber-500/30 rounded-xl text-xs uppercase tracking-widest text-amber-200 hover:bg-amber-500/10 transition-all disabled:opacity-40"
+                >
+                  {unfiling ? 'Reopening…' : 'Reopen for editing'}
+                </button>
+              </>
+            )}
+          </div>
+        )}
 
         {(saveError || saveDone) && (
           <div className="px-4 py-2 bg-[#0e0c1a] border-b border-white/5">
@@ -412,7 +467,7 @@ export default function DocumentEditor({
 
                 // text
                 const value = fieldValues[fieldKey] ?? '';
-                if (activeField === fieldKey && !readOnly) {
+                if (activeField === fieldKey && !signedLock && !filedLock) {
                   return (
                     <input
                       key={fieldKey}
@@ -465,7 +520,7 @@ export default function DocumentEditor({
           }}
         />
 
-        {!readOnly && !sigStoragePath && !loading && !loadError && (
+        {!signedLock && !filedLock && !sigStoragePath && !loading && !loadError && !genericMode && (
           <div className="px-4 py-2 bg-[#0e0c1a] border-t border-white/5 flex items-center justify-between gap-3">
             <p className="text-xs text-gray-500">No signature on file. Tap a signature field to upload a PNG.</p>
             {onGoToSignatureSettings && (

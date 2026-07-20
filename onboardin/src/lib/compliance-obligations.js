@@ -154,6 +154,19 @@ export function groupObligationsForCalendar(obligations) {
   return { overdue, months, completed };
 }
 
+/** Reverse a mistaken done mark so the obligation returns to the calendar. */
+export async function reopenObligation(supabase, obligationId) {
+  const { error } = await supabase
+    .from('compliance_obligations')
+    .update({
+      status: 'upcoming',
+      completed_at: null,
+    })
+    .eq('id', obligationId)
+    .eq('status', 'done');
+  if (error) throw new Error(error.message);
+}
+
 export function obligationStats(obligations) {
   let overdue = 0;
   let dueSoon = 0;

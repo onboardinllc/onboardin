@@ -9,7 +9,9 @@ import {
   isCojTemplateLinked,
 } from '../lib/coj-formation-packet.js';
 import { parseFormationDraft, buildDraftPatch } from '../lib/formation-draft-persist.js';
-import { markFiledManual } from '../lib/filing-adapter.js';
+import { markFiledManual, unfileManual } from '../lib/filing-adapter.js';
+import { canOpenInAppEditor } from '../lib/pdf-field-map.js';
+import DocumentEditor from './DocumentEditor.jsx';
 import { applyCojAutofill } from '../lib/coj-prefill.js';
 import {
   reconcileCojJobAfterDocRemoval,
@@ -61,6 +63,8 @@ export default function CojFormationPacketPanel({
   const [previewOpen, setPreviewOpen] = useState({});
   const [deletingDocId, setDeletingDocId] = useState(null);
   const [deleteError, setDeleteError] = useState('');
+  const [editorFormId, setEditorFormId] = useState(null);
+  const [unfilingForm, setUnfilingForm] = useState(null);
 
   const draft = parseFormationDraft(formationDraft);
 
@@ -84,7 +88,7 @@ export default function CojFormationPacketPanel({
 
     const { data: existingJobs } = await supabase
       .from('document_jobs')
-      .select('id, template_id, status, created_at, updated_at')
+      .select('id, template_id, status, filled_path, field_values, field_placements, created_at, updated_at')
       .eq('client_id', clientId)
       .in('template_id', Object.values(templateByKind).map((t) => t.id));
 
@@ -104,7 +108,7 @@ export default function CojFormationPacketPanel({
           template_id: template.id,
           status: COJ_FORM_STATUSES.DRAFT,
         })
-        .select('id, template_id, status, created_at, updated_at')
+        .select('id, template_id, status, filled_path, field_values, field_placements, created_at, updated_at')
         .maybeSingle();
       if (newJob) {
         jobByKind[kind] = { ...newJob, kind };
@@ -113,7 +117,7 @@ export default function CojFormationPacketPanel({
       if (insertErr) {
         const { data: existing } = await supabase
           .from('document_jobs')
-          .select('id, template_id, status, created_at, updated_at')
+          .select('id, template_id, status, filled_path, field_values, field_placements, created_at, updated_at')
           .eq('client_id', clientId)
           .eq('template_id', template.id)
           .neq('status', COJ_FORM_STATUSES.VOIDED)
@@ -253,6 +257,23 @@ export default function CojFormationPacketPanel({
     setFilingForm(null);
   };
 
+  const handleUnfile = async (formDef) => {
+    const job = jobs[formDef.form_id];
+    if (!job?.id || !supabase) return;
+    setUnfilingForm(formDef.form_id);
+    setFilingError('');
+    try {
+      await unfileManual(supabase, job.id);
+      setJobs((prev) => ({
+        ...prev,
+        [formDef.form_id]: { ...prev[formDef.form_id], status: COJ_FORM_STATUSES.WORKING_SAVED },
+      }));
+    } catch (e) {
+      setFilingError(e.message);
+    }
+    setUnfilingForm(null);
+  };
+
   const handleAutofill = async (formDef) => {
     const template = templatesByKind[formDef.form_id];
     const job = jobs[formDef.form_id];
@@ -360,7 +381,9 @@ export default function CojFormationPacketPanel({
   const savedCount = COJ_FORM_IDS.filter((id) => (docsByForm[id] || []).length > 0).length;
 
   // Portal escapes ancestor stacking contexts so the overlay covers the fixed nav
-  return createPortal(
+  return (
+    <>
+    {createPortal(
     <div className="fixed inset-0 z-[70] flex flex-col bg-[#03020a]/95 backdrop-blur-xl overflow-y-auto">
       <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-white/10 bg-[#03020a]/80 backdrop-blur-sm">
         <div>
@@ -416,6 +439,7 @@ export default function CojFormationPacketPanel({
 
                 const template = templateFor(formDef.form_id);
                 const templateLinked = isCojTemplateLinked(template, formDef);
+                const editorAvailable = canOpenInAppEditor(template);
                 const isAutofilling = autofillForm === formDef.form_id;
                 const showAutofill = autofillReady(formDef);
                 const canRunAutofill = showAutofill && !isAutofilling;
@@ -557,6 +581,29 @@ export default function CojFormationPacketPanel({
                     )}
 
                     <div className="flex items-center gap-3 flex-wrap">
+                      {editorAvailable && !isFiled && formDocs.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setEditorFormId(formDef.form_id)}
+                          className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-purple-400 hover:text-purple-300 transition-colors"
+                        >
+                          <i className="ph ph-pencil-simple text-xs"></i>
+                          Open &amp; edit in Onboardin
+                        </button>
+                      )}
+
+                      {isFiled && (
+                        <button
+                          type="button"
+                          disabled={unfilingForm === formDef.form_id}
+                          onClick={() => handleUnfile(formDef)}
+                          className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-amber-400 hover:text-amber-300 transition-colors disabled:opacity-50"
+                        >
+                          <i className="ph ph-arrow-counter-clockwise text-xs"></i>
+                          {unfilingForm === formDef.form_id ? 'Reopening…' : 'Reopen for editing'}
+                        </button>
+                      )}
+
                       <label
                         className={`flex items-center gap-1.5 text-xs uppercase tracking-widest cursor-pointer transition-colors ${isUploading ? 'text-gray-600 pointer-events-none' : 'text-purple-400 hover:text-purple-300'}`}
                       >
@@ -772,5 +819,39 @@ export default function CojFormationPacketPanel({
       </div>
     </div>,
     document.body,
+    )}
+
+    {editorFormId && templatesByKind[editorFormId] && jobs[editorFormId] && (
+      <DocumentEditor
+        job={jobs[editorFormId]}
+        template={templatesByKind[editorFormId]}
+        clientProfile={clientProfile}
+        supabase={supabase}
+        session={session}
+        onClose={() => setEditorFormId(null)}
+        onUnfiled={() => {
+          setJobs((prev) => ({
+            ...prev,
+            [editorFormId]: { ...prev[editorFormId], status: COJ_FORM_STATUSES.WORKING_SAVED },
+          }));
+        }}
+        onSaved={(doc) => {
+          setDocsByForm((prev) => {
+            const kept = (prev[editorFormId] || []).filter((d) => d.path !== doc.path);
+            return { ...prev, [editorFormId]: sortCojDocsNewestFirst([doc, ...kept]) };
+          });
+          setJobs((prev) => ({
+            ...prev,
+            [editorFormId]: {
+              ...prev[editorFormId],
+              status: COJ_FORM_STATUSES.WORKING_SAVED,
+              filled_path: doc.path,
+            },
+          }));
+          onWorkingCopySaved?.(doc);
+        }}
+      />
+    )}
+    </>
   );
 }

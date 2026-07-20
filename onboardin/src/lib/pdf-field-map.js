@@ -27,6 +27,12 @@ export function getPdfFillStrategy(fieldMap) {
   return null;
 }
 
+/** True when the in-app editor can draw field overlays on this template. */
+export function canOpenInAppEditor(template) {
+  if (!template?.field_map) return false;
+  return hasAcroFieldMap(template.field_map) || hasCoordinateFieldMap(template.field_map);
+}
+
 /** True when template is linked and field_map supports server fill. */
 export function canAutofillTemplate(template, { requireLinkedUrl } = {}) {
   if (!template?.field_map) return false;
