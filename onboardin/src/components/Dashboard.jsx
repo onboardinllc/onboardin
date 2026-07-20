@@ -1,0 +1,3453 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { supabase } from '../lib/supabase';
+import {
+    getCategories as getProcedureCategories,
+    getGenericCategories,
+    normalizeEntityType,
+    displayEntityType,
+    ENTITY_TYPE_OPTIONS,
+    isJamaicaProfile,
+} from '../lib/procedures';
+import {
+    buildIntakeAnswers,
+    evaluateAcceptCriteria,
+    getComplianceVaultCategories,
+    mergeProfileIntoIntake,
+    resolveComplianceSlug,
+} from '../lib/compliance';
+import Step06Panel from './Step06Panel';
+import ComplianceCalendar from './ComplianceCalendar';
+import AdminObligationsPanel from './AdminObligationsPanel';
+import AdminMfaGate from './AdminMfaGate';
+import AdminFieldRegistryPanel from './AdminFieldRegistryPanel';
+import CojFormationPacketPanel from './CojFormationPacketPanel';
+import {
+  LazyDocumentEditor,
+  LazyDocumentFillPanel,
+} from '../lib/lazy-document-ui.jsx';
+import SignatureSettings from './SignatureSettings';
+import { fetchActiveMemberSignature, assertSignaturePathForUser } from '../lib/member-signature';
+import { canAccessComplianceCalendar, enrichObligation, obligationStats } from '../lib/compliance-obligations';
+import { buildDraftPayload, buildActivePayload, serializeIntake } from '../lib/compliance-intake-persist';
+import { parseFormationDraft } from '../lib/formation-draft-persist';
+import { openStorageDocument } from '../lib/open-document-url.js';
+import { resolveEditorContext } from '../lib/document-editor-launcher.js';
+import { COJ_FORM_IDS, resolvePacketProgress } from '../lib/coj-formation-packet';
+import { legalTemplateUrl, isFillableTemplateUrl } from '../lib/template-urls.js';
+import { harvestAfterDraftSave } from '../lib/profile-harvest.js';
+import {
+    REGIONS,
+    recommendEntity,
+    VaultUploadButton,
+    getDocCategories,
+    buildBlueprintExtras,
+} from '../lib/client-setup-ui.jsx';
+
+const LOGIN_HEADLINES = ['GET ONBOARD', 'WELCOME ONBOARD'];
+
+// Dashboard. Protected client console
+const Dashboard = ({ setCurrentView, setUnreadCount }) => {
+    const [session, setSession] = useState(null);
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
+    // Pick once per mount (refresh may swap); never re-roll on re-render.
+    const [loginHeadline] = useState(
+        () => LOGIN_HEADLINES[Math.random() < 0.5 ? 0 : 1]
+    );
+    const [showReset, setShowReset] = useState(false);
+    const [resetEmail, setResetEmail] = useState('');
+    const [resetLoading, setResetLoading] = useState(false);
+    const [resetStatus, setResetStatus] = useState(null); // 'sent' | error string | null
+    const [clientProfile, setClientProfile] = useState(null);
+    const [profileLoading, setProfileLoading] = useState(false);
+    const [profileError, setProfileError] = useState(false);
+    const [allClients, setAllClients] = useState([]);
+    const [adminLoading, setAdminLoading] = useState(false);
+    const [adminMfaReady, setAdminMfaReady] = useState(false);
+    const [advancingId, setAdvancingId] = useState(null);
+    const [armedDeleteId, setArmedDeleteId] = useState(null);
+    const [deletingId, setDeletingId] = useState(null);
+    const [deleteError, setDeleteError] = useState('');
+    // Phase A. Admin filters
+    const [adminSearch, setAdminSearch] = useState('');
+    const [adminPlanFilter, setAdminPlanFilter] = useState('all'); // 'all' | 'starter' | 'growth' | 'past_due'
+    const [adminLifecycleFilter, setAdminLifecycleFilter] = useState('all'); // 'all' | 'onboarding' | 'active' | 'paused' | 'churned' | 'archived'
+    const [updatingLifecycleId, setUpdatingLifecycleId] = useState(null);
+    const [selectedClient, setSelectedClient] = useState(null);
+    const [clientDocs, setClientDocs] = useState([]);
+    const [clientMessages, setClientMessages] = useState([]);
+    const [detailLoading, setDetailLoading] = useState(false);
+    const [messageInput, setMessageInput] = useState('');
+    const [sendingMessage, setSendingMessage] = useState(false);
+    const [msgScheduled, setMsgScheduled] = useState(false);
+    const [msgScheduleAt, setMsgScheduleAt] = useState('');
+    const [msgSendEmail, setMsgSendEmail] = useState(false);
+    const [msgEmailSubject, setMsgEmailSubject] = useState('');
+    const [uploadingDoc, setUploadingDoc] = useState(false);
+    const [adminUploadError, setAdminUploadError] = useState('');
+    const [myDocs, setMyDocs] = useState([]);
+    const [myMessages, setMyMessages] = useState([]);
+    const [myDocsLoading, setMyDocsLoading] = useState(false);
+    const [myMessagesLoading, setMyMessagesLoading] = useState(false);
+    const [clientMessageInput, setClientMessageInput] = useState('');
+    const [clientMsgScheduled, setClientMsgScheduled] = useState(false);
+    const [clientMsgScheduleAt, setClientMsgScheduleAt] = useState('');
+    const [sendingClientMessage, setSendingClientMessage] = useState(false);
+    const [clientUploading, setClientUploading] = useState(false);
+    const [vaultUploadError, setVaultUploadError] = useState('');
+    // COJ formation packet
+    const [formationDraft, setFormationDraft] = useState({});
+    const [formationDraftSaveStatus, setFormationDraftSaveStatus] = useState('idle');
+    const [showCojPacket, setShowCojPacket] = useState(false);
+    const formationDraftSaveTimer = React.useRef(null);
+    // Formation assistant
+    const [agentQuestion, setAgentQuestion] = useState('');
+    const [agentLoading, setAgentLoading] = useState(false);
+    const [agentAnswer, setAgentAnswer] = useState(() => { try { return localStorage.getItem('oq_last_answer') || ''; } catch { return ''; } });
+    const [agentError, setAgentError] = useState('');
+    // Jurisdiction-tailored blueprint (starter questions + required docs)
+    const [blueprint, setBlueprint] = useState(null);
+    const [complianceBlueprint, setComplianceBlueprint] = useState(null);
+    const [complianceArtifacts, setComplianceArtifacts] = useState([]);
+    const [complianceIntake, setComplianceIntake] = useState({});
+    const [draftStatus, setDraftStatus] = useState(null); // null | 'saving' | 'saved' | 'error'
+    const intakeDirtyRef = React.useRef(false);
+    const autosaveTimerRef = React.useRef(null);
+    const lastSavedPayloadRef = React.useRef(null);
+    const [completingStep06, setCompletingStep06] = useState(false);
+    const [step06Error, setStep06Error] = useState('');
+    const [advanceStepError, setAdvanceStepError] = useState('');
+    // Questions the user has already asked. Persisted in localStorage per user
+    const [answeredQuestions, setAnsweredQuestions] = useState([]);
+    // Capital readiness. Partner intro request state
+    const [capitalRequestSent, setCapitalRequestSent] = useState(false);
+    const [activePhaseTab, setActivePhaseTab] = useState('foundation'); // 'foundation' | 'operations' | 'infrastructure'
+    const [capitalRequesting, setCapitalRequesting] = useState(false);
+    // Jurisdiction setup (for clients who skipped step 2/3 during signup)
+    const [showJurisdictionSetup, setShowJurisdictionSetup] = useState(false);
+    const [setupCountry, setSetupCountry] = useState('United States');
+    const [setupJurisdiction, setSetupJurisdiction] = useState('');
+    const [setupIntent, setSetupIntent] = useState('');
+    const [setupSellsTo, setSetupSellsTo] = useState('');
+    const [setupEntity, setSetupEntity] = useState('');
+    const [dashTab, setDashTab] = useState(() => {
+        const h = window.location.hash.replace('#', '');
+        return ['overview','pipeline','vault','compliance','messages','capital','navigator'].includes(h) ? h : 'overview';
+    });
+    const [msgInbox, setMsgInbox] = useState('assistant');
+    const msgInboxDefaulted = React.useRef(false);
+    const myMessagesLoadedRef = React.useRef(false);
+    const switchTab = (id) => {
+        setDashTab(id);
+        history.replaceState(null, '', '#' + id);
+    };
+    const [showPricing, setShowPricing] = useState(false);
+    const [alertDismissed, setAlertDismissed] = useState(false);
+    const [expandedVaultCard, setExpandedVaultCard] = useState(null);
+    const [vaultFillCat, setVaultFillCat] = useState(null);
+    const [vaultEditorContext, setVaultEditorContext] = useState(null);
+    const [signatureReturnCat, setSignatureReturnCat] = useState(null);
+    const [hasMemberSignature, setHasMemberSignature] = useState(false);
+    const [vaultProcess, setVaultProcess] = useState(null);
+    const [vaultProcessTrack, setVaultProcessTrack] = useState(0);
+    const [vaultStepsDone, setVaultStepsDone] = useState({}); // { catId_trackIdx_stepIdx: true }
+    const [vaultReminderStep, setVaultReminderStep] = useState(null); // { catId, trackIdx, stepIdx, stepText }
+    const [vaultReminderDays, setVaultReminderDays] = useState('3');
+    const [vaultReminderSending, setVaultReminderSending] = useState(false);
+    const [vaultReminderSent, setVaultReminderSent] = useState({});
+    const [setupEntityOverride, setSetupEntityOverride] = useState(false);
+    const [savingSetup, setSavingSetup] = useState(false);
+    const [adminInternalNotes, setAdminInternalNotes] = useState('');
+    const [savingNotes, setSavingNotes] = useState(false);
+    const [deliverableStep, setDeliverableStep] = useState('');
+    const [clientComplianceArtifacts, setClientComplianceArtifacts] = useState([]);
+    const [clientObligations, setClientObligations] = useState([]);
+    const [clientObligationsLoading, setClientObligationsLoading] = useState(false);
+    const [clientObligationsError, setClientObligationsError] = useState('');
+    const [adminClientObligations, setAdminClientObligations] = useState([]);
+    const [adminObligationsLoading, setAdminObligationsLoading] = useState(false);
+    const [overdueQueue, setOverdueQueue] = useState([]);
+    const [adminMsgTab, setAdminMsgTab] = useState('team');
+    const [statusReportCache, setStatusReportCache] = useState({});
+    const [statusReportLoading, setStatusReportLoading] = useState(false);
+    const fileInputRef = React.useRef(null);
+
+    const msgThread = (m) => m.thread || (m.is_ai_generated ? 'assistant' : 'team');
+
+    useEffect(() => {
+        if (!supabase) return;
+        supabase.auth.getSession().then(({ data: { session } }) => setSession(session));
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => setSession(session));
+        return () => subscription.unsubscribe();
+    }, []);
+
+    useEffect(() => {
+        setAdminMfaReady(false);
+    }, [session?.user?.id]);
+
+    useEffect(() => {
+        if (!session || !supabase) return;
+        setProfileLoading(true);
+        setProfileError(false);
+        supabase
+            .from('clients')
+            .select('*')
+            .eq('id', session.user.id)
+            .single()
+            .then(({ data, error }) => {
+                setProfileLoading(false);
+                if (error) {
+                    setProfileError(true);
+                } else {
+                    setClientProfile(data);
+                    
+                    // Load last AI answer from messages table. Works across devices
+                    if (!data.is_admin) {
+                        supabase
+                            .from('messages')
+                            .select('body')
+                            .eq('client_id', session.user.id)
+                            .eq('is_ai_generated', true)
+                            .order('created_at', { ascending: false })
+                            .limit(1)
+                            .then(({ data: msgs }) => {
+                                if (msgs && msgs.length > 0 && msgs[0].body) {
+                                    setAgentAnswer(msgs[0].body);
+                                    try { localStorage.setItem('oq_last_answer', msgs[0].body); } catch {}
+                                }
+                            });
+                    }
+
+                    if (data?.is_admin) {
+                        if (!adminMfaReady) {
+                            setAllClients([]);
+                            setOverdueQueue([]);
+                            setAdminLoading(false);
+                            return;
+                        }
+                        setAdminLoading(true);
+                        Promise.all([
+                            supabase.from('clients').select('*').order('created_at', { ascending: false }),
+                            supabase.from('overdue_obligations').select('*'),
+                        ]).then(([{ data: clients }, { data: overdue }]) => {
+                            setAdminLoading(false);
+                            setAllClients(clients || []);
+                            setOverdueQueue(overdue || []);
+                        });
+                    }
+                }
+            });
+    }, [session, adminMfaReady]);
+
+    useEffect(() => {
+        if (!session || !supabase) return;
+        const channel = supabase
+            .channel('client-profile-' + session.user.id)
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'clients',
+                filter: `id=eq.${session.user.id}`,
+            }, ({ new: updated }) => {
+                setClientProfile(prev => ({ ...prev, ...updated }));
+            })
+            .subscribe();
+        return () => supabase.removeChannel(channel);
+    }, [session]);
+
+    useEffect(() => {
+        if (!session || !supabase || clientProfile?.is_admin || dashTab !== 'messages') return;
+        supabase.from('clients').update({ client_last_read_at: new Date().toISOString() }).eq('id', session.user.id).then(() => {
+            setUnreadCount(0);
+        });
+    }, [session?.user?.id, dashTab, clientProfile?.is_admin]);
+
+    useEffect(() => {
+        msgInboxDefaulted.current = false;
+        myMessagesLoadedRef.current = false;
+    }, [session?.user?.id]);
+
+    useEffect(() => {
+        if (!clientProfile || msgInboxDefaulted.current) return;
+        const plan = clientProfile.plan ?? 'starter';
+        const isPaid = plan === 'growth' || plan === 'enterprise';
+        setMsgInbox(isPaid ? 'team' : 'assistant');
+        msgInboxDefaulted.current = true;
+    }, [clientProfile?.id, clientProfile?.plan]);
+
+    // Hydrate formation_draft from profile on load
+    useEffect(() => {
+        if (!clientProfile) return;
+        setFormationDraft(parseFormationDraft(clientProfile.formation_draft));
+    }, [clientProfile?.id]);
+
+    // Seed jurisdiction setup form from saved profile so editing pre-fills instead of starting blank
+    useEffect(() => {
+        if (!clientProfile) return;
+        if (clientProfile.country) setSetupCountry(clientProfile.country);
+        if (clientProfile.jurisdiction) setSetupJurisdiction(clientProfile.jurisdiction);
+        if (clientProfile.business_intent) setSetupIntent(clientProfile.business_intent);
+        if (clientProfile.sells_to) setSetupSellsTo(clientProfile.sells_to);
+        if (clientProfile.entity_type) {
+            setSetupEntity(normalizeEntityType(clientProfile.entity_type));
+            setSetupEntityOverride(true);
+        }
+    }, [clientProfile]);
+
+    // Load answered questions + vault state: Supabase first, localStorage as fallback cache
+    useEffect(() => {
+        if (!session || !clientProfile) return;
+        const uid = session.user.id;
+        // answered_questions
+        if (clientProfile.answered_questions?.length) {
+            setAnsweredQuestions(clientProfile.answered_questions);
+            try { localStorage.setItem(`oq_answered_${uid}`, JSON.stringify(clientProfile.answered_questions)); } catch {}
+        } else {
+            try { setAnsweredQuestions(JSON.parse(localStorage.getItem(`oq_answered_${uid}`) || '[]')); } catch {}
+        }
+        // vault_steps_done
+        if (clientProfile.vault_steps_done && Object.keys(clientProfile.vault_steps_done).length) {
+            setVaultStepsDone(clientProfile.vault_steps_done);
+            try { localStorage.setItem(`oq_vsteps_${uid}`, JSON.stringify(clientProfile.vault_steps_done)); } catch {}
+        } else {
+            try { setVaultStepsDone(JSON.parse(localStorage.getItem(`oq_vsteps_${uid}`) || '{}')); } catch {}
+        }
+        // vault_reminders_sent
+        if (clientProfile.vault_reminders_sent && Object.keys(clientProfile.vault_reminders_sent).length) {
+            setVaultReminderSent(clientProfile.vault_reminders_sent);
+            try { localStorage.setItem(`oq_vrem_${uid}`, JSON.stringify(clientProfile.vault_reminders_sent)); } catch {}
+        } else {
+            try { setVaultReminderSent(JSON.parse(localStorage.getItem(`oq_vrem_${uid}`) || '{}')); } catch {}
+        }
+    }, [clientProfile?.id]);
+
+    // Helper: call send-scheduled edge function
+    const fireSendScheduled = async () => {
+        if (!supabase || !session) return;
+        try {
+            const { data: { session: s } } = await supabase.auth.getSession();
+            await fetch('https://qatfiicpkunabpphwqee.supabase.co/functions/v1/send-scheduled', {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${s.access_token}`, 'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhdGZpaWNwa3VuYWJwcGh3cWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzgyOTEsImV4cCI6MjA5NTkxNDI5MX0.00A9OEwex4Yeb4EXCy8vUtRXpCVPXmZDyXVHxl6XiVA' },
+            });
+        } catch {}
+    };
+
+    // On login: fire send-scheduled for any overdue messages
+    useEffect(() => {
+        if (!session || !supabase) return;
+        fireSendScheduled();
+    }, [session?.user?.id]);
+
+    // Fetch jurisdiction-tailored blueprint (starter questions + doc checklist) once the profile is loaded
+    // Cached in localStorage so it doesn't re-fetch every login
+    useEffect(() => {
+        if (!session || !supabase || !clientProfile || clientProfile.is_admin) return;
+        if (!clientProfile.country && !clientProfile.entity_type) return;
+        const cacheKey = `oq_blueprint_${session.user.id}_${clientProfile.country}_${clientProfile.entity_type}`;
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) { try { setBlueprint(JSON.parse(cached)); return; } catch {} }
+        let cancelled = false;
+        (async () => {
+            try {
+                const { data: { session: authSession } } = await supabase.auth.getSession();
+                const res = await fetch('https://qatfiicpkunabpphwqee.supabase.co/functions/v1/client-blueprint', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${authSession.access_token}`,
+                        'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhdGZpaWNwa3VuYWJwcGh3cWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzgyOTEsImV4cCI6MjA5NTkxNDI5MX0.00A9OEwex4Yeb4EXCy8vUtRXpCVPXmZDyXVHxl6XiVA',
+                    },
+                    body: '{}',
+                });
+                const json = await res.json();
+                if (!cancelled && json.starter_questions) {
+                    setBlueprint(json);
+                    localStorage.setItem(cacheKey, JSON.stringify(json));
+                }
+            } catch {}
+        })();
+        return () => { cancelled = true; };
+    }, [session, clientProfile?.country, clientProfile?.entity_type, clientProfile?.funding_stage]);
+
+    const refreshComplianceArtifacts = React.useCallback(() => {
+        if (!session || !supabase || clientProfile?.is_admin) return Promise.resolve();
+        return supabase.from('compliance_artifacts').select('*').eq('client_id', session.user.id).order('created_at', { ascending: false })
+            .then(({ data }) => {
+                const rows = data || [];
+                setComplianceArtifacts(rows);
+                // Do not overwrite in-progress edits - user may be mid-typing
+                if (!intakeDirtyRef.current) {
+                    const intakeRow = rows.find((a) => a.kind === 'compliance_intake');
+                    if (intakeRow) setComplianceIntake(buildIntakeAnswers(intakeRow));
+                }
+            });
+    }, [session?.user?.id, clientProfile?.is_admin]);
+
+    const autosaveDraftIntake = React.useCallback(async (answers) => {
+        if (!supabase || !session || !complianceBlueprint) return;
+        const payload = buildDraftPayload({
+            clientId: session.user.id,
+            blueprintId: complianceBlueprint.id,
+            lastResearched: complianceBlueprint.last_researched,
+            intakeAnswers: answers,
+            jurisdiction: complianceBlueprint.jurisdiction,
+        });
+        const serialized = payload.artifact_path;
+        if (serialized === lastSavedPayloadRef.current) {
+            intakeDirtyRef.current = false;
+            return;
+        }
+        setDraftStatus('saving');
+        const existing = complianceArtifacts.find((a) => a.kind === 'compliance_intake');
+        let error;
+        if (existing) {
+            ({ error } = await supabase.from('compliance_artifacts').update(payload).eq('id', existing.id));
+        } else {
+            ({ error } = await supabase.from('compliance_artifacts').insert(payload));
+        }
+        if (error) {
+            setDraftStatus('error');
+        } else {
+            lastSavedPayloadRef.current = serialized;
+            intakeDirtyRef.current = false;
+            setDraftStatus('saved');
+            // Refresh artifact list to pick up new row id (without disturbing intake state)
+            supabase.from('compliance_artifacts').select('*').eq('client_id', session.user.id).order('created_at', { ascending: false })
+                .then(({ data }) => { if (data) setComplianceArtifacts(data); });
+        }
+    }, [supabase, session?.user?.id, complianceBlueprint, complianceArtifacts]);
+
+    const handleIntakeChange = React.useCallback((updater) => {
+        setComplianceIntake((prev) => {
+            const next = typeof updater === 'function' ? updater(prev) : updater;
+            intakeDirtyRef.current = true;
+            if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
+            autosaveTimerRef.current = setTimeout(() => {
+                autosaveDraftIntake(next);
+            }, 900);
+            return next;
+        });
+    }, [autosaveDraftIntake]);
+
+    const handleIntakePromoted = React.useCallback((answers) => {
+        if (autosaveTimerRef.current) {
+            clearTimeout(autosaveTimerRef.current);
+            autosaveTimerRef.current = null;
+        }
+        intakeDirtyRef.current = false;
+        lastSavedPayloadRef.current = serializeIntake(answers);
+        setComplianceIntake(answers);
+        setDraftStatus(null);
+    }, []);
+
+    const refreshClientObligations = React.useCallback(() => {
+        if (!session || !supabase || clientProfile?.is_admin) return Promise.resolve();
+        setClientObligationsLoading(true);
+        setClientObligationsError('');
+        return supabase
+            .from('compliance_obligations')
+            .select('*')
+            .eq('client_id', session.user.id)
+            .order('due_date', { ascending: true, nullsFirst: false })
+            .then(({ data, error }) => {
+                if (error) {
+                    setClientObligationsError(error.message);
+                    setClientObligations([]);
+                } else {
+                    setClientObligations(data || []);
+                }
+            })
+            .finally(() => setClientObligationsLoading(false));
+    }, [session?.user?.id, clientProfile?.is_admin]);
+
+    const refreshAdminClientObligations = React.useCallback((clientId) => {
+        if (!supabase || !clientId) return Promise.resolve();
+        setAdminObligationsLoading(true);
+        return supabase
+            .from('compliance_obligations')
+            .select('*')
+            .eq('client_id', clientId)
+            .order('due_date', { ascending: true, nullsFirst: false })
+            .then(({ data, error }) => {
+                if (!error) setAdminClientObligations(data || []);
+            })
+            .finally(() => setAdminObligationsLoading(false));
+    }, []);
+
+    const refreshOverdueQueue = React.useCallback(() => {
+        if (!supabase) return Promise.resolve();
+        return supabase
+            .from('overdue_obligations')
+            .select('*')
+            .then(({ data }) => setOverdueQueue(data || []));
+    }, []);
+
+    const refreshMemberSignature = React.useCallback(() => {
+        if (!supabase || !session?.user?.id || clientProfile?.is_admin) {
+            setHasMemberSignature(false);
+            return Promise.resolve();
+        }
+        return fetchActiveMemberSignature(supabase, session.user.id)
+            .then((row) => {
+                if (!row?.storage_path) {
+                    setHasMemberSignature(false);
+                    return;
+                }
+                assertSignaturePathForUser(session.user.id, row.storage_path);
+                setHasMemberSignature(true);
+            })
+            .catch(() => setHasMemberSignature(false));
+    }, [supabase, session?.user?.id, clientProfile?.is_admin]);
+
+    const scrollToSignatureSettings = React.useCallback(() => {
+        setTimeout(() => {
+            document.getElementById('signature-settings')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 150);
+    }, []);
+
+    const goToSignatureSettings = React.useCallback((preserveVaultCat = null) => {
+        if (preserveVaultCat) setSignatureReturnCat(preserveVaultCat);
+        setVaultFillCat(null);
+        setVaultProcess(null);
+        switchTab('overview');
+        scrollToSignatureSettings();
+    }, [scrollToSignatureSettings]);
+
+    const continueVaultSigning = React.useCallback(() => {
+        if (!signatureReturnCat) return;
+        const cat = signatureReturnCat;
+        setSignatureReturnCat(null);
+        setVaultProcess(null);
+        switchTab('vault');
+        setVaultFillCat(cat);
+    }, [signatureReturnCat]);
+
+    useEffect(() => {
+        if (!session || !supabase || !clientProfile || clientProfile.is_admin) return;
+        refreshComplianceArtifacts();
+    }, [session?.user?.id, clientProfile?.id, clientProfile?.is_admin, refreshComplianceArtifacts]);
+
+    useEffect(() => {
+        refreshMemberSignature();
+    }, [refreshMemberSignature]);
+
+    // Flush pending autosave on tab hide or page unload
+    useEffect(() => {
+        const flush = () => {
+            if (intakeDirtyRef.current && autosaveTimerRef.current) {
+                clearTimeout(autosaveTimerRef.current);
+                autosaveDraftIntake(complianceIntake);
+            }
+        };
+        window.addEventListener('beforeunload', flush);
+        document.addEventListener('visibilitychange', flush);
+        return () => {
+            window.removeEventListener('beforeunload', flush);
+            document.removeEventListener('visibilitychange', flush);
+        };
+    }, [autosaveDraftIntake, complianceIntake]);
+
+    useEffect(() => {
+        if (!session || !supabase || !clientProfile || clientProfile.is_admin) return;
+        const access = canAccessComplianceCalendar(clientProfile);
+        if (access.access) refreshClientObligations();
+    }, [session?.user?.id, clientProfile?.id, clientProfile?.lifecycle, clientProfile?.onboarding_step, clientProfile?.plan, clientProfile?.is_admin, refreshClientObligations]);
+
+    useEffect(() => {
+        if (!session || !supabase || !clientProfile || clientProfile.is_admin) return;
+        const step = clientProfile.onboarding_step ?? 0;
+        if (step < 5) return;
+        const slug = resolveComplianceSlug(clientProfile.country || 'United States', clientProfile.jurisdiction || '', clientProfile.entity_type || '');
+        if (!slug) return;
+        let cancelled = false;
+        (async () => {
+            let fromEdge = false;
+            try {
+                const { data: { session: authSession } } = await supabase.auth.getSession();
+                if (authSession?.access_token) {
+                    try {
+                        const res = await fetch('https://qatfiicpkunabpphwqee.supabase.co/functions/v1/client-blueprint', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Authorization': `Bearer ${authSession.access_token}`,
+                                'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhdGZpaWNwa3VuYWJwcGh3cWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzgyOTEsImV4cCI6MjA5NTkxNDI5MX0.00A9OEwex4Yeb4EXCy8vUtRXpCVPXmZDyXVHxl6XiVA',
+                            },
+                            body: JSON.stringify({ mode: 'compliance' }),
+                        });
+                        const json = await res.json();
+                        if (!cancelled && json.procedure_kind === 'compliance') {
+                            setComplianceBlueprint(json);
+                            fromEdge = true;
+                        }
+                    } catch { /* edge unavailable. Fall through to DB */ }
+                }
+                if (!cancelled && !fromEdge) {
+                    const { data: row } = await supabase.from('procedure_guides').select('blueprint').eq('slug', slug).maybeSingle();
+                    if (!cancelled && row?.blueprint?.procedure_kind === 'compliance') setComplianceBlueprint(row.blueprint);
+                }
+            } catch { /* concierge-only jurisdictions */ }
+        })();
+        return () => { cancelled = true; };
+    }, [session, clientProfile?.id, clientProfile?.onboarding_step, clientProfile?.country, clientProfile?.jurisdiction, clientProfile?.entity_type]);
+
+    const refreshMyMessages = React.useCallback((opts = {}) => {
+        if (!session || !supabase || clientProfile?.is_admin) return;
+        const silent = opts.silent ?? false;
+        if (!silent || !myMessagesLoadedRef.current) {
+            setMyMessagesLoading(true);
+        }
+        supabase.from('messages').select('*').eq('client_id', session.user.id).order('created_at', { ascending: true })
+            .then(({ data }) => {
+                setMyMessages(data || []);
+                setMyMessagesLoading(false);
+                myMessagesLoadedRef.current = true;
+            });
+    }, [session?.user?.id, clientProfile?.is_admin]);
+
+    useEffect(() => {
+        if (!clientProfile || clientProfile.is_admin) return;
+        const unread = myMessages.filter(m =>
+            m.is_admin_message && msgThread(m) === 'team' && m.sent_at &&
+            m.created_at > (clientProfile.client_last_read_at || '')
+        ).length;
+        setUnreadCount(unread);
+    }, [myMessages, clientProfile?.client_last_read_at, clientProfile?.is_admin]);
+
+    useEffect(() => {
+        if (!session || !supabase || !clientProfile || clientProfile.is_admin) return;
+        setMyDocsLoading(true);
+        supabase.from('documents').select('*').eq('client_id', session.user.id).order('created_at', { ascending: false })
+            .then(({ data }) => { setMyDocs(data || []); setMyDocsLoading(false); });
+        myMessagesLoadedRef.current = false;
+        refreshMyMessages();
+    }, [session?.user?.id, clientProfile?.id, clientProfile?.is_admin, refreshMyMessages]);
+
+    useEffect(() => {
+        if (!session || !supabase || clientProfile?.is_admin) return;
+        const channel = supabase
+            .channel('client-msgs-' + session.user.id)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'messages',
+                filter: `client_id=eq.${session.user.id}`,
+            }, () => { refreshMyMessages({ silent: true }); })
+            .subscribe();
+        return () => supabase.removeChannel(channel);
+    }, [session?.user?.id, clientProfile?.is_admin, refreshMyMessages]);
+
+    useEffect(() => {
+        if (!session || !supabase || !selectedClient) return;
+        const channel = supabase
+            .channel('admin-msgs-' + selectedClient.id)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'messages',
+                filter: `client_id=eq.${selectedClient.id}`,
+            }, () => {
+                supabase.from('messages').select('*').eq('client_id', selectedClient.id).order('created_at', { ascending: true })
+                    .then(({ data }) => setClientMessages(data || []));
+            })
+            .subscribe();
+        return () => supabase.removeChannel(channel);
+    }, [session, selectedClient?.id]);
+
+    const handleClientUpload = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file || !supabase) return;
+        setClientUploading(true);
+        const path = `${session.user.id}/${Date.now()}-${file.name}`;
+        const { error: uploadError } = await supabase.storage.from('client-documents').upload(path, file);
+        if (!uploadError) {
+            const { error: dbError } = await supabase.from('documents').insert({
+                client_id: session.user.id,
+                name: file.name,
+                path,
+                size: file.size,
+                uploaded_by: session.user.id,
+            });
+            if (!dbError) {
+                setMyDocs(prev => [{ name: file.name, path, size: file.size, created_at: new Date().toISOString() }, ...prev]);
+            }
+        }
+        setClientUploading(false);
+        e.target.value = '';
+    };
+
+    const handleClientMessage = async (e) => {
+        e.preventDefault();
+        if (!clientMessageInput.trim() || !supabase) return;
+        setSendingClientMessage(true);
+        const payload = {
+            client_id: session.user.id,
+            sender_id: session.user.id,
+            body: clientMessageInput.trim(),
+            is_admin_message: false,
+            thread: 'team',
+            scheduled_at: clientMsgScheduled && clientMsgScheduleAt ? new Date(clientMsgScheduleAt).toISOString() : null,
+        };
+        const { error } = await supabase.from('messages').insert(payload);
+        if (!error) {
+            await fireSendScheduled();
+            if (clientMsgScheduled && clientMsgScheduleAt) {
+                const delay = new Date(clientMsgScheduleAt).getTime() - Date.now();
+                if (delay > 0) setTimeout(() => fireSendScheduled(), delay);
+            }
+            refreshMyMessages({ silent: true });
+            setClientMessageInput('');
+            setClientMsgScheduled(false);
+            setClientMsgScheduleAt('');
+        }
+        setSendingClientMessage(false);
+    };
+
+    const openClientDetail = async (client) => {
+        setSelectedClient(client);
+        setAdminMsgTab('team');
+        setMessageInput('');
+        setMsgScheduled(false);
+        setMsgScheduleAt('');
+        setMsgSendEmail(false);
+        setMsgEmailSubject('');
+        setAdminUploadError('');
+        setAdminInternalNotes(client.internal_notes || '');
+        setDetailLoading(true);
+        setClientDocs([]);
+        setClientMessages([]);
+        setClientComplianceArtifacts([]);
+        setAdminClientObligations([]);
+        setAdminObligationsLoading(true);
+        const [{ data: docs }, { data: msgs }, { data: compliance }, { data: obligations }] = await Promise.all([
+            supabase.from('documents').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
+            supabase.from('messages').select('*').eq('client_id', client.id).order('created_at', { ascending: true }),
+            supabase.from('compliance_artifacts').select('*').eq('client_id', client.id).order('created_at', { ascending: false }),
+            supabase.from('compliance_obligations').select('*').eq('client_id', client.id).order('due_date', { ascending: true, nullsFirst: false }),
+            supabase.from('clients').update({ admin_last_read_at: new Date().toISOString() }).eq('id', client.id)
+        ]);
+        setClientDocs(docs || []);
+        setClientMessages(msgs || []);
+        setClientComplianceArtifacts(compliance || []);
+        setAdminClientObligations(obligations || []);
+        setAdminObligationsLoading(false);
+        setDetailLoading(false);
+    };
+
+    const handleBoostCredits = async () => {
+        if (!supabase || !selectedClient) return;
+        const { error } = await supabase.from('clients').update({ daily_ai_credits: 5, updated_at: new Date().toISOString() }).eq('id', selectedClient.id);
+        if (!error) {
+            setAllClients(prev => prev.map(c => c.id === selectedClient.id ? { ...c, daily_ai_credits: 5 } : c));
+            setSelectedClient(prev => ({ ...prev, daily_ai_credits: 5 }));
+        }
+    };
+
+    const handlePlanChange = async (plan) => {
+        if (!supabase || !selectedClient) return;
+        const { error } = await supabase.from('clients').update({ plan, updated_at: new Date().toISOString() }).eq('id', selectedClient.id);
+        if (!error) {
+            setAllClients(prev => prev.map(c => c.id === selectedClient.id ? { ...c, plan } : c));
+            setSelectedClient(prev => ({ ...prev, plan }));
+        }
+    };
+
+    const handleUpdateInternalNotes = async () => {
+        if (!supabase || !selectedClient) return;
+        setSavingNotes(true);
+        const { error } = await supabase
+            .from('clients')
+            .update({ internal_notes: adminInternalNotes, updated_at: new Date().toISOString() })
+            .eq('id', selectedClient.id);
+        if (!error) {
+            setAllClients(prev => prev.map(c => c.id === selectedClient.id ? { ...c, internal_notes: adminInternalNotes } : c));
+            setSelectedClient(prev => ({ ...prev, internal_notes: adminInternalNotes }));
+        }
+        setSavingNotes(false);
+    };
+
+    const handleAdminMessage = async (e) => {
+        e.preventDefault();
+        if (!messageInput.trim() || !supabase || !selectedClient) return;
+        setSendingMessage(true);
+        const payload = {
+            client_id: selectedClient.id,
+            sender_id: session.user.id,
+            body: messageInput.trim(),
+            is_admin_message: true,
+            thread: 'team',
+            send_email: msgSendEmail,
+            email_subject: msgSendEmail && msgEmailSubject.trim() ? msgEmailSubject.trim() : null,
+            scheduled_at: msgScheduled && msgScheduleAt ? new Date(msgScheduleAt).toISOString() : null,
+        };
+        const { error } = await supabase.from('messages').insert(payload);
+        if (!error) {
+            await fireSendScheduled();
+            if (msgScheduled && msgScheduleAt) {
+                const delay = new Date(msgScheduleAt).getTime() - Date.now();
+                if (delay > 0) setTimeout(() => fireSendScheduled(), delay);
+            }
+            const { data: msgs } = await supabase.from('messages').select('*').eq('client_id', selectedClient.id).order('created_at', { ascending: true });
+            setClientMessages(msgs || []);
+            setMessageInput('');
+            setMsgScheduled(false);
+            setMsgScheduleAt('');
+            setMsgSendEmail(false);
+            setMsgEmailSubject('');
+        }
+        setSendingMessage(false);
+    };
+
+    const handleAdminUpload = async (e) => {
+        const file = e.target.files?.[0];
+        if (!file || !supabase || !selectedClient) return;
+        setUploadingDoc(true);
+        setAdminUploadError('');
+        const path = `${selectedClient.id}/${Date.now()}-${file.name}`;
+        const { error: uploadError } = await supabase.storage.from('client-documents').upload(path, file);
+        if (uploadError) {
+            setAdminUploadError(`Upload failed: ${uploadError.message}`);
+            setUploadingDoc(false);
+            e.target.value = '';
+            return;
+        }
+        const { error: dbError } = await supabase.from('documents').insert({
+            client_id: selectedClient.id,
+            name: file.name,
+            path,
+            size: file.size,
+            uploaded_by: session.user.id,
+            step_index: deliverableStep !== '' ? parseInt(deliverableStep) : null
+        });
+        if (dbError) {
+            setAdminUploadError(`Saved the file, but could not record it: ${dbError.message}`);
+        } else {
+            setClientDocs(prev => [{ name: file.name, path, size: file.size, step_index: deliverableStep !== '' ? parseInt(deliverableStep) : null, created_at: new Date().toISOString() }, ...prev]);
+            setDeliverableStep('');
+        }
+        setUploadingDoc(false);
+        e.target.value = '';
+    };
+
+    const handleAgentQuestion = async (e, isWelcome = false) => {
+        if (e) e.preventDefault();
+        if (!agentQuestion.trim() && !isWelcome) return;
+        if (!supabase || !session) return;
+        // Mark this question as answered so it stops showing as a suggestion
+        if (!isWelcome && agentQuestion.trim()) {
+            const updated = [...new Set([...answeredQuestions, agentQuestion.trim()])];
+            setAnsweredQuestions(updated);
+            try { localStorage.setItem(`oq_answered_${session.user.id}`, JSON.stringify(updated)); } catch {}
+            supabase.from('clients').update({ answered_questions: updated }).eq('id', session.user.id).then(() => {});
+        }
+
+        setAgentLoading(true);
+        setAgentError('');
+        try {
+            const { data: { session: authSession } } = await supabase.auth.getSession();
+            const res = await fetch('https://qatfiicpkunabpphwqee.supabase.co/functions/v1/agent-formation', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authSession.access_token}`,
+                },
+                body: JSON.stringify({ question: isWelcome ? '' : agentQuestion.trim(), isWelcome }),
+            });
+            const json = await res.json();
+            if (json.answer) {
+                setAgentAnswer(json.answer);
+                try { localStorage.setItem('oq_last_answer', json.answer); } catch {}
+                // Refresh profile for credits
+                const { data: prof } = await supabase.from('clients').select('*').eq('id', session.user.id).single();
+                setClientProfile(prof);
+                // Refresh messages
+                const { data: msgs } = await supabase.from('messages').select('*').eq('client_id', session.user.id).order('created_at', { ascending: true });
+                setMyMessages(msgs || []);
+            } else {
+                setAgentError(json.error || 'No response. Try again.');
+            }
+        } catch {
+            setAgentError('Could not reach formation assistant.');
+        }
+        setAgentLoading(false);
+        setAgentQuestion('');
+    };
+
+    const handleTogglePrivacy = async () => {
+        if (!supabase || !session) return;
+        const newVal = !clientProfile.share_ai_data;
+        const { error } = await supabase.from('clients').update({ share_ai_data: newVal }).eq('id', session.user.id);
+        if (!error) setClientProfile(prev => ({ ...prev, share_ai_data: newVal }));
+    };
+
+    const PARTNER_REGISTRY = [
+        // Banking
+        { slug: 'sendana', name: 'Sendana', category: 'banking', icon: 'ph-bank', color: '#3daedd',
+          tagline: 'USD accounts, USDC wallet, Visa card. Open with local ID.',
+          url: 'https://usesendana.com',
+          jurisdictions: ['Jamaica','Barbados','Trinidad and Tobago','Guyana','Belize','Grenada','Saint Lucia','Antigua and Barbuda','Dominica','Saint Kitts and Nevis','Saint Vincent and the Grenadines','Suriname','Haiti','Bahamas','CARICOM'],
+          stages: ['Pre-Seed','Seed','Series A','Series B+','Bootstrapped'],
+          match_weight: 95,
+          why: (p) => `Jamaica and Caribbean-native banking platform. Pre-verified KYC from your Onboardin procedure means faster signup.`,
+        },
+        { slug: 'mercury', name: 'Mercury', category: 'banking', icon: 'ph-bank', color: '#60a5fa',
+          tagline: 'US business banking built for startups. No fees, API access.',
+          url: 'https://mercury.com',
+          jurisdictions: ['United States','Delaware','Wyoming','Florida','New York','California','Texas'],
+          stages: ['Pre-Seed','Seed','Series A','Series B+'],
+          match_weight: 90,
+          why: (p) => `Top-rated US startup bank. Works for ${p.entity_type || 'your entity type'} and integrates with Stripe, QuickBooks, and your cap table tools.`,
+        },
+        { slug: 'relay', name: 'Relay', category: 'banking', icon: 'ph-bank', color: '#34d399',
+          tagline: 'US business banking with 20 accounts and spend controls.',
+          url: 'https://relayfi.com',
+          jurisdictions: ['United States','Delaware','Wyoming','Florida'],
+          stages: ['Pre-Seed','Seed','Bootstrapped'],
+          match_weight: 75,
+          why: (p) => `Good fit for early-stage US ${p.entity_type || 'entities'} that need multiple accounts for revenue, payroll, and taxes.`,
+        },
+        // Accounting
+        { slug: 'wave', name: 'Wave', category: 'accounting', icon: 'ph-calculator', color: '#fbbf24',
+          tagline: 'Free accounting, invoicing, and receipt scanning.',
+          url: 'https://waveapps.com',
+          jurisdictions: ['United States','Canada','Jamaica','United Kingdom'],
+          stages: ['Pre-Seed','Seed','Bootstrapped'],
+          match_weight: 85,
+          why: (p) => `Free tier covers invoicing and books for early-stage ${p.entity_type || 'companies'}. On the Onboardin integration roadmap.`,
+        },
+        { slug: 'numeral', name: 'Numeral Tax', category: 'accounting', icon: 'ph-receipt', color: '#c084fc',
+          tagline: 'Jamaica GCT, corporate tax, and compliance filing.',
+          url: 'https://numeraltax.com',
+          jurisdictions: ['Jamaica'],
+          stages: ['Pre-Seed','Seed','Series A','Bootstrapped'],
+          match_weight: 92,
+          why: (p) => `Jamaica-specialist. Handles GCT, corporate income tax, and TAJ filings for ${p.entity_type || 'Jamaica companies'}.`,
+        },
+        // Legal / Compliance
+        { slug: 'termly', name: 'Termly', category: 'compliance', icon: 'ph-shield-check', color: '#f87171',
+          tagline: 'Privacy policy, cookie consent, and compliance documents.',
+          url: 'https://termly.io',
+          jurisdictions: ['United States','United Kingdom','Canada','Jamaica','European Union'],
+          stages: ['Pre-Seed','Seed','Series A','Bootstrapped'],
+          match_weight: 70,
+          why: (p) => `Generates GDPR, CCPA, and DPDPA-compliant privacy policies. Covers ${p.sells_to === 'Consumers' ? 'consumer-facing' : 'B2B'} use cases.`,
+        },
+        // Payments
+        { slug: 'stripe', name: 'Stripe', category: 'payments', icon: 'ph-credit-card', color: '#7c3aed',
+          tagline: 'Global payment processing with 135+ currencies.',
+          url: 'https://stripe.com',
+          jurisdictions: ['United States','Canada','United Kingdom','Jamaica'],
+          stages: ['Pre-Seed','Seed','Series A','Series B+','Bootstrapped'],
+          match_weight: 80,
+          why: (p) => `Supports ${p.entity_type || 'your entity'} in ${p.jurisdiction || 'your jurisdiction'}. Free to start, 2.9% + 30c per transaction.`,
+        },
+        // Domain / Infrastructure
+        { slug: 'namecheap', name: 'Namecheap', category: 'infrastructure', icon: 'ph-globe', color: '#2dd4bf',
+          tagline: 'Domain registration and email hosting from $9/yr.',
+          url: 'https://namecheap.com',
+          jurisdictions: ['*'],
+          stages: ['Pre-Seed','Seed','Series A','Series B+','Bootstrapped'],
+          match_weight: 65,
+          why: () => `Low-cost domains and email. Onboardin is a registered reseller. Apply through the Infrastructure pipeline step.`,
+        },
+    ];
+
+    const getPartnerMatches = (profile) => {
+        if (!profile) return [];
+        const displayProfile = {
+            ...profile,
+            entity_type: displayEntityType(profile.entity_type) || profile.entity_type || '',
+        };
+        const jurisdiction = profile.jurisdiction || profile.country || '';
+        const stage = profile.funding_stage || 'Pre-Seed';
+        const isCARICOM = ['Jamaica','Barbados','Trinidad and Tobago','Guyana','Belize','Grenada',
+            'Saint Lucia','Antigua and Barbuda','Dominica','Saint Kitts and Nevis',
+            'Saint Vincent and the Grenadines','Suriname','Haiti','Bahamas'].includes(jurisdiction);
+        const isUS = ['United States','Delaware','Wyoming','Florida','New York','California','Texas'].includes(jurisdiction);
+
+        return PARTNER_REGISTRY.map(p => {
+            const jFit = p.jurisdictions.includes('*') || p.jurisdictions.includes(jurisdiction) || (isCARICOM && p.jurisdictions.includes('CARICOM'));
+            const sFit = p.stages.includes(stage);
+            const baseWeight = p.match_weight;
+            const score = (jFit ? 50 : 0) + (sFit ? 30 : 0) + (baseWeight / 100 * 20);
+            return { ...p, score, jFit, sFit, why: p.why(displayProfile) };
+        })
+        .filter(p => p.score > 40)
+        .sort((a, b) => b.score - a.score);
+    };
+
+    const handleRequestCapitalIntro = async () => {
+        if (!supabase || !session || capitalRequesting) return;
+        setCapitalRequesting(true);
+        const body = `[CAPITAL INTRO REQUEST]\nCountry: ${clientProfile?.country || 'unspecified'}\nJurisdiction: ${clientProfile?.jurisdiction || 'unspecified'}\nStage: ${clientProfile?.funding_stage || 'unspecified'}\nEntity: ${clientProfile?.entity_type || 'unspecified'}\nBusiness: ${clientProfile?.business_intent || 'unspecified'}\n\nThe founder would like an introduction to a capital source matched to this profile.`;
+        const { error } = await supabase.from('messages').insert({
+            client_id: session.user.id,
+            sender_id: session.user.id,
+            body,
+            is_admin_message: false,
+        });
+        if (!error) {
+            setCapitalRequestSent(true);
+            setMyMessages(prev => [...prev, { sender_id: session.user.id, body, is_admin_message: false, created_at: new Date().toISOString() }]);
+        }
+        setCapitalRequesting(false);
+    };
+
+    const handleSaveJurisdiction = async (e) => {
+        e.preventDefault();
+        if (!supabase || !session) return;
+        setSavingSetup(true);
+        const rec = recommendEntity(clientProfile?.funding_stage, setupIntent, setupSellsTo, setupCountry);
+        const finalEntity = normalizeEntityType(setupEntityOverride ? setupEntity : rec.entity);
+        await supabase.from('clients').update({
+            country: setupCountry,
+            jurisdiction: setupJurisdiction,
+            entity_type: finalEntity,
+            business_intent: setupIntent,
+            sells_to: setupSellsTo,
+            updated_at: new Date().toISOString(),
+        }).eq('id', session.user.id);
+        setClientProfile(prev => ({ ...prev, country: setupCountry, jurisdiction: setupJurisdiction, entity_type: finalEntity, business_intent: setupIntent, sells_to: setupSellsTo }));
+        setShowJurisdictionSetup(false);
+        setSavingSetup(false);
+    };
+
+    const handleUpgrade = () => {
+        setShowPricing(true);
+    };
+
+    const [checkoutLoading, setCheckoutLoading] = useState(false);
+    const handleStripeCheckout = async () => {
+        if (!supabase || !session) return;
+        setCheckoutLoading(true);
+        try {
+            const { data: { session: authSession } } = await supabase.auth.getSession();
+            const res = await fetch(`https://qatfiicpkunabpphwqee.supabase.co/functions/v1/create-checkout`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authSession.access_token}`,
+                    'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhdGZpaWNwa3VuYWJwcGh3cWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzgyOTEsImV4cCI6MjA5NTkxNDI5MX0.00A9OEwex4Yeb4EXCy8vUtRXpCVPXmZDyXVHxl6XiVA',
+                },
+            });
+            const json = await res.json();
+            if (json.url) {
+                window.location.href = json.url;
+            }
+        } catch {}
+        setCheckoutLoading(false);
+    };
+
+    const getSignedUrl = async (path) => {
+        await openStorageDocument(supabase, path, 60);
+    };
+
+    const openDocumentInApp = async (doc) => {
+        if (!supabase || !clientProfile || !doc?.path) {
+            if (doc?.path) await getSignedUrl(doc.path);
+            return;
+        }
+        try {
+            const ctx = await resolveEditorContext({
+                supabase,
+                session,
+                clientProfile,
+                document: doc,
+            });
+            if (!ctx) {
+                await getSignedUrl(doc.path);
+                return;
+            }
+            setVaultEditorContext(ctx);
+        } catch {
+            await getSignedUrl(doc.path);
+        }
+    };
+
+    const handleFormationDraftChange = (patch) => {
+        const updated = patch.formation_draft ?? {};
+        setFormationDraft(updated);
+        setFormationDraftSaveStatus('saving');
+        clearTimeout(formationDraftSaveTimer.current);
+        formationDraftSaveTimer.current = setTimeout(async () => {
+            if (!supabase || !session) {
+                setFormationDraftSaveStatus('error');
+                return;
+            }
+            const { error } = await supabase
+                .from('clients')
+                .update({ formation_draft: updated })
+                .eq('id', session.user.id);
+            setFormationDraftSaveStatus(error ? 'error' : 'saved');
+            if (error) return;
+            // Keep the saved draft on clientProfile so panels that read
+            // clientProfile.formation_draft (e.g. the vault DocumentFillPanel) stay
+            // in sync with Company Details edits without a reload.
+            setClientProfile((prev) => (prev ? { ...prev, formation_draft: updated } : prev));
+            // Harvest the saved draft into the reusable profile so other forms reuse
+            // it. Same debounce; harvest failure never blocks the draft save itself.
+            try {
+                const merged = await harvestAfterDraftSave(supabase, session.user.id, updated, undefined, { jurisdiction: clientProfile?.jurisdiction, entityType: clientProfile?.entity_type });
+                if (merged) setClientProfile((prev) => (prev ? { ...prev, entity_profile: merged } : prev));
+            } catch (err) {
+                console.warn('[draft] profile harvest failed:', err?.message || err);
+            }
+        }, 900);
+    };
+
+    const handleSignIn = async (e) => {
+        e.preventDefault();
+        if (!supabase) { setError('Auth not configured.'); return; }
+        setLoading(true);
+        setError('');
+        const { error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) setError(error.message);
+        setLoading(false);
+    };
+
+    const handleSignOut = async () => {
+        if (!supabase) return;
+        await supabase.auth.signOut();
+    };
+
+    const handleReset = async (e) => {
+        e.preventDefault();
+        if (!supabase) { setResetStatus('Auth not configured.'); return; }
+        setResetLoading(true);
+        setResetStatus(null);
+        const { error } = await supabase.auth.resetPasswordForEmail(resetEmail);
+        setResetLoading(false);
+        if (error) {
+            setResetStatus(error.message);
+        } else {
+            setResetStatus('sent');
+        }
+    };
+
+    const onboardingSteps = [
+        { label: 'Account Created',          icon: 'ph-user-circle',       phase: 'foundation',    tier: 'starter' },
+        { label: 'Entity Formation',          icon: 'ph-buildings',         phase: 'foundation',    tier: 'starter' },
+        { label: 'Tax Registration',          icon: 'ph-identification-badge', phase: 'operations', tier: 'growth' },
+        { label: 'Business Banking',          icon: 'ph-bank',              phase: 'operations',    tier: 'growth' },
+        { label: 'IP & Contract Templates',   icon: 'ph-scroll',            phase: 'operations',    tier: 'growth' },
+        { label: 'Privacy & Compliance',      icon: 'ph-shield-check',      phase: 'operations',    tier: 'growth' },
+        { label: 'Landing Page Deployed',     icon: 'ph-globe',             phase: 'infrastructure',tier: 'growth' },
+        { label: 'Repository Provision',      icon: 'ph-github-logo',       phase: 'infrastructure',tier: 'growth' },
+        { label: 'CRM Connection',            icon: 'ph-address-book',      phase: 'infrastructure',tier: 'growth' },
+        { label: 'Analytics Live',            icon: 'ph-chart-line',        phase: 'infrastructure',tier: 'growth' },
+        { label: 'First AI Agent Deployed',   icon: 'ph-robot',             phase: 'infrastructure',tier: 'growth' },
+    ];
+    const currentStep = clientProfile?.onboarding_step ?? 0;
+
+    const checkStep06Gate = async (clientId) => {
+        const client = allClients.find((c) => c.id === clientId) || selectedClient;
+        if (!client || !supabase) return { pass: false, missing: ['Client not found'] };
+        const slug = resolveComplianceSlug(client.country || 'United States', client.jurisdiction || '', client.entity_type || '');
+        if (!slug) return { pass: false, missing: ['No compliance procedure for this jurisdiction (concierge required)'] };
+        const [{ data: artifacts }, { data: docs }, { data: guide }] = await Promise.all([
+            supabase.from('compliance_artifacts').select('*').eq('client_id', clientId),
+            supabase.from('documents').select('*').eq('client_id', clientId),
+            supabase.from('procedure_guides').select('blueprint').eq('slug', slug).eq('is_active', true).maybeSingle(),
+        ]);
+        const bp = guide?.blueprint;
+        if (!bp) return { pass: false, missing: ['Compliance procedure guide not found'] };
+        const intakeRow = (artifacts || []).find((a) => a.kind === 'compliance_intake');
+        const intake = mergeProfileIntoIntake(buildIntakeAnswers(intakeRow), client, bp.intake_questions || []);
+        if (!intakeRow?.artifact_path) {
+            return { pass: false, missing: ['Compliance intake not started. Client must open Step 06 from dashboard'] };
+        }
+        if (intakeRow.status === 'draft') {
+            return { pass: false, missing: ['Compliance intake saved as draft. Client must save intake to finish'] };
+        }
+        return evaluateAcceptCriteria(bp, intake, artifacts || [], docs || []);
+    };
+
+    const handleAdvanceStep = async (clientId, currentStep) => {
+        if (currentStep >= 11 || !supabase) return;
+        setAdvancingId(clientId);
+        setAdvanceStepError('');
+        if (currentStep === 5) {
+            const gate = await checkStep06Gate(clientId);
+            if (!gate.pass) {
+                setAdvanceStepError(`Step 06 incomplete: ${gate.missing.join(', ')}`);
+                setAdvancingId(null);
+                return;
+            }
+        }
+        const { error } = await supabase
+            .from('clients')
+            .update({ onboarding_step: currentStep + 1, updated_at: new Date().toISOString() })
+            .eq('id', clientId);
+        if (!error) {
+            setAllClients(prev => prev.map(c => c.id === clientId ? { ...c, onboarding_step: currentStep + 1 } : c));
+            if (selectedClient?.id === clientId) setSelectedClient(prev => ({ ...prev, onboarding_step: currentStep + 1 }));
+        }
+        setAdvancingId(null);
+    };
+
+    const handleClientCompleteStep06 = async () => {
+        if (!supabase || !session || !clientProfile) return;
+        setCompletingStep06(true);
+        setStep06Error('');
+        const plan = clientProfile.plan ?? 'starter';
+        const isPaid = plan === 'growth' || plan === 'enterprise';
+        if (!isPaid) {
+            setStep06Error('Growth plan required to complete this step.');
+            setCompletingStep06(false);
+            return;
+        }
+        if (!complianceBlueprint) {
+            setStep06Error('Compliance procedure not loaded. Refresh or try again in a moment.');
+            setCompletingStep06(false);
+            return;
+        }
+        const intakeRow = complianceArtifacts.find((a) => a.kind === 'compliance_intake');
+        const merged = mergeProfileIntoIntake(
+            { ...buildIntakeAnswers(intakeRow), ...complianceIntake },
+            clientProfile,
+            complianceBlueprint.intake_questions || [],
+        );
+        const { pass, missing } = evaluateAcceptCriteria(complianceBlueprint, merged, complianceArtifacts, myDocs);
+        if (!pass) {
+            setStep06Error(`Complete checklist first: ${missing.join(', ')}`);
+            setCompletingStep06(false);
+            return;
+        }
+        const intakePayload = buildActivePayload({
+            clientId: session.user.id,
+            blueprintId: complianceBlueprint.id,
+            lastResearched: complianceBlueprint.last_researched,
+            intakeAnswers: merged,
+            jurisdiction: complianceBlueprint.jurisdiction,
+        });
+        const { error: intakeErr } = intakeRow
+            ? await supabase.from('compliance_artifacts').update(intakePayload).eq('id', intakeRow.id)
+            : await supabase.from('compliance_artifacts').insert(intakePayload);
+        if (intakeErr) {
+            setStep06Error(intakeErr.message);
+            setCompletingStep06(false);
+            return;
+        }
+        handleIntakePromoted(merged);
+        const step = clientProfile.onboarding_step ?? 0;
+        if (step !== 5) {
+            setCompletingStep06(false);
+            return;
+        }
+        const { error } = await supabase
+            .from('clients')
+            .update({ onboarding_step: 6, updated_at: new Date().toISOString() })
+            .eq('id', session.user.id);
+        if (error) {
+            setStep06Error(error.message);
+        } else {
+            setClientProfile((prev) => ({ ...prev, onboarding_step: 6 }));
+        }
+        setCompletingStep06(false);
+    };
+
+    const handleRollbackStep = async (clientId, currentStep) => {
+        if (currentStep <= 0 || !supabase) return;
+        const { error } = await supabase
+            .from('clients')
+            .update({ onboarding_step: currentStep - 1, updated_at: new Date().toISOString() })
+            .eq('id', clientId);
+        if (!error) {
+            setAllClients(prev => prev.map(c => c.id === clientId ? { ...c, onboarding_step: currentStep - 1 } : c));
+            if (selectedClient?.id === clientId) setSelectedClient(prev => ({ ...prev, onboarding_step: currentStep - 1 }));
+        }
+    };
+
+    const handleLifecycleChange = async (clientId, newLifecycle) => {
+        if (!supabase) return;
+        setUpdatingLifecycleId(clientId);
+        const { error } = await supabase
+            .from('clients')
+            .update({ lifecycle: newLifecycle, updated_at: new Date().toISOString() })
+            .eq('id', clientId);
+        if (!error) {
+            setAllClients(prev => prev.map(c => c.id === clientId ? { ...c, lifecycle: newLifecycle } : c));
+            if (selectedClient?.id === clientId) setSelectedClient(prev => ({ ...prev, lifecycle: newLifecycle }));
+            if (newLifecycle === 'active') {
+                await supabase.rpc('seed_obligations_for_client', { p_client_id: clientId });
+                if (selectedClient?.id === clientId) await refreshAdminClientObligations(clientId);
+                refreshOverdueQueue();
+            }
+        }
+        setUpdatingLifecycleId(null);
+    };
+
+    const handleVaultStepToggle = (catId, trackIdx, stepIdx) => {
+        const key = `${catId}_${trackIdx}_${stepIdx}`;
+        const updated = { ...vaultStepsDone, [key]: !vaultStepsDone[key] };
+        if (!updated[key]) delete updated[key];
+        setVaultStepsDone(updated);
+        try { localStorage.setItem(`oq_vsteps_${session.user.id}`, JSON.stringify(updated)); } catch {}
+        supabase.from('clients').update({ vault_steps_done: updated }).eq('id', session.user.id).then(() => {});
+    };
+
+    const handleVaultReminder = async (catId, trackIdx, stepIdx, stepText, days) => {
+        if (!supabase || !session) return;
+        setVaultReminderSending(true);
+        const sendAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+        // Store as a message so admin can see and trigger it
+        await supabase.from('messages').insert({
+            client_id: session.user.id,
+            body: `[REMINDER SET] In ${days} day${days > 1 ? 's' : ''} (${new Date(sendAt).toLocaleDateString()}): "${stepText}"`,
+            is_admin_message: false,
+            is_ai_generated: false,
+            seen: true,
+            scheduled_at: sendAt,
+            metadata: { type: 'reminder', catId, trackIdx, stepIdx },
+        });
+        const remKey = `${catId}_${trackIdx}_${stepIdx}`;
+        const updated = { ...vaultReminderSent, [remKey]: { days, sendAt } };
+        setVaultReminderSent(updated);
+        try { localStorage.setItem(`oq_vrem_${session.user.id}`, JSON.stringify(updated)); } catch {}
+        supabase.from('clients').update({ vault_reminders_sent: updated }).eq('id', session.user.id).then(() => {});
+        setVaultReminderStep(null);
+        setVaultReminderSending(false);
+    };
+
+    const handleSetPlan = async (clientId, plan) => {
+        if (!supabase) return;
+        await supabase.from('clients').update({ plan, updated_at: new Date().toISOString() }).eq('id', clientId);
+        setAllClients(prev => prev.map(c => c.id === clientId ? { ...c, plan } : c));
+    };
+
+    const handleDeleteUser = async (clientId) => {
+        if (!supabase || !session) return;
+        setDeletingId(clientId);
+        setDeleteError('');
+        try {
+            const { data: { session: authSession } } = await supabase.auth.getSession();
+            const res = await fetch('https://qatfiicpkunabpphwqee.supabase.co/functions/v1/admin-delete-user', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${authSession.access_token}`,
+                    'apikey': 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhdGZpaWNwa3VuYWJwcGh3cWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzgyOTEsImV4cCI6MjA5NTkxNDI5MX0.00A9OEwex4Yeb4EXCy8vUtRXpCVPXmZDyXVHxl6XiVA',
+                },
+                body: JSON.stringify({ user_id: clientId }),
+            });
+            const json = await res.json();
+            if (json.ok) {
+                setAllClients(prev => prev.filter(c => c.id !== clientId));
+                if (selectedClient?.id === clientId) setSelectedClient(null);
+            } else {
+                setDeleteError(json.error || 'Delete failed');
+            }
+        } catch {
+            setDeleteError('Could not reach delete service');
+        }
+        setArmedDeleteId(null);
+        setDeletingId(null);
+    };
+
+    const stepLabels = ['Account Created','Entity Formation','Tax Registration','Business Banking','IP & Contract Templates','Privacy & Compliance','Landing Page Deployed','Repository Provision','CRM Connection','Analytics Live','First AI Agent Deployed'];
+
+    if (session && clientProfile?.is_admin && !adminMfaReady) {
+        return (
+            <AdminMfaGate
+                supabase={supabase}
+                session={session}
+                onReady={() => setAdminMfaReady(true)}
+                onSignOut={() => supabase.auth.signOut()}
+            />
+        );
+    }
+
+    if (session && clientProfile?.is_admin) {
+        return (
+            <div className="pt-32 px-4 sm:px-8 md:px-16 animate-[fadeIn_1s_ease-out] min-h-screen relative z-10">
+                <div className="max-w-6xl mx-auto">
+                    <div className="flex flex-wrap justify-between items-start gap-4 mb-12">
+                        <div>
+                            <h1 className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-400 uppercase tracking-tighter">Admin Console</h1>
+                            <p className="text-sm text-gray-500 uppercase tracking-widest mt-1">{session.user.email}</p>
+                        </div>
+                        <span className="text-xs uppercase tracking-widest text-green-400 border border-green-400/20 px-3 py-1.5 rounded-full bg-green-400/5 self-center">
+                            {allClients.filter(c => !c.is_admin).length} {allClients.filter(c => !c.is_admin).length === 1 ? 'Client' : 'Clients'}
+                        </span>
+                    </div>
+
+                    {deleteError && (
+                        <div className="mb-4 bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-base text-red-200">
+                            {deleteError}
+                        </div>
+                    )}
+
+                    {/* Phase A: Action queue: clients waiting on admin attention */}
+                    {(() => {
+                        const nonAdmin = allClients.filter(c => !c.is_admin);
+                        const unread = nonAdmin.filter(c => c.last_message_at > c.admin_last_read_at);
+                        const stale = nonAdmin.filter(c => {
+                            const step = c.onboarding_step ?? 0;
+                            if (step >= 7 || step === 0) return false;
+                            const updated = c.updated_at ? new Date(c.updated_at) : new Date(c.created_at);
+                            const ageDays = (Date.now() - updated.getTime()) / 86400000;
+                            return ageDays > 7;
+                        });
+                        const overdueClients = [...new Set((overdueQueue || []).map((o) => o.client_id))];
+                        const total = unread.length + stale.length + overdueClients.length;
+                        if (total === 0 || adminLoading) return null;
+                        return (
+                            <div className="mb-6 bg-gradient-to-br from-purple-500/10 to-blue-500/10 border border-purple-500/20 rounded-2xl p-5 backdrop-blur-xl">
+                                <div className="flex items-center justify-between mb-3">
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-7 h-7 bg-purple-500/20 rounded-full flex items-center justify-center">
+                                            <i className="ph ph-bell text-purple-300 text-base"></i>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-sm uppercase tracking-widest text-purple-200">Needs your attention</h3>
+                                            <p className="text-base text-gray-400 mt-0.5">{total} item{total !== 1 ? 's' : ''} across {Math.max(unread.length, stale.length)} client{nonAdmin.length !== 1 ? 's' : ''}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                    {unread.length > 0 && (
+                                        <div className="bg-black/30 rounded-xl p-3">
+                                            <p className="text-sm uppercase tracking-widest text-blue-300 mb-2">Unread messages · {unread.length}</p>
+                                            <div className="space-y-1">
+                                                {unread.slice(0, 3).map(c => (
+                                                    <button key={c.id} onClick={() => openClientDetail(c)} className="block w-full text-left text-base text-gray-300 hover:text-white transition-colors">→ {c.company_name}</button>
+                                                ))}
+                                                {unread.length > 3 && <p className="text-sm text-gray-600">+ {unread.length - 3} more</p>}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {stale.length > 0 && (
+                                        <div className="bg-black/30 rounded-xl p-3">
+                                            <p className="text-sm uppercase tracking-widest text-yellow-300 mb-2">Stale &gt; 7 days · {stale.length}</p>
+                                            <div className="space-y-1">
+                                                {stale.slice(0, 3).map(c => (
+                                                    <button key={c.id} onClick={() => openClientDetail(c)} className="block w-full text-left text-base text-gray-300 hover:text-white transition-colors">→ {c.company_name} <span className="text-gray-600">· step {c.onboarding_step}</span></button>
+                                                ))}
+                                                {stale.length > 3 && <p className="text-sm text-gray-600">+ {stale.length - 3} more</p>}
+                                            </div>
+                                        </div>
+                                    )}
+                                    {overdueClients.length > 0 && (
+                                        <div className="bg-black/30 rounded-xl p-3 md:col-span-2">
+                                            <p className="text-sm uppercase tracking-widest text-red-300 mb-2">Overdue obligations · {overdueClients.length} client{overdueClients.length !== 1 ? 's' : ''}</p>
+                                            <div className="space-y-1">
+                                                {overdueClients.slice(0, 5).map((clientId) => {
+                                                    const c = nonAdmin.find((x) => x.id === clientId);
+                                                    const items = overdueQueue.filter((o) => o.client_id === clientId);
+                                                    const top = items[0];
+                                                    return (
+                                                        <button key={clientId} onClick={() => c && openClientDetail(c)} className="block w-full text-left text-base text-gray-300 hover:text-white transition-colors">
+                                                            → {c?.company_name || top?.company_name || 'Client'}
+                                                            <span className="text-gray-600"> · {items.length} due · {top?.title}</span>
+                                                        </button>
+                                                    );
+                                                })}
+                                                {overdueClients.length > 5 && <p className="text-sm text-gray-600">+ {overdueClients.length - 5} more</p>}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* Phase A: Filter bar */}
+                    {!adminLoading && (
+                        <div className="mb-4 flex flex-wrap items-center gap-3">
+                            <div className="flex-1 min-w-[200px] relative">
+                                <i className="ph ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-base"></i>
+                                <input
+                                    type="text"
+                                    value={adminSearch}
+                                    onChange={e => setAdminSearch(e.target.value)}
+                                    placeholder="Search company, founder, email…"
+                                    className="w-full bg-black/30 border border-white/10 rounded-lg pl-9 pr-3 py-2 text-base text-white placeholder:text-gray-600 focus:outline-none focus:border-purple-500/50 transition-all"
+                                />
+                            </div>
+                            <select value={adminPlanFilter} onChange={e => setAdminPlanFilter(e.target.value)} className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-base text-gray-300 focus:outline-none focus:border-purple-500/50">
+                                <option value="all">All plans</option>
+                                <option value="starter">Starter</option>
+                                <option value="growth">Growth</option>
+                                <option value="enterprise">Enterprise</option>
+                                <option value="past_due">Past Due</option>
+                            </select>
+                            <select value={adminLifecycleFilter} onChange={e => setAdminLifecycleFilter(e.target.value)} className="bg-black/30 border border-white/10 rounded-lg px-3 py-2 text-base text-gray-300 focus:outline-none focus:border-purple-500/50">
+                                <option value="all">All lifecycles</option>
+                                <option value="onboarding">Onboarding</option>
+                                <option value="active">Active</option>
+                                <option value="paused">Paused</option>
+                                <option value="churned">Churned</option>
+                                <option value="archived">Archived</option>
+                            </select>
+                        </div>
+                    )}
+
+                    <AdminFieldRegistryPanel supabase={supabase} />
+
+                    {adminLoading ? (
+                        <div className="space-y-3">
+                            {[1,2,3].map(i => <div key={i} className="w-full h-16 bg-white/5 rounded-xl animate-pulse" />)}
+                        </div>
+                    ) : (<div className="bg-white/5 border border-white/10 rounded-2xl backdrop-blur-xl overflow-hidden">
+                            {/* Desktop header, hidden on mobile */}
+                            <div className="hidden md:grid md:grid-cols-[minmax(180px,2fr)_minmax(120px,1.2fr)_90px_100px_110px_60px_minmax(140px,1.5fr)_90px_90px_80px] gap-0 px-6 py-3 border-b border-white/5">
+                                {['Company','Founder','Stage','Plan','Lifecycle','Credits','Progress','Joined','',''].map((h, i) => (
+                                    <span key={i} className="text-xs uppercase tracking-widest text-gray-500">{h}</span>
+                                ))}
+                            </div>
+                            {(() => {
+                                const q = adminSearch.trim().toLowerCase();
+                                const filtered = allClients.filter(c => !c.is_admin).filter(c => {
+                                    if (q && !((c.company_name || '').toLowerCase().includes(q) || (c.founder_name || '').toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q))) return false;
+                                    if (adminPlanFilter !== 'all' && (c.plan ?? 'starter') !== adminPlanFilter) return false;
+                                    if (adminLifecycleFilter !== 'all' && (c.lifecycle ?? 'onboarding') !== adminLifecycleFilter) return false;
+                                    return true;
+                                });
+                                if (filtered.length === 0) {
+                                    return <div className="px-6 py-12 text-center text-gray-600 text-base">{allClients.filter(c => !c.is_admin).length === 0 ? 'No clients yet.' : 'No clients match these filters.'}</div>;
+                                }
+                                return filtered.map((client, i) => {
+                                    const step = client.onboarding_step ?? 0;
+                                    const pct = Math.round((step / 11) * 100);
+                                    const joined = new Date(client.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+                                    const isComplete = step >= 11;
+                                    const isAdvancing = advancingId === client.id;
+                                    const hasUnread = client.last_message_at > client.admin_last_read_at;
+                                    const p = client.plan ?? 'starter';
+                                    const planColor = p === 'growth' ? 'text-green-300 border-green-500/30 bg-green-500/10' : p === 'enterprise' ? 'text-purple-200 border-purple-500/30 bg-purple-500/10' : p === 'past_due' ? 'text-red-300 border-red-500/30 bg-red-500/10' : 'text-gray-500 border-white/10 bg-white/5';
+                                    const lc = client.lifecycle ?? 'onboarding';
+                                    const lcColor = lc === 'active' ? 'text-green-300 bg-green-400/10' : lc === 'paused' ? 'text-yellow-300 bg-yellow-400/10' : lc === 'churned' ? 'text-red-300 bg-red-400/10' : lc === 'archived' ? 'text-gray-500 bg-white/5' : 'text-blue-300 bg-blue-400/10';
+                                    const planSelect = (
+                                        <select
+                                            value={p}
+                                            onClick={e => e.stopPropagation()}
+                                            onChange={e => { e.stopPropagation(); handleSetPlan(client.id, e.target.value); }}
+                                            className={`text-xs uppercase tracking-widest px-2 py-0.5 rounded-full border cursor-pointer focus:outline-none appearance-none whitespace-nowrap w-full max-w-[96px] ${planColor}`}
+                                            style={{colorScheme:'dark'}}
+                                        >
+                                            <option value="starter">Free</option>
+                                            <option value="growth">Growth</option>
+                                            <option value="enterprise">Enterprise</option>
+                                            <option value="past_due">Past Due</option>
+                                        </select>
+                                    );
+                                    const advanceBtn = (
+                                        <button
+                                            onClick={(e) => { e.stopPropagation(); handleAdvanceStep(client.id, step); }}
+                                            disabled={isComplete || isAdvancing}
+                                            className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest rounded-lg border transition-all disabled:opacity-20 disabled:cursor-not-allowed border-purple-500/30 text-purple-300 hover:bg-purple-500/10 hover:border-purple-400/50"
+                                        >{isAdvancing ? '…' : isComplete ? '✓' : 'Advance'}</button>
+                                    );
+                                    const deleteBtn = armedDeleteId === client.id ? (
+                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteUser(client.id); }} disabled={deletingId === client.id}
+                                            className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest rounded-lg border border-red-500/60 bg-red-500/20 text-red-200 hover:bg-red-500/30 transition-all disabled:opacity-40">
+                                            {deletingId === client.id ? '…' : 'Confirm'}
+                                        </button>
+                                    ) : (
+                                        <button onClick={(e) => { e.stopPropagation(); setArmedDeleteId(client.id); setDeleteError(''); }}
+                                            className="px-3 py-1.5 text-xs font-bold uppercase tracking-widest rounded-lg border border-white/10 text-gray-500 hover:border-red-500/40 hover:text-red-300 transition-all">
+                                            Delete
+                                        </button>
+                                    );
+
+                                    return (
+                                        <div key={client.id} className={`${i % 2 === 0 ? '' : 'bg-white/[0.02]'} hover:bg-white/5 transition-colors ${selectedClient?.id === client.id ? 'bg-purple-500/5 border-l-2 border-purple-500/50' : ''}`}>
+                                            {/* Desktop row */}
+                                            <div onClick={() => openClientDetail(client)} className="hidden md:grid md:grid-cols-[minmax(180px,2fr)_minmax(120px,1.2fr)_90px_100px_110px_60px_minmax(140px,1.5fr)_90px_90px_80px] gap-0 px-6 py-3 items-center cursor-pointer">
+                                                <div className="flex items-center gap-2 min-w-0 pr-3">
+                                                    {hasUnread && <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse flex-shrink-0"></div>}
+                                                    <div className="min-w-0">
+                                                        <p className="text-sm font-medium text-white truncate">{client.company_name}</p>
+                                                        <p className="text-xs text-gray-500 truncate">{client.email}</p>
+                                                    </div>
+                                                </div>
+                                                <span className="text-xs text-gray-300 truncate pr-2">{client.founder_name}</span>
+                                                <span className="text-xs uppercase tracking-widest text-purple-300 border border-purple-400/20 px-2 py-0.5 rounded-full whitespace-nowrap">{client.funding_stage || 'n/a'}</span>
+                                                {planSelect}
+                                                <span className={`text-xs uppercase tracking-widest px-2 py-0.5 rounded-full whitespace-nowrap ${lcColor}`}>{lc}</span>
+                                                <span className="text-xs text-gray-400">{client.daily_ai_credits}</span>
+                                                <div className="pr-3">
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <span className="text-xs text-gray-500 truncate pr-1">{isComplete ? 'Done' : stepLabels[step]}</span>
+                                                        <span className="text-xs text-gray-600 flex-shrink-0">{pct}%</span>
+                                                    </div>
+                                                    <div className="w-full h-0.5 bg-white/5 rounded-full overflow-hidden">
+                                                        <div className="h-full bg-gradient-to-r from-blue-400 to-purple-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+                                                    </div>
+                                                </div>
+                                                <span className="text-xs text-gray-500 whitespace-nowrap">{joined}</span>
+                                                <div className="flex items-center">{advanceBtn}</div>
+                                                <div className="flex items-center pl-2">{deleteBtn}</div>
+                                            </div>
+
+                                            {/* Mobile card */}
+                                            <div onClick={() => openClientDetail(client)} className="md:hidden px-4 py-4 cursor-pointer">
+                                                <div className="flex items-start justify-between gap-3 mb-3">
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center gap-2">
+                                                            {hasUnread && <div className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse flex-shrink-0"></div>}
+                                                            <p className="text-sm font-semibold text-white truncate">{client.company_name}</p>
+                                                        </div>
+                                                        <p className="text-xs text-gray-500 truncate mt-0.5">{client.founder_name} · {client.email}</p>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
+                                                        {planSelect}
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-wrap items-center gap-2 mb-3">
+                                                    <span className="text-xs uppercase tracking-widest text-purple-300 bg-purple-400/10 px-2 py-1 rounded-full">{client.funding_stage || 'n/a'}</span>
+                                                    <span className={`text-xs uppercase tracking-widest px-2 py-1 rounded-full ${lcColor}`}>{lc}</span>
+                                                    <span className="text-xs text-gray-500">{client.daily_ai_credits} credits</span>
+                                                    <span className="text-xs text-gray-500">{joined}</span>
+                                                </div>
+                                                <div className="mb-3">
+                                                    <div className="flex items-center justify-between mb-1">
+                                                        <span className="text-xs text-gray-500">{isComplete ? 'Complete' : stepLabels[step]}</span>
+                                                        <span className="text-xs text-gray-500">{pct}%</span>
+                                                    </div>
+                                                    <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
+                                                        <div className="h-full bg-gradient-to-r from-blue-400 to-purple-500 rounded-full transition-all duration-500" style={{ width: `${pct}%` }} />
+                                                    </div>
+                                                </div>
+                                                <div className="flex gap-2" onClick={e => e.stopPropagation()}>
+                                                    {advanceBtn}
+                                                    {deleteBtn}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                });
+                            })()}
+                        </div>
+                    )}
+
+                    {/* Client detail panel */}
+                    {selectedClient && (
+                        <div className="mt-8 bg-white/5 border border-white/10 rounded-2xl backdrop-blur-xl overflow-hidden animate-[fadeIn_0.3s_ease-out]">
+                            {/* Detail header */}
+                            <div className="px-6 py-4 bg-white/[0.03] border-b border-white/5 flex flex-wrap items-center gap-x-4 gap-y-2">
+                                <div className="flex items-center gap-3 mr-auto min-w-0">
+                                    <div className="min-w-0">
+                                        <p className="text-base font-semibold text-white truncate">{selectedClient.company_name || selectedClient.founder_name}</p>
+                                        <p className="text-xs text-gray-500 truncate">{selectedClient.email}</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-3 flex-wrap">
+                                    <div className="flex items-center gap-2">
+                                        <div className={`w-1.5 h-1.5 rounded-full ${selectedClient.share_ai_data ? 'bg-green-400' : 'bg-gray-600'}`}></div>
+                                        <span className={`text-xs uppercase tracking-widest ${selectedClient.share_ai_data ? 'text-green-400' : 'text-gray-500'}`}>
+                                            {selectedClient.share_ai_data ? 'AI Shared' : 'AI Private'}
+                                        </span>
+                                    </div>
+                                    <span className="text-xs text-gray-600 border border-white/10 rounded px-2 py-0.5">{selectedClient.daily_ai_credits} credits</span>
+                                    <button onClick={handleBoostCredits} className="px-3 py-1 bg-blue-500/10 border border-blue-500/30 rounded-lg text-xs font-bold uppercase tracking-widest text-blue-300 hover:bg-blue-500/20 transition-all">
+                                        Boost
+                                    </button>
+                                    <button onClick={() => setSelectedClient(null)} className="text-gray-500 hover:text-white transition-colors ml-1">
+                                        <i className="ph ph-x text-lg"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            {/* Detail data grid */}
+                            <div className="px-6 py-4 bg-white/[0.03] border-b border-white/5 grid grid-cols-2 md:grid-cols-4 gap-4">
+                                <div>
+                                    <p className="text-xs uppercase tracking-widest text-gray-500">Founder</p>
+                                    <p className="text-sm text-gray-300">{selectedClient.founder_name}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs uppercase tracking-widest text-gray-500">Jurisdiction</p>
+                                    <p className="text-sm text-gray-300">{selectedClient.jurisdiction || selectedClient.country || 'Not set'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs uppercase tracking-widest text-gray-500">Entity Type</p>
+                                    <p className="text-sm text-purple-300">{displayEntityType(selectedClient.entity_type) || 'Not set'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-xs uppercase tracking-widest text-gray-500">Funding Stage</p>
+                                    <p className="text-sm text-purple-300">{selectedClient.funding_stage || 'Not set'}</p>
+                                </div>
+                                <div className="md:col-span-2">
+                                    <p className="text-xs uppercase tracking-widest text-gray-500">Business Intent</p>
+                                    <p className="text-sm text-gray-300 leading-relaxed truncate" title={selectedClient.business_intent}>{selectedClient.business_intent || 'No intent provided'}</p>
+                                </div>
+                                <div className="md:col-span-2">
+                                    <p className="text-xs uppercase tracking-widest text-gray-500">Target Market</p>
+                                    <p className="text-sm text-gray-300">{selectedClient.sells_to || 'Not provided'}</p>
+                                </div>
+                            </div>
+
+                            {detailLoading ? (
+                                <div className="p-6 space-y-3">
+                                    {[1,2].map(i => <div key={i} className="w-full h-10 bg-white/5 rounded animate-pulse" />)}
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-0 divide-y md:divide-y-0 md:divide-x divide-white/5">
+                                    {/* Internal Notes */}
+                                    <div className="p-6 flex flex-col">
+                                        <div className="flex items-center justify-between mb-4">
+                                            <h4 className="text-sm uppercase tracking-widest text-gray-500">Internal Notes</h4>
+                                            {adminInternalNotes !== selectedClient.internal_notes && (
+                                                <button onClick={handleUpdateInternalNotes} disabled={savingNotes} className="text-sm uppercase tracking-widest text-blue-400 hover:text-blue-300">
+                                                    {savingNotes ? 'Saving…' : 'Save'}
+                                                </button>
+                                            )}
+                                        </div>
+                                        <textarea
+                                            value={adminInternalNotes}
+                                            onChange={e => setAdminInternalNotes(e.target.value)}
+                                            placeholder="Private admin notes (not visible to client)…"
+                                            className="flex-1 min-h-[120px] bg-black/20 border border-white/5 rounded-xl p-4 text-base text-gray-400 focus:outline-none focus:border-white/10 transition-all resize-none leading-relaxed"
+                                        />
+                                    </div>
+
+                                    {/* Documents */}
+                                    <div className="p-6 overflow-hidden">
+                                        <div className="flex flex-col gap-2 mb-4">
+                                            <div className="flex items-center justify-between">
+                                                <h4 className="text-sm uppercase tracking-widest text-gray-500">Documents</h4>
+                                                <label className="cursor-pointer text-xs uppercase tracking-widest text-purple-300 border border-purple-500/30 px-2.5 py-1 rounded-lg hover:bg-purple-500/10 transition-all flex-shrink-0">
+                                                    {uploadingDoc ? '…' : '+ Upload'}
+                                                    <input type="file" className="hidden" onChange={handleAdminUpload} disabled={uploadingDoc} />
+                                                </label>
+                                            </div>
+                                            <select
+                                                value={deliverableStep}
+                                                onChange={e => setDeliverableStep(e.target.value)}
+                                                className="w-full bg-black/60 border border-white/20 rounded-lg px-2 py-1.5 text-xs uppercase tracking-widest text-gray-200 focus:outline-none focus:border-purple-500/50 cursor-pointer"
+                                                style={{colorScheme:'dark'}}
+                                            >
+                                                <option value="">General</option>
+                                                {stepLabels.map((label, idx) => (
+                                                    <option key={idx} value={idx}>Step {idx + 1}: {label}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        {adminUploadError && (
+                                            <div className="flex items-center gap-2 p-3 mb-4 rounded-lg border border-red-500/30 bg-red-500/10 text-sm text-red-300">
+                                                <i className="ph ph-warning-circle text-base flex-shrink-0"></i>
+                                                <span className="flex-1">{adminUploadError}</span>
+                                                <button type="button" onClick={() => setAdminUploadError('')} className="text-red-400/70 hover:text-red-300 transition-colors">
+                                                    <i className="ph ph-x text-base"></i>
+                                                </button>
+                                            </div>
+                                        )}
+                                        {clientDocs.length === 0 ? (
+                                            <p className="text-base text-gray-600 italic">No documents yet.</p>
+                                        ) : (
+                                            <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                                                {clientDocs.map((doc, i) => (
+                                                    <div key={i} onClick={() => getSignedUrl(doc.path)} className="flex items-center gap-3 p-3 bg-white/5 rounded-lg hover:bg-white/10 cursor-pointer transition-all group">
+                                                        <i className="ph ph-file text-gray-400 group-hover:text-blue-400 transition-colors flex-shrink-0"></i>
+                                                        <div className="flex-1 min-w-0">
+                                                            <p className="text-base text-gray-300 truncate">{doc.name}</p>
+                                                            {doc.step_index !== null && (
+                                                                <p className="text-sm text-blue-400/60 uppercase tracking-widest mt-0.5">Deliverable: {stepLabels[doc.step_index]}</p>
+                                                            )}
+                                                        </div>
+                                                        <i className="ph ph-download-simple text-gray-600 group-hover:text-blue-400 transition-colors flex-shrink-0"></i>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Messages */}
+                                    <div className="p-6 flex flex-col min-h-0">
+                                        {/* Tab switcher */}
+                                        <div className="flex gap-1 border-b border-white/5 mb-4 pb-px overflow-x-auto scrollbar-hide">
+                                            {[
+                                                { id: 'team', label: 'Team', count: clientMessages.filter(m => msgThread(m) === 'team').length },
+                                                { id: 'ai', label: 'AI', count: clientMessages.filter(m => msgThread(m) === 'assistant' && m.share_with_admin !== false).length },
+                                            ].map(t => (
+                                                <button key={t.id} type="button" onClick={() => setAdminMsgTab(t.id)}
+                                                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs uppercase tracking-widest transition-all ${adminMsgTab === t.id ? 'text-purple-200 border-b-2 border-purple-400 -mb-px' : 'text-gray-500 hover:text-gray-300'}`}>
+                                                    {t.label}
+                                                    {t.count > 0 && <span className="text-xs text-gray-600">{t.count}</span>}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <div className="space-y-3 max-h-40 overflow-y-auto mb-4 pr-1 shrink-0">
+                                            {(() => {
+                                                const msgs = adminMsgTab === 'team'
+                                                    ? clientMessages.filter(m => msgThread(m) === 'team')
+                                                    : clientMessages.filter(m => msgThread(m) === 'assistant' && m.share_with_admin !== false);
+                                                if (msgs.length === 0) return <p className="text-sm text-gray-600 italic">{adminMsgTab === 'team' ? 'No team messages yet.' : 'No AI messages yet.'}</p>;
+                                                return msgs.map((msg, i) => (
+                                                    <div key={i} className={`flex ${msg.is_admin_message ? 'justify-end' : 'justify-start'}`}>
+                                                        <div className={`max-w-[85%] px-3 py-2 rounded-xl text-sm leading-relaxed ${msg.is_admin_message ? 'bg-purple-500/20 text-purple-100' : 'bg-white/5 text-gray-300'}`}>
+                                                            {msg.body}
+                                                            {msg.scheduled_at && !msg.sent_at && <span className="block text-xs text-blue-400/60 mt-1">Scheduled · {new Date(msg.scheduled_at).toLocaleDateString()}</span>}
+                                                        </div>
+                                                    </div>
+                                                ));
+                                            })()}
+                                        </div>
+                                        {adminMsgTab === 'team' && <>
+                                            <div className="flex flex-wrap items-center gap-2 mb-3" onClick={e => e.stopPropagation()}>
+                                                <button type="button" data-admin-msg-opt="schedule" onClick={() => setMsgScheduled(v => !v)}
+                                                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs uppercase tracking-widest transition-all ${msgScheduled ? 'border-blue-400/50 bg-blue-500/15 text-blue-200' : 'border-white/10 text-gray-500 hover:border-white/20 hover:text-gray-300'}`}>
+                                                    <i className={`ph ${msgScheduled ? 'ph-calendar-check' : 'ph-calendar'} text-sm`}></i>
+                                                    Schedule
+                                                </button>
+                                                <button type="button" data-admin-msg-opt="email" onClick={() => setMsgSendEmail(v => !v)}
+                                                    className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs uppercase tracking-widest transition-all ${msgSendEmail ? 'border-purple-400/50 bg-purple-500/15 text-purple-200' : 'border-white/10 text-gray-500 hover:border-white/20 hover:text-gray-300'}`}>
+                                                    <i className={`ph ${msgSendEmail ? 'ph-envelope-simple-open' : 'ph-envelope-simple'} text-sm`}></i>
+                                                    Also email
+                                                </button>
+                                            </div>
+                                            {msgScheduled && (
+                                                <input type="datetime-local" value={msgScheduleAt} onChange={e => setMsgScheduleAt(e.target.value)}
+                                                    className="w-full mb-3 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500/50" />
+                                            )}
+                                            {msgSendEmail && (
+                                                <input type="text" value={msgEmailSubject} onChange={e => setMsgEmailSubject(e.target.value)}
+                                                    placeholder="Email subject (optional)…"
+                                                    className="w-full mb-3 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-500/50" />
+                                            )}
+                                            <form onSubmit={handleAdminMessage} className="flex gap-2 mt-auto">
+                                                <input type="text" value={messageInput} onChange={e => setMessageInput(e.target.value)}
+                                                    placeholder="Send a note…"
+                                                    className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500/50 transition-all" />
+                                                <button type="submit" disabled={sendingMessage || !messageInput.trim()} className="px-4 py-2 bg-purple-500/20 border border-purple-500/30 rounded-lg text-xs font-bold uppercase tracking-widest text-purple-300 hover:bg-purple-500/30 transition-all disabled:opacity-40">
+                                                    {sendingMessage ? '…' : msgScheduled ? 'Queue' : 'Send'}
+                                                </button>
+                                            </form>
+                                        </>}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Phase A: Lifecycle + onboarding step controls */}
+                            <div className="px-6 py-4 border-t border-white/5 bg-white/[0.02] grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <p className="text-sm uppercase tracking-widest text-gray-500 mb-2">Lifecycle</p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                        {['onboarding','active','paused','churned','archived'].map(lc => {
+                                            const active = (selectedClient.lifecycle ?? 'onboarding') === lc;
+                                            return (
+                                                <button
+                                                    key={lc}
+                                                    onClick={() => handleLifecycleChange(selectedClient.id, lc)}
+                                                    disabled={updatingLifecycleId === selectedClient.id}
+                                                    className={`text-sm uppercase tracking-widest px-2.5 py-1 rounded-full border transition-all disabled:opacity-40 ${active ? 'bg-purple-500/20 border-purple-500/40 text-purple-200' : 'border-white/10 text-gray-500 hover:border-white/20 hover:text-gray-300'}`}
+                                                >
+                                                    {lc}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                                <div>
+                                    <p className="text-sm uppercase tracking-widest text-gray-500 mb-2">Onboarding Step</p>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={() => handleRollbackStep(selectedClient.id, selectedClient.onboarding_step ?? 0)}
+                                            disabled={(selectedClient.onboarding_step ?? 0) <= 0}
+                                            className="text-sm uppercase tracking-widest px-3 py-1.5 rounded-lg border border-white/10 text-gray-400 hover:border-yellow-500/40 hover:text-yellow-300 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                                            title="Roll back one step (e.g. if a filing was rejected)"
+                                        >
+                                            ← Rollback
+                                        </button>
+                                        <span className="text-base text-gray-400">Step {selectedClient.onboarding_step ?? 0} of 11 · {stepLabels[selectedClient.onboarding_step ?? 0] || 'Complete'}</span>
+                                    </div>
+                                    {advanceStepError && (
+                                        <p className="text-xs text-red-400 mt-2">{advanceStepError}</p>
+                                    )}
+                                </div>
+                            </div>
+
+                            {(selectedClient.onboarding_step ?? 0) >= 5 && (<div className="px-6 py-4 border-t border-white/5">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <p className="text-sm uppercase tracking-widest text-gray-500">Step 06, Compliance Artifacts</p>
+                                        <span className="text-xs uppercase tracking-widest text-purple-400/60 border border-purple-500/20 px-2 py-0.5 rounded-full">{clientComplianceArtifacts.length} rows</span>
+                                    </div>
+                                    {clientComplianceArtifacts.length === 0 ? (
+                                        <p className="text-sm text-gray-600 italic">No compliance artifacts yet.</p>) : (
+                                        <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                            {clientComplianceArtifacts.map((a) => (
+                                                <div key={a.id} className="flex items-center gap-3 py-2 px-3 bg-white/5 rounded-lg">
+                                                    <i className="ph ph-shield-check text-gray-500 flex-shrink-0"></i>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className="text-sm text-gray-300 truncate">{a.label}</p>
+                                                        <p className="text-xs text-gray-600 truncate">{a.kind}{a.hosted_url ? ` · ${a.hosted_url}` : ''}</p>
+                                                    </div>
+                                                    <span className={`text-xs uppercase tracking-widest border px-2 py-0.5 rounded-full flex-shrink-0 ${a.status === 'active' ? 'text-green-300 bg-green-400/10 border-green-400/20' : a.status === 'draft' ? 'text-yellow-300 bg-yellow-400/10 border-yellow-400/20' : 'text-gray-400 bg-white/5 border-white/10'}`}>{a.status}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                    <p className="text-xs text-gray-600 mt-3 italic">Upload deliverables to Step 6 (Privacy & Compliance) via Documents above.</p>
+                                </div>
+                            )}
+
+                            {/* Ticket #08: Recurring obligations (compliance_obligations). Not Step 06. */}
+                            <AdminObligationsPanel
+                                client={selectedClient}
+                                obligations={adminClientObligations}
+                                loading={adminObligationsLoading}
+                                onRefresh={async () => {
+                                    await refreshAdminClientObligations(selectedClient.id);
+                                    refreshOverdueQueue();
+                                }}
+                                supabase={supabase}
+                                session={session}
+                            />
+
+                            {/* Status Report */}
+                            <div className="px-6 py-5 border-t border-white/5">
+                                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                                    <div>
+                                        <p className="text-sm uppercase tracking-widest text-gray-500">Status Report</p>
+                                        <p className="text-xs text-gray-600 mt-0.5">AI-generated brief on this client. Saved per generation.</p>
+                                    </div>
+                                    <button
+                                        onClick={async () => {
+                                            if (!selectedClient || statusReportLoading) return;
+                                            setStatusReportLoading(true);
+                                            try {
+                                                const prompt = `You are an operations advisor at Onboardin, a business formation and automation platform. Generate a concise internal status report on the following client to help the admin understand their progress, blockers, and next best actions.\n\nClient: ${selectedClient.company_name || selectedClient.founder_name}\nFounder: ${selectedClient.founder_name}\nEmail: ${selectedClient.email}\nJurisdiction: ${selectedClient.jurisdiction || selectedClient.country || 'Not set'}\nEntity Type: ${selectedClient.entity_type || 'Not set'}\nFunding Stage: ${selectedClient.funding_stage || 'Not set'}\nBusiness Intent: ${selectedClient.business_intent || 'Not provided'}\nTarget Market: ${selectedClient.sells_to || 'Not provided'}\nPlan: ${selectedClient.plan || 'starter'}\nLifecycle: ${selectedClient.lifecycle || 'onboarding'}\nOnboarding Step: ${selectedClient.onboarding_step ?? 0} of 11\nAI Credits Remaining: ${selectedClient.daily_ai_credits}\nInternal Notes: ${selectedClient.internal_notes || 'None'}\n\nWrite a 3-5 sentence report covering: current status, what they have completed, any blockers or gaps, and what the admin should prioritize next. Be direct and specific. No fluff.`;
+                                                const res = await fetch('https://qatfiicpkunabpphwqee.supabase.co/functions/v1/agent-formation', {
+                                                    method: 'POST',
+                                                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}` },
+                                                    body: JSON.stringify({ question: prompt, clientId: selectedClient.id, mode: 'admin-report' }),
+                                                });
+                                                const data = await res.json();
+                                                const report = data.answer || data.error || 'No response.';
+                                                setStatusReportCache(prev => ({ ...prev, [selectedClient.id]: report }));
+                                                await supabase.from('admin_status_reports').insert({
+                                                    client_id: selectedClient.id,
+                                                    admin_id: session.user.id,
+                                                    report,
+                                                    created_at: new Date().toISOString(),
+                                                });
+                                            } catch (e) {
+                                                setStatusReport('Failed to generate report. Try again.');
+                                            }
+                                            setStatusReportLoading(false);
+                                        }}
+                                        disabled={statusReportLoading}
+                                        className="px-4 py-2 bg-purple-500/10 border border-purple-500/30 rounded-lg text-xs font-bold uppercase tracking-widest text-purple-300 hover:bg-purple-500/20 transition-all disabled:opacity-40 flex items-center gap-2"
+                                    >
+                                        {statusReportLoading ? <><span className="animate-spin inline-block w-3 h-3 border border-purple-400/40 border-t-purple-300 rounded-full"></span> Generating…</> : <><i className="ph ph-sparkle"></i> Generate Report</>}
+                                    </button>
+                                </div>
+                                {statusReportCache[selectedClient.id] && (
+                                    <div className="bg-purple-500/5 border border-purple-500/15 rounded-xl p-4 text-sm text-gray-300 leading-relaxed animate-[fadeIn_0.3s_ease-out]">
+                                        {statusReportCache[selectedClient.id]}
+                                    </div>
+                                )}
+                                {!statusReportCache[selectedClient.id] && !statusReportLoading && (
+                                    <p className="text-xs text-gray-600 italic">No report generated yet. Click Generate to create one.</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+        );
+    }
+
+    if (session) {
+        const memberSince = clientProfile?.created_at
+            ? new Date(clientProfile.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+            : null;
+
+        return (
+            <>
+            <div className="pt-32 px-4 sm:px-8 md:px-16 animate-[fadeIn_1s_ease-out] min-h-screen relative z-10 overflow-x-hidden">
+                <div className="max-w-3xl mx-auto space-y-4">
+                    <div className="flex justify-between items-center mb-8 min-w-0">
+                        <div className="min-w-0 overflow-hidden">
+                            {profileLoading ? (
+                                <div className="w-48 h-8 bg-white/5 rounded animate-pulse mb-2"></div>
+                            ) : (
+                                <h1 className="text-2xl md:text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-400 uppercase tracking-tighter leading-tight break-words">
+                                    {clientProfile?.company_name || 'Console'}
+                                </h1>
+                            )}
+                            <p className="text-xs md:text-base text-gray-500 uppercase tracking-widest mt-1 truncate">{session.user.email}</p>
+                        </div>
+                    </div>
+
+                    {/* Quick setup banner. Shown when jurisdiction/entity not yet set */}
+                    {!profileLoading && clientProfile && !clientProfile.jurisdiction && !clientProfile.entity_type && !showJurisdictionSetup && (
+                        <div className="mb-8 bg-gradient-to-r from-blue-500/10 to-purple-500/10 border border-purple-500/20 rounded-2xl p-5 flex items-center justify-between gap-4 animate-[fadeIn_0.4s_ease-out]">
+                            <div className="flex items-center gap-4">
+                                <div className="w-9 h-9 bg-purple-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+                                    <i className="ph ph-rocket-launch text-purple-300 text-lg"></i>
+                                </div>
+                                <div>
+                                    <p className="text-base font-bold text-white">Finish setting up your account</p>
+                                    <p className="text-sm text-gray-400 mt-0.5">Add your location, entity type, and domain to unlock your full onboarding plan.</p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => { setShowJurisdictionSetup(true); switchTab('vault'); }}
+                                className="flex-shrink-0 px-4 py-2 bg-purple-500/20 border border-purple-500/30 rounded-lg text-sm font-bold uppercase tracking-widest text-purple-200 hover:bg-purple-500/30 transition-all"
+                            >
+                                Quick Setup →
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Alert strip. Past_due or other urgent states */}
+                    {!profileLoading && !alertDismissed && clientProfile && canAccessComplianceCalendar(clientProfile).access && (() => {
+                        const enriched = clientObligations.map(enrichObligation);
+                        const overdueItems = enriched.filter((o) => o.effectiveStatus === 'overdue');
+                        if (overdueItems.length === 0) return null;
+                        const top = overdueItems[0];
+                        return (
+                            <div className="flex items-center gap-3 bg-red-500/6 border border-red-500/20 rounded-xl px-4 py-3 animate-[fadeIn_0.3s_ease-out] mb-4">
+                                <i className="ph ph-warning-circle text-red-400 text-xl flex-shrink-0"></i>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-semibold text-red-300">{top.title} overdue</p>
+                                    <p className="text-xs text-gray-500 mt-0.5 truncate">{top.penalty_note || top.description || 'Action required to stay in good standing.'}</p>
+                                </div>
+                                <button onClick={() => switchTab('compliance')} className="flex-shrink-0 px-3 py-1.5 bg-red-500/15 border border-red-500/30 rounded-lg text-xs font-bold uppercase tracking-widest text-red-300 hover:bg-red-500/25 transition-all">View</button>
+                                <button onClick={() => setAlertDismissed(true)} className="flex-shrink-0 text-gray-600 hover:text-gray-400 transition-colors ml-1"><i className="ph ph-x text-sm"></i></button>
+                            </div>
+                        );
+                    })()}
+
+                    {!profileLoading && !alertDismissed && clientProfile && (() => {
+                        const plan = clientProfile.plan ?? 'starter';
+                        if (plan === 'past_due') return (
+                            <div className="flex items-center gap-3 bg-red-500/6 border border-red-500/20 rounded-xl px-4 py-3 animate-[fadeIn_0.3s_ease-out]">
+                                <i className="ph ph-warning-circle text-red-400 text-xl flex-shrink-0"></i>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-semibold text-red-300">Payment failed</p>
+                                    <p className="text-xs text-gray-500 mt-0.5">Your last payment didn't go through. Update your payment method to restore full access.</p>
+                                </div>
+                                <button onClick={handleUpgrade} className="flex-shrink-0 px-3 py-1.5 bg-red-500/15 border border-red-500/30 rounded-lg text-xs font-bold uppercase tracking-widest text-red-300 hover:bg-red-500/25 transition-all">Fix now</button>
+                                <button onClick={() => setAlertDismissed(true)} className="flex-shrink-0 text-gray-600 hover:text-gray-400 transition-colors ml-1"><i className="ph ph-x text-sm"></i></button>
+                            </div>
+                        );
+                        return null;
+                    })()}
+
+                    {/* Tab nav */}
+                    {!profileLoading && (
+                        <div className="flex gap-1 mb-6 border-b border-white/5 overflow-x-auto pb-px scrollbar-hide">
+                            {(() => {
+                                const complianceBadge = canAccessComplianceCalendar(clientProfile)
+                                    ? obligationStats(clientObligations.map(enrichObligation)).overdue
+                                    : 0;
+                                return [
+                                { id: 'overview',  icon: 'ph-squares-four',   label: 'Overview' },
+                                { id: 'pipeline',  icon: 'ph-list-checks',    label: 'Pipeline' },
+                                { id: 'vault',     icon: 'ph-folder-open',    label: 'Vault' },
+                                { id: 'compliance', icon: 'ph-calendar-check', label: 'Compliance', badge: complianceBadge, badgeRed: complianceBadge > 0 },
+                                { id: 'messages',  icon: 'ph-chat-text',      label: 'Messages', badge: myMessages.filter(m => m.is_admin_message && !m.seen).length },
+                                { id: 'capital',   icon: 'ph-chart-line-up',  label: 'Capital' },
+                                { id: 'navigator', icon: 'ph-compass',          label: 'Navigator' },
+                            ];
+                            })().map(t => (
+                                <button
+                                    key={t.id}
+                                    onClick={() => switchTab(t.id)}
+                                    className={`relative flex items-center gap-1.5 px-3 md:px-4 py-2.5 text-xs md:text-sm uppercase tracking-widest whitespace-nowrap transition-all ${dashTab === t.id ? 'text-purple-200 border-b-2 border-purple-400 -mb-px' : 'text-gray-500 hover:text-gray-300'}`}
+                                >
+                                    <i className={`ph ${t.icon} text-base`}></i>
+                                    {t.label}
+                                    {t.badge > 0 && <span className={`ml-1 w-4 h-4 rounded-full text-sm flex items-center justify-center text-white font-bold ${t.badgeRed ? 'bg-red-500' : 'bg-blue-500'}`}>{t.badge}</span>}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Overview tab. Profile + progress */}
+                    {dashTab === 'overview' && <>
+                    {signatureReturnCat && (
+                        <div className="mb-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl">
+                            <div>
+                                <p className="text-sm text-gray-300">You were signing <span className="text-white font-medium">{signatureReturnCat.label}</span>.</p>
+                                <p className="text-xs text-gray-500 mt-0.5">
+                                    {hasMemberSignature ? 'Your signature is ready - continue in Vault.' : 'Upload your signature below, then continue.'}
+                                </p>
+                            </div>
+                            {hasMemberSignature && (
+                                <button
+                                    type="button"
+                                    onClick={continueVaultSigning}
+                                    className="flex-shrink-0 text-xs uppercase tracking-widest text-blue-300 border border-blue-500/30 px-3 py-2 rounded-lg hover:bg-blue-500/10 transition-all"
+                                >
+                                    Continue in Vault →
+                                </button>
+                            )}
+                        </div>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-[2fr_3fr] gap-4">
+                        <div className="space-y-4">
+                        {/* Client Profile card */}
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                            <h3 className="text-sm uppercase tracking-widest text-gray-500 mb-4">Client Profile</h3>
+                            {profileLoading ? (
+                                <div className="space-y-3">
+                                    <div className="w-full h-4 bg-white/5 rounded animate-pulse"></div>
+                                    <div className="w-3/4 h-4 bg-white/5 rounded animate-pulse"></div>
+                                    <div className="w-1/2 h-4 bg-white/5 rounded animate-pulse"></div>
+                                </div>
+                            ) : profileError || !clientProfile ? (
+                                <p className="text-base text-gray-500 italic">Profile data unavailable.</p>
+                            ) : (
+                                <div className="space-y-3">
+                                    {clientProfile.founder_name && (
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-sm uppercase tracking-widest text-gray-500">Founder</span>
+                                            <span className="text-base text-gray-200">{clientProfile.founder_name}</span>
+                                        </div>
+                                    )}
+                                    {clientProfile.funding_stage && (
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-sm uppercase tracking-widest text-gray-500">Stage</span>
+                                            <span className="text-sm uppercase tracking-widest text-purple-300 bg-purple-400/10 px-2 py-1 rounded-full">{clientProfile.funding_stage}</span>
+                                        </div>
+                                    )}
+                                    {clientProfile.status && (
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-sm uppercase tracking-widest text-gray-500">Status</span>
+                                            <span className="text-sm uppercase tracking-widest text-blue-300 bg-blue-400/10 px-2 py-1 rounded-full">{clientProfile.status}</span>
+                                        </div>
+                                    )}
+                                    {memberSince && (
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-sm uppercase tracking-widest text-gray-500">Member Since</span>
+                                            <span className="text-base text-gray-400">{memberSince}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+
+                        {clientProfile && !clientProfile.is_admin && (
+                            <SignatureSettings
+                                supabase={supabase}
+                                session={session}
+                                onUploadSuccess={() => {
+                                    refreshMemberSignature();
+                                }}
+                            />
+                        )}
+                        </div>
+
+                        {/* Onboarding Progress. Phased tabs with tier gating */}
+                        {(() => {
+                            const plan = clientProfile?.plan ?? 'starter';
+                            const isPaid = plan === 'growth' || plan === 'enterprise';
+                            const phases = [
+                                { id: 'foundation', label: 'Foundation' },
+                                { id: 'operations', label: 'Operations' },
+                                { id: 'infrastructure', label: 'Infrastructure' },
+                            ];
+                            const tabSteps = onboardingSteps.filter(s => s.phase === activePhaseTab);
+                            // index in the full array of the first step in this phase
+                            const phaseStartIdx = onboardingSteps.findIndex(s => s.phase === activePhaseTab);
+                            return (
+                                <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                                    <div className="flex items-center justify-between mb-4">
+                                        <h3 className="text-sm uppercase tracking-widest text-gray-500">Onboarding Progress</h3>
+                                        <span className="text-sm uppercase tracking-widest text-purple-300">{currentStep} / {onboardingSteps.length}</span>
+                                    </div>
+                                    <div className="w-full h-1 bg-white/5 rounded-full mb-5 overflow-hidden">
+                                        <div
+                                            className="h-full bg-gradient-to-r from-blue-400 to-purple-500 rounded-full transition-all duration-700"
+                                            style={{ width: `${(currentStep / onboardingSteps.length) * 100}%` }}
+                                        />
+                                    </div>
+                                    {/* Phase tabs */}
+                                    <div className="flex gap-1 mb-5 border-b border-white/5 overflow-x-auto scrollbar-hide">
+                                        {phases.map(p => {
+                                            const active = activePhaseTab === p.id;
+                                            const phaseSteps = onboardingSteps.filter(s => s.phase === p.id);
+                                            const phaseTier = phaseSteps[0]?.tier || 'starter';
+                                            const locked = phaseTier === 'growth' && !isPaid;
+                                            return (
+                                                <button
+                                                    key={p.id}
+                                                    onClick={() => setActivePhaseTab(p.id)}
+                                                    className={`relative flex items-center gap-1 px-3 py-2 text-xs uppercase tracking-widest whitespace-nowrap transition-all ${active ? 'text-purple-200 border-b-2 border-purple-400 -mb-px' : 'text-gray-500 hover:text-gray-300'}`}
+                                                >
+                                                    {p.label}
+                                                    {locked && <i className="ph ph-lock-simple text-xs text-gray-600"></i>}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    <div className="space-y-3">
+                                        {tabSteps.map((step, localIdx) => {
+                                            const i = phaseStartIdx + localIdx;
+                                            const done = i < currentStep;
+                                            const active = i === currentStep;
+                                            const locked = step.tier === 'growth' && !isPaid;
+                                            const stepDeliverable = myDocs.find(d => d.step_index === i);
+                                            return (
+                                                <div key={i} className="flex flex-col gap-1">
+                                                    <div className={`flex items-center gap-3 ${locked ? 'opacity-50' : ''}`}>
+                                                        {done ? (
+                                                            <i className="ph ph-check-circle text-green-400 text-base flex-shrink-0"></i>
+                                                        ) : active ? (
+                                                            <i className={`ph ${step.icon} text-purple-400 text-base flex-shrink-0`}></i>
+                                                        ) : locked ? (
+                                                            <i className="ph ph-lock-simple text-gray-700 text-base flex-shrink-0"></i>
+                                                        ) : (
+                                                            <i className="ph ph-circle text-gray-700 text-base flex-shrink-0"></i>
+                                                        )}
+                                                        <span className={`text-sm md:text-base min-w-0 ${done ? 'text-gray-200' : active ? 'text-purple-200' : locked ? 'text-gray-600' : 'text-gray-500'}`}>{step.label}</span>
+                                                        {active && !locked && <span className="ml-auto flex-shrink-0 text-xs uppercase tracking-widest text-purple-400 border border-purple-400/20 px-2 py-0.5 rounded-full">In Progress</span>}
+                                                        {locked && (
+                                                            <button onClick={handleUpgrade} className="ml-auto flex-shrink-0 text-xs uppercase tracking-widest text-gray-500 hover:text-purple-300 transition-colors">
+                                                                Unlock with Growth →
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                    {stepDeliverable && !locked && (
+                                                        <div onClick={() => getSignedUrl(stepDeliverable.path)} className="ml-7 flex items-center gap-2 py-1 px-2 bg-blue-500/10 border border-blue-500/20 rounded-lg cursor-pointer hover:bg-blue-500/20 transition-all group w-fit">
+                                                            <i className="ph ph-file-arrow-down text-blue-400 text-sm"></i>
+                                                            <span className="text-sm uppercase tracking-widest text-blue-300 group-hover:text-blue-200">Download Deliverable</span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                    <p className="text-sm text-gray-600 mt-5 italic">
+                                        {activePhaseTab === 'foundation' && 'We take you as far as we can without cost. Foundation steps are always on the house.'}
+                                        {activePhaseTab === 'operations' && !isPaid && 'Operations covers tax registration, business banking, IP templates, and privacy compliance. Unlock with Growth.'}
+                                        {activePhaseTab === 'operations' && isPaid && 'Tax, banking, IP, and privacy. Your specialist will work alongside the AI guide through each.'}
+                                        {activePhaseTab === 'infrastructure' && !isPaid && 'Infrastructure covers your landing page, repo, CRM, analytics, and first AI agent. Unlock with Growth.'}
+                                        {activePhaseTab === 'infrastructure' && isPaid && 'Your digital infrastructure. Built and configured to your business profile.'}
+                                    </p>
+                                    {activePhaseTab === 'operations' && currentStep >= 5 && (
+                                        <Step06Panel
+                                            locked={!isPaid}
+                                            onUpgrade={handleUpgrade}
+                                            blueprint={complianceBlueprint}
+                                            intake={complianceIntake}
+                                            setIntake={handleIntakeChange}
+                                            onIntakePromoted={handleIntakePromoted}
+                                            artifacts={complianceArtifacts}
+                                            docs={myDocs}
+                                            clientProfile={clientProfile}
+                                            supabase={supabase}
+                                            session={session}
+                                            onRefreshArtifacts={refreshComplianceArtifacts}
+                                            onRefreshDocs={() => supabase.from('documents').select('*').eq('client_id', session.user.id).order('created_at', { ascending: false }).then(({ data }) => setMyDocs(data || []))}
+                                            onCompleteStep={handleClientCompleteStep06}
+                                            completingStep={completingStep06}
+                                            stepError={step06Error}
+                                            currentStep={currentStep}
+                                            draftStatus={draftStatus}
+                                        />
+                                    )}
+                                </div>
+                            );
+                        })()}
+                    </div>
+                    </>}
+
+                    {/* Pipeline tab. Full 11-step onboarding detail */}
+                    {dashTab === 'pipeline' && (() => {
+                        const plan = clientProfile?.plan ?? 'starter';
+                        const isPaid = plan === 'growth' || plan === 'enterprise';
+                        const phases = [
+                            { id: 'foundation', label: 'Foundation' },
+                            { id: 'operations', label: 'Operations' },
+                            { id: 'infrastructure', label: 'Infrastructure' },
+                        ];
+                        return (
+                            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-sm uppercase tracking-widest text-gray-500">Onboarding Pipeline</h3>
+                                    <span className="text-sm uppercase tracking-widest text-purple-300">{currentStep} / {onboardingSteps.length}</span>
+                                </div>
+                                <div className="w-full h-1 bg-white/5 rounded-full mb-5 overflow-hidden">
+                                    <div className="h-full bg-gradient-to-r from-blue-400 to-purple-500 rounded-full transition-all duration-700" style={{ width: `${(currentStep / onboardingSteps.length) * 100}%` }} />
+                                </div>
+                                <div className="flex gap-1 mb-5 border-b border-white/5 overflow-x-auto scrollbar-hide">
+                                    {phases.map(p => {
+                                        const active = activePhaseTab === p.id;
+                                        const phaseSteps = onboardingSteps.filter(s => s.phase === p.id);
+                                        const locked = phaseSteps[0]?.tier === 'growth' && !isPaid;
+                                        return (
+                                            <button key={p.id} onClick={() => setActivePhaseTab(p.id)}
+                                                className={`relative flex items-center gap-1 px-3 py-2 text-xs uppercase tracking-widest whitespace-nowrap transition-all ${active ? 'text-purple-200 border-b-2 border-purple-400 -mb-px' : 'text-gray-500 hover:text-gray-300'}`}>
+                                                {p.label}
+                                                {locked && <i className="ph ph-lock-simple text-xs text-gray-600"></i>}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                                <div className="space-y-3">
+                                    {onboardingSteps.filter(s => s.phase === activePhaseTab).map((step, localIdx) => {
+                                        const phaseStartIdx = onboardingSteps.findIndex(s => s.phase === activePhaseTab);
+                                        const i = phaseStartIdx + localIdx;
+                                        const done = i < currentStep;
+                                        const active = i === currentStep;
+                                        const locked = step.tier === 'growth' && !isPaid;
+                                        const stepDeliverable = myDocs.find(d => d.step_index === i);
+                                        return (
+                                            <div key={i} className="flex flex-col gap-1">
+                                                <div className={`flex items-center gap-3 ${locked ? 'opacity-50' : ''}`}>
+                                                    {done ? <i className="ph ph-check-circle text-green-400 text-base flex-shrink-0"></i>
+                                                        : active ? <i className={`ph ${step.icon} text-purple-400 text-base flex-shrink-0`}></i>
+                                                        : locked ? <i className="ph ph-lock-simple text-gray-700 text-base flex-shrink-0"></i>
+                                                        : <i className="ph ph-circle text-gray-700 text-base flex-shrink-0"></i>}
+                                                    <span className={`text-base ${done ? 'text-gray-200' : active ? 'text-purple-200' : locked ? 'text-gray-600' : 'text-gray-500'}`}>{step.label}</span>
+                                                    {active && !locked && <span className="ml-auto text-sm uppercase tracking-widest text-purple-400 border border-purple-400/20 px-2 py-0.5 rounded-full">In Progress</span>}
+                                                    {locked && <button onClick={handleUpgrade} className="ml-auto text-sm uppercase tracking-widest text-gray-500 hover:text-purple-300 transition-colors">Unlock with Growth →</button>}
+                                                </div>
+                                                {stepDeliverable && !locked && (
+                                                    <div onClick={() => getSignedUrl(stepDeliverable.path)} className="ml-7 flex items-center gap-2 py-1 px-2 bg-blue-500/10 border border-blue-500/20 rounded-lg cursor-pointer hover:bg-blue-500/20 transition-all group w-fit">
+                                                        <i className="ph ph-file-arrow-down text-blue-400 text-sm"></i>
+                                                        <span className="text-sm uppercase tracking-widest text-blue-300 group-hover:text-blue-200">Download Deliverable</span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                {activePhaseTab === 'operations' && currentStep >= 5 && (
+                                    <Step06Panel
+                                        locked={!isPaid}
+                                        onUpgrade={handleUpgrade}
+                                        blueprint={complianceBlueprint}
+                                        intake={complianceIntake}
+                                        setIntake={handleIntakeChange}
+                                        onIntakePromoted={handleIntakePromoted}
+                                        artifacts={complianceArtifacts}
+                                        docs={myDocs}
+                                        clientProfile={clientProfile}
+                                        supabase={supabase}
+                                        session={session}
+                                        onRefreshArtifacts={refreshComplianceArtifacts}
+                                        onRefreshDocs={() => supabase.from('documents').select('*').eq('client_id', session.user.id).order('created_at', { ascending: false }).then(({ data }) => setMyDocs(data || []))}
+                                        onCompleteStep={handleClientCompleteStep06}
+                                        completingStep={completingStep06}
+                                        stepError={step06Error}
+                                        currentStep={currentStep}
+                                        draftStatus={draftStatus}
+                                    />
+                                )}
+                            </div>
+                        );
+                    })()}
+
+                    {/* Formation Assistant. Overview tab only */}
+                    {dashTab === 'overview' && <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+                            <div className="flex items-center gap-3">
+                                <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0">
+                                    <svg viewBox="0 0 73 85.4" className="w-7 h-7">
+                                        <path d="M36.9 8.7c-44.4.8-44.4 66.8 0 67.6 44.4-.8 44.4-66.8 0-67.6" fill="#b6499b"/>
+                                        <path d="M1.3 41c.2 13.9 6.6 23.6 15.5 29.2C-3.3 53.8 3.4 13.9 36.9 13.3c31.9.5 39.5 36.8 22.8 54.3 7-5.8 11.8-14.7 12-26.7C70.9-5.3 2.1-5.3 1.3 41" fill="#1b8dcd"/>
+                                        <path d="M36.9 23c-35.4.6-35.4 53.3 0 53.9 35.4-.6 35.4-53.3 0-53.9" fill="#fefefe"/>
+                                        <path d="M36.9 33.1c-22.2.4-22.2 33.4 0 33.7 22.2-.4 22.2-33.4 0-33.7" fill="#b6499b"/>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <h3 className="text-sm uppercase tracking-widest text-gray-500">Assistant</h3>
+                                    <p className="text-sm text-gray-600 mt-0.5">Bespoke advice for {clientProfile?.company_name}</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center justify-between sm:flex-col sm:items-end gap-1">
+                                <span className="text-xs uppercase tracking-widest text-gray-500">{clientProfile?.daily_ai_credits ?? 0} Credits remaining</span>
+                                <div className="flex items-center gap-2 cursor-pointer group" onClick={handleTogglePrivacy}>
+                                    <span className="text-xs uppercase tracking-widest text-gray-600 group-hover:text-gray-400 transition-colors">{clientProfile?.share_ai_data ? 'AI Data shared' : 'AI Data private'}</span>
+                                    <div className={`w-6 h-3 rounded-full relative transition-colors ${clientProfile?.share_ai_data ? 'bg-purple-500/40' : 'bg-white/10'}`}>
+                                        <div className={`absolute top-0.5 w-2 h-2 rounded-full transition-all ${clientProfile?.share_ai_data ? 'right-0.5 bg-purple-300' : 'left-0.5 bg-gray-500'}`} />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {agentAnswer && (
+                            <div className="mb-4 bg-purple-500/5 border border-purple-500/20 rounded-xl p-4 text-base text-gray-300 leading-relaxed animate-[fadeIn_0.4s_ease-out] relative"
+                                dangerouslySetInnerHTML={{ __html:
+                                    agentAnswer
+                                        .replace(/\*\*(.+?)\*\*/g, '<strong class="text-white font-semibold">$1</strong>')
+                                        .replace(/\*(.+?)\*/g, '<em>$1</em>')
+                                        .replace(/^- (.+)/gm, '<li class="ml-4 list-disc">$1</li>')
+                                        .replace(/\n/g, '<br/>')
+                                }}
+                            >
+                            </div>
+                        )}
+                        {agentError && (
+                            <p className="mb-3 text-sm uppercase tracking-widest text-red-400">{agentError}</p>
+                        )}
+
+                        {(() => {
+                            const allQ = blueprint?.starter_questions?.length ? blueprint.starter_questions : [
+                                'What entity type should I form?',
+                                'What are my first filing steps?',
+                                'Do I need a tax ID before opening a bank account?',
+                                'What documents do I need to collect first?',
+                            ];
+                            const unanswered = allQ.filter(q => !answeredQuestions.some(a => a.toLowerCase() === q.toLowerCase()));
+                            if (!unanswered.length) return null;
+                            return (
+                                <div className="flex flex-wrap gap-2 mb-4">
+                                    {unanswered.map(q => (
+                                        <button key={q} type="button"
+                                            onClick={() => setAgentQuestion(q)}
+                                            className="text-xs uppercase tracking-widest border border-white/10 text-gray-500 px-2.5 py-1.5 rounded-lg hover:border-purple-500/30 hover:text-purple-300 transition-all text-left">
+                                            {q}
+                                        </button>
+                                    ))}
+                                </div>
+                            );
+                        })()}
+
+                        <form onSubmit={handleAgentQuestion} className="flex gap-2">
+                            <input
+                                type="text"
+                                value={agentQuestion}
+                                onChange={e => setAgentQuestion(e.target.value)}
+                                placeholder="Ask a question..."
+                                className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-base text-white focus:outline-none focus:border-purple-500/50 transition-all"
+                                disabled={agentLoading}
+                            />
+                            <button type="submit" disabled={agentLoading || !agentQuestion.trim()}
+                                className="px-4 py-2 bg-purple-500/20 border border-purple-500/30 rounded-lg text-sm font-bold uppercase tracking-widest text-purple-300 hover:bg-purple-500/30 transition-all disabled:opacity-40">
+                                {agentLoading ? '…' : 'Ask'}
+                            </button>
+                        </form>
+                    </div>}
+
+                    {/* Vault tab. Documents */}
+                    {dashTab === 'vault' && <>{/* Documents: categorized by entity + jurisdiction */}
+                    {(() => {
+                        const hasJurisdiction = clientProfile?.jurisdiction || clientProfile?.entity_type;
+                        const entityType = clientProfile?.entity_type || 'LLC';
+                        const country = clientProfile?.country || 'United States';
+                        const jurisdiction = clientProfile?.jurisdiction || '';
+                        const baseCategories = getDocCategories(entityType, country, jurisdiction);
+                        // Layer in any AI-suggested doc categories the baseline doesn't already cover
+                        const baseIds = new Set(baseCategories.map(c => c.id));
+                        const aiExtras = buildBlueprintExtras(blueprint, country, entityType, jurisdiction, baseIds);
+                        const complianceExtras = ((clientProfile?.onboarding_step ?? 0) >= 5 && complianceBlueprint)
+                            ? getComplianceVaultCategories(complianceBlueprint).filter((c) => !baseIds.has(c.id))
+                            : [];
+                        const categories = [...baseCategories, ...aiExtras, ...complianceExtras];
+                        // Group uploaded docs by category tag
+                        const docsByCategory = {};
+                        myDocs.forEach(doc => {
+                            const cat = doc.category || 'other';
+                            if (!docsByCategory[cat]) docsByCategory[cat] = [];
+                            docsByCategory[cat].push(doc);
+                        });
+                        const allRequiredFilled = categories.filter(c => c.required).every(c => (docsByCategory[c.id] || []).length > 0);
+
+                        return (
+                            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <div>
+                                        <h3 className="text-sm uppercase tracking-widest text-gray-500">Documents</h3>
+                                        {hasJurisdiction && (
+                                            <p className="text-sm text-gray-600 mt-0.5">
+                                                {displayEntityType(entityType)} : {jurisdiction || country}
+                                                <button onClick={() => setShowJurisdictionSetup(true)} className="ml-2 text-purple-400 hover:text-purple-300 transition-colors">edit</button>
+                                            </p>
+                                        )}
+                                    </div>
+                                    {allRequiredFilled && (
+                                        <span className="text-sm uppercase tracking-widest text-green-300 bg-green-400/10 border border-green-400/20 px-2 py-1 rounded-full">Ready</span>
+                                    )}
+                                </div>
+
+                                {!hasMemberSignature && categories.some((c) => c.fillEnabled && isFillableTemplateUrl(c.templateUrl)) && (
+                                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 bg-purple-500/5 border border-purple-500/20 rounded-xl">
+                                        <p className="text-sm text-gray-400">
+                                            Upload your signature on Overview to use <span className="text-gray-300">Fill &amp; sign with my info</span> on legal templates.
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={() => goToSignatureSettings()}
+                                            className="flex-shrink-0 text-xs uppercase tracking-widest text-purple-300 border border-purple-500/30 px-3 py-2 rounded-lg hover:bg-purple-500/10 transition-all"
+                                        >
+                                            Set up signature →
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* COJ incorporation resume banner */}
+                                {isJamaicaProfile(country, jurisdiction) && normalizeEntityType(entityType) === 'Ltd' && (() => {
+                                    const cojDocs = myDocs.filter((d) => COJ_FORM_IDS.includes(d.category));
+                                    const hasDraftData = formationDraft && Object.values(formationDraft).some((v) => {
+                                        if (Array.isArray(v)) return v.some((item) => Object.values(item).some((s) => String(s || '').trim()));
+                                        return String(v || '').trim().length > 0;
+                                    });
+                                    const showBanner = cojDocs.length > 0 || hasDraftData;
+                                    if (!showBanner) return null;
+                                    const progress = resolvePacketProgress([], cojDocs);
+                                    return (
+                                        <div className="flex items-center justify-between gap-3 p-3 bg-purple-500/5 border border-purple-500/20 rounded-xl">
+                                            <p className="text-sm text-gray-400">
+                                                <span className="text-gray-300">{progress.saved}/{progress.total} COJ forms saved.</span> Continue your incorporation packet.
+                                            </p>
+                                            <button
+                                                type="button"
+                                                onClick={() => setShowCojPacket(true)}
+                                                className="flex-shrink-0 text-xs uppercase tracking-widest text-purple-300 border border-purple-500/30 px-3 py-2 rounded-lg hover:bg-purple-500/10 transition-all whitespace-nowrap"
+                                            >
+                                                Continue →
+                                            </button>
+                                        </div>
+                                    );
+                                })()}
+
+                                {/* Jurisdiction setup prompt */}
+                                {!hasJurisdiction && !showJurisdictionSetup && (
+                                    <div className="bg-blue-500/5 border border-blue-500/20 rounded-xl p-4 space-y-3">
+                                        <p className="text-base text-gray-300 leading-relaxed">Tell us where you're building and what kind of business. We'll show you exactly what documents you need.</p>
+                                        <button onClick={() => setShowJurisdictionSetup(true)} className="text-sm uppercase tracking-widest text-blue-300 border border-blue-500/30 px-3 py-2 rounded-lg hover:bg-blue-500/10 transition-all">Set Up →</button>
+                                    </div>
+                                )}
+
+                                {/* Inline jurisdiction setup form */}
+                                {showJurisdictionSetup && (
+                                    <form onSubmit={handleSaveJurisdiction} className="bg-black/30 border border-white/10 rounded-xl p-4 space-y-4 animate-[fadeIn_0.3s_ease-out]">
+                                        <div>
+                                            <label className="block text-sm uppercase tracking-widest text-gray-500 mb-1">Country / Region</label>
+                                            <select value={setupCountry} onChange={e => { setSetupCountry(e.target.value); setSetupJurisdiction(''); }} className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-base text-white focus:outline-none focus:border-purple-500/50 transition-all appearance-none">
+                                                {Object.keys(REGIONS).map(r => <option key={r} value={r}>{r}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm uppercase tracking-widest text-gray-500 mb-1">{setupCountry === 'United States' ? 'State' : setupCountry === 'Canada' ? 'Province' : 'Country'}</label>
+                                            <select value={setupJurisdiction} onChange={e => setSetupJurisdiction(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-base text-white focus:outline-none focus:border-purple-500/50 transition-all appearance-none">
+                                                <option value="">Select…</option>
+                                                {(REGIONS[setupCountry] || []).map(j => <option key={j} value={j}>{j}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm uppercase tracking-widest text-gray-500 mb-1">What are you building?</label>
+                                            <input type="text" value={setupIntent} onChange={e => setSetupIntent(e.target.value)} placeholder="e.g. SaaS platform for HR teams" className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-base text-white focus:outline-none focus:border-purple-500/50 transition-all" />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm uppercase tracking-widest text-gray-500 mb-1">Who do you sell to?</label>
+                                            <select value={setupSellsTo} onChange={e => setSetupSellsTo(e.target.value)} className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-base text-white focus:outline-none focus:border-purple-500/50 transition-all appearance-none">
+                                                <option value="">Select…</option>
+                                                <option value="b2b">Businesses (B2B)</option>
+                                                <option value="b2c">Consumers (B2C)</option>
+                                                <option value="b2b2c">Both (B2B2C)</option>
+                                                <option value="enterprise">Enterprise</option>
+                                                <option value="government">Government / Public sector</option>
+                                                <option value="nonprofit">Non-profits / NGOs</option>
+                                            </select>
+                                        </div>
+                                        {(() => {
+                                            const rec = recommendEntity(clientProfile?.funding_stage, setupIntent, setupSellsTo);
+                                            return (
+                                                <div>
+                                                    <label className="block text-sm uppercase tracking-widest text-gray-500 mb-1">Entity Type</label>
+                                                    {!setupEntityOverride ? (
+                                                        <div className="flex items-center justify-between bg-purple-500/10 border border-purple-500/20 rounded-lg px-3 py-2">
+                                                            <span className="text-base text-white">{displayEntityType(rec.entity)} <span className="text-sm text-purple-400 ml-1">recommended</span></span>
+                                                            <button type="button" onClick={() => setSetupEntityOverride(true)} className="text-sm uppercase tracking-widest text-gray-500 hover:text-purple-300 transition-colors">Change</button>
+                                                        </div>
+                                                    ) : (
+                                                        <select value={setupEntity} onChange={e => setSetupEntity(e.target.value)} required className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-base text-white focus:outline-none focus:border-purple-500/50 transition-all appearance-none">
+                                                            <option value="">Select…</option>
+                                                            {ENTITY_TYPE_OPTIONS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                                        </select>
+                                                    )}
+                                                </div>
+                                            );
+                                        })()}
+                                        <div className="flex gap-2 pt-1">
+                                            <button type="button" onClick={() => setShowJurisdictionSetup(false)} className="py-2 px-3 border border-white/10 rounded-lg text-sm uppercase tracking-widest text-gray-500 hover:text-white transition-all">Cancel</button>
+                                            <button type="submit" disabled={savingSetup} className="flex-1 py-2 bg-white/5 hover:bg-white/10 border border-white/20 rounded-lg text-sm font-bold uppercase tracking-widest transition-all disabled:opacity-40">{savingSetup ? 'Saving…' : 'Save'}</button>
+                                        </div>
+                                    </form>
+                                )}
+
+                                {vaultUploadError && (
+                                    <div className="flex items-center gap-2 p-3 mb-4 rounded-lg border border-red-500/30 bg-red-500/10 text-sm text-red-300">
+                                        <i className="ph ph-warning-circle text-base flex-shrink-0"></i>
+                                        <span className="flex-1">{vaultUploadError}</span>
+                                        <button type="button" onClick={() => setVaultUploadError('')} className="text-red-400/70 hover:text-red-300 transition-colors">
+                                            <i className="ph ph-x text-base"></i>
+                                        </button>
+                                    </div>
+                                )}
+
+                                {/* Document category columns */}
+                                {hasJurisdiction && (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {categories.map(cat => {
+                                            const catDocs = docsByCategory[cat.id] || [];
+                                            const hasDoc = catDocs.length > 0;
+                                            const isExpanded = expandedVaultCard === cat.id;
+                                            const canExpand = !hasDoc && (cat.guidance || cat.process);
+                                            const uploadInput = (
+                                                <VaultUploadButton
+                                                    disabled={clientUploading}
+                                                    onFile={async (file) => {
+                                                        if (!supabase) return;
+                                                        setVaultUploadError('');
+                                                        setClientUploading(true);
+                                                        const path = `${session.user.id}/${cat.id}/${Date.now()}-${file.name}`;
+                                                        const { error: uploadError } = await supabase.storage.from('client-documents').upload(path, file);
+                                                        if (uploadError) {
+                                                            setVaultUploadError(`Upload failed: ${uploadError.message}`);
+                                                        } else {
+                                                            const { error: dbError } = await supabase.from('documents').insert({ client_id: session.user.id, name: file.name, path, size: file.size, uploaded_by: session.user.id, category: cat.id });
+                                                            if (dbError) {
+                                                                setVaultUploadError(`Saved the file, but could not record it: ${dbError.message}`);
+                                                            } else {
+                                                                setMyDocs(prev => [{ name: file.name, path, size: file.size, category: cat.id, created_at: new Date().toISOString() }, ...prev]);
+                                                                setExpandedVaultCard(null);
+                                                            }
+                                                        }
+                                                        setClientUploading(false);
+                                                    }}
+                                                />
+                                            );
+                                            return (<div
+                                                    key={cat.id}
+                                                    className={`border rounded-xl p-4 space-y-3 transition-all ${hasDoc ? 'border-green-400/20 bg-green-400/5' : isExpanded ? 'border-purple-400/30 bg-purple-500/8' : cat.required ? 'border-purple-500/20 bg-purple-500/5' : 'border-white/5 bg-white/[0.02]'}`}
+                                                >
+                                                    {/* Header row, upload lives here, no expand trigger */}
+                                                    <div className="flex items-start justify-between gap-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <i className={`ph ${cat.icon} text-base ${hasDoc ? 'text-green-400' : isExpanded ? 'text-purple-300' : cat.required ? 'text-purple-400' : 'text-gray-500'}`}></i>
+                                                            <div>
+                                                                <p className="text-base font-bold text-white leading-tight">{cat.label}</p>
+                                                                {cat.required && !hasDoc && <span className="text-sm uppercase tracking-widest text-purple-400">Required</span>}
+                                                                {hasDoc && <span className="text-sm uppercase tracking-widest text-green-400">{catDocs.length} file{catDocs.length > 1 ? 's' : ''}</span>}
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-3 flex-shrink-0">
+                                                            {cat.templateUrl && (
+                                                                <a href={cat.templateUrl} target="_blank" rel="noopener noreferrer" className="text-blue-400/80 hover:text-blue-300 transition-colors" title="Download Template">
+                                                                    <i className="ph ph-file-arrow-down text-base"></i>
+                                                                </a>)}
+                                                            {uploadInput}
+                                                        </div>
+                                                    </div>
+                                                    {/* Card body */}
+                                                    <p className="text-sm text-gray-500 leading-relaxed">{cat.desc}</p>
+                                                    {cat.fillEnabled && isFillableTemplateUrl(cat.templateUrl) && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => { setVaultProcess(null); setVaultFillCat(cat); }}
+                                                            className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-blue-400 hover:text-blue-300 transition-colors"
+                                                        >
+                                                            <i className="ph ph-magic-wand text-xs"></i>
+                                                            Fill &amp; sign with my info
+                                                        </button>
+                                                    )}
+                                                    {cat.id === 'articles' && isJamaicaProfile(clientProfile?.country, clientProfile?.jurisdiction) && normalizeEntityType(clientProfile?.entity_type) === 'Ltd' && (() => {
+                                                        const cojDocs = myDocs.filter((d) => COJ_FORM_IDS.includes(d.category));
+                                                        const progress = resolvePacketProgress([], cojDocs);
+                                                        return (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setShowCojPacket(true)}
+                                                                className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-purple-400 hover:text-purple-300 transition-colors"
+                                                            >
+                                                                <i className="ph ph-folder-open text-xs"></i>
+                                                                {progress.saved > 0
+                                                                    ? `Continue formation packet (${progress.saved}/${progress.total} saved)`
+                                                                    : 'Continue formation packet'}
+                                                            </button>
+                                                        );
+                                                    })()}
+                                                    {!hasDoc && cat.process && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => { setVaultProcess(cat); setVaultProcessTrack(0); }}
+                                                            className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-purple-400 hover:text-purple-300 transition-colors"
+                                                        >
+                                                            <i className="ph ph-arrow-right text-xs"></i>
+                                                            How to get this
+                                                        </button>
+                                                    )}
+                                                    {hasDoc && (
+                                                        <div className="space-y-1.5">
+                                                            {catDocs.map((doc, i) => (
+                                                                <div key={i} onClick={() => openDocumentInApp(doc)} className="flex items-center gap-2 p-2 bg-black/20 rounded-lg hover:bg-black/40 cursor-pointer transition-all group">
+                                                                    <i className="ph ph-file text-gray-500 group-hover:text-blue-400 transition-colors flex-shrink-0 text-base"></i>
+                                                                    <span className="text-sm text-gray-400 truncate flex-1 group-hover:text-gray-200">{doc.name}</span>
+                                                                    <i className="ph ph-download-simple text-gray-600 group-hover:text-blue-400 transition-colors flex-shrink-0 text-base"></i>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
+
+                    {/* Document fill panel - preview + assistant fill for fillEnabled cards */}
+                    {showCojPacket && (
+                        <CojFormationPacketPanel
+                            clientProfile={clientProfile}
+                            supabase={supabase}
+                            session={session}
+                            onClose={() => setShowCojPacket(false)}
+                            onWorkingCopySaved={(doc) => {
+                                if (!doc?.path) return;
+                                setMyDocs((prev) => {
+                                    if (prev.some((d) => d.path === doc.path || d.id === doc.id)) return prev;
+                                    return [doc, ...prev];
+                                });
+                            }}
+                            onDocumentRemoved={(doc) => {
+                                if (!doc) return;
+                                setMyDocs((prev) => prev.filter((d) => d.id !== doc.id && d.path !== doc.path));
+                            }}
+                            onProfileHarvested={(entityProfile) => {
+                                if (!entityProfile) return;
+                                setClientProfile((prev) => (prev ? { ...prev, entity_profile: entityProfile } : prev));
+                            }}
+                            formationDraft={formationDraft}
+                            onDraftChange={handleFormationDraftChange}
+                            draftSaveStatus={formationDraftSaveStatus}
+                        />
+                    )}
+
+                    {vaultFillCat && (
+                        <LazyDocumentFillPanel
+                            cat={vaultFillCat}
+                            clientProfile={clientProfile}
+                            complianceIntake={complianceIntake}
+                            supabase={supabase}
+                            session={session}
+                            onClose={() => {
+                                setVaultFillCat(null);
+                                setSignatureReturnCat(null);
+                            }}
+                            onDocumentSigned={(doc) => {
+                                if (!doc?.path) return;
+                                setMyDocs((prev) => {
+                                    if (prev.some((d) => d.path === doc.path || d.id === doc.id)) return prev;
+                                    return [doc, ...prev];
+                                });
+                            }}
+                            onDocumentSaved={(doc) => {
+                                if (!doc?.path) return;
+                                setMyDocs((prev) => {
+                                    const without = prev.filter((d) => d.path !== doc.path && d.id !== doc.id);
+                                    return [doc, ...without];
+                                });
+                            }}
+                            onProfileHarvested={(entityProfile) => {
+                                if (!entityProfile) return;
+                                setClientProfile((prev) => (prev ? { ...prev, entity_profile: entityProfile } : prev));
+                            }}
+                            onSignatureUploaded={refreshMemberSignature}
+                            onGoToSignatureSettings={() => goToSignatureSettings(vaultFillCat)}
+                        />
+                    )}
+
+                    {vaultEditorContext && (
+                        <LazyDocumentEditor
+                            job={vaultEditorContext.job}
+                            template={vaultEditorContext.template}
+                            mode={vaultEditorContext.mode}
+                            clientProfile={clientProfile}
+                            supabase={supabase}
+                            session={session}
+                            onClose={() => setVaultEditorContext(null)}
+                            onUnfiled={() => {
+                                if (!vaultEditorContext?.job?.id) return;
+                                setVaultEditorContext((prev) => (
+                                    prev ? { ...prev, job: { ...prev.job, status: 'working_saved' } } : prev
+                                ));
+                            }}
+                            onSaved={(doc) => {
+                                if (!doc?.path) return;
+                                setMyDocs((prev) => {
+                                    const without = prev.filter((d) => d.path !== doc.path && d.id !== doc.id);
+                                    return [doc, ...without];
+                                });
+                            }}
+                            onGoToSignatureSettings={() => goToSignatureSettings(null)}
+                            onSignatureUploaded={refreshMemberSignature}
+                        />
+                    )}
+
+                    {/* Vault process panel. Full-screen overlay showing step-by-step doc process */}
+                    {vaultProcess && (() => {
+                        const cat = vaultProcess;
+                        const proc = cat.process;
+                        const tracks = proc.tracks || [];
+                        const track = tracks[vaultProcessTrack] || tracks[0];
+                        const uploadOnFile = async (file) => {
+                            if (!supabase) return;
+                            setVaultUploadError('');
+                            setClientUploading(true);
+                            const path = `${session.user.id}/${cat.id}/${Date.now()}-${file.name}`;
+                            const { error: uploadError } = await supabase.storage.from('client-documents').upload(path, file);
+                            if (uploadError) { setVaultUploadError(uploadError.message); }
+                            else {
+                                const { error: dbError } = await supabase.from('documents').insert({ client_id: session.user.id, name: file.name, path, size: file.size, uploaded_by: session.user.id, category: cat.id });
+                                if (!dbError) { setMyDocs(prev => [{ name: file.name, path, size: file.size, category: cat.id, created_at: new Date().toISOString() }, ...prev]); setVaultProcess(null); }
+                            }
+                            setClientUploading(false);
+                        };
+                        // Portal escapes the z-10 stacking contexts so the overlay covers the fixed nav
+                        return createPortal(
+                            <>
+                                {/* Backdrop */}
+                                <div className="fixed inset-0 z-[70] bg-[#03020a]/80 backdrop-blur-sm" onClick={() => setVaultProcess(null)} />
+                                {/* Panel */}
+                                <div className="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto py-16 px-4">
+                                    <div className="w-full max-w-lg bg-[#0e0c1a] border border-white/10 rounded-2xl shadow-2xl animate-[fadeIn_0.2s_ease-out]">
+                                        {/* Header */}
+                                        <div className="flex items-start justify-between p-6 border-b border-white/5">
+                                            <div>
+                                                <p className="text-xs uppercase tracking-widest text-gray-500 mb-1">{cat.label}</p>
+                                                <h2 className="text-lg font-bold text-white">{proc.title}</h2>
+                                            </div>
+                                            <button onClick={() => setVaultProcess(null)} className="text-gray-600 hover:text-gray-300 transition-colors mt-1">
+                                                <i className="ph ph-x text-lg"></i>
+                                            </button>
+                                        </div>
+                                        {/* Track selector */}
+                                        {tracks.length > 1 && (
+                                            <div className="px-6 pt-5">
+                                                <p className="text-xs uppercase tracking-widest text-gray-500 mb-3">{proc.pick || 'Choose your path:'}</p>
+                                                <div className="flex flex-col gap-2">
+                                                    {tracks.map((t, i) => (
+                                                        <button key={i} onClick={() => setVaultProcessTrack(i)}
+                                                            className={`flex items-center justify-between p-3 rounded-lg border text-left transition-all ${vaultProcessTrack === i ? 'border-purple-500/40 bg-purple-500/10' : 'border-white/5 bg-white/[0.02] hover:border-white/10'}`}>
+                                                            <div>
+                                                                <p className="text-sm font-semibold text-white">{t.label}</p>
+                                                                <p className="text-xs text-gray-500">{t.time} · {t.cost}</p>
+                                                            </div>
+                                                            {vaultProcessTrack === i && <i className="ph ph-check-circle text-purple-400 text-lg flex-shrink-0"></i>}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {/* Steps */}
+                                        <div className="p-6 space-y-3">
+                                            {tracks.length === 1 && (
+                                                <div className="flex items-center gap-3 mb-1">
+                                                    <span className="text-xs text-gray-500">{track.time}</span>
+                                                    <span className="text-gray-700">·</span>
+                                                    <span className="text-xs text-gray-500">{track.cost}</span>
+                                                </div>
+                                            )}
+                                            {track.steps.map((step, i) => {
+                                                const stepKey = `${cat.id}_${vaultProcessTrack}_${i}`;
+                                                const isDone = !!vaultStepsDone[stepKey];
+                                                const hasReminder = !!vaultReminderSent[stepKey];
+                                                const isReminderOpen = vaultReminderStep?.stepKey === stepKey;
+                                                return (
+                                                <div key={i} className={`flex gap-3 p-3 rounded-lg transition-all ${isDone ? 'bg-green-500/5 border border-green-500/10' : 'border border-transparent'}`}>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleVaultStepToggle(cat.id, vaultProcessTrack, i)}
+                                                        className={`flex-shrink-0 w-5 h-5 rounded-full border flex items-center justify-center mt-0.5 transition-all ${isDone ? 'bg-green-500/30 border-green-400/50' : 'bg-purple-500/20 border-purple-500/30 hover:bg-purple-500/30'}`}
+                                                    >
+                                                        {isDone
+                                                            ? <i className="ph ph-check text-green-400 text-[10px]"></i>
+                                                            : <span className="text-[10px] font-bold text-purple-300">{i + 1}</span>
+                                                        }
+                                                    </button>
+                                                    <div className="min-w-0 flex-1 space-y-1.5">
+                                                        <p className={`text-sm leading-relaxed ${isDone ? 'text-gray-500 line-through' : 'text-gray-300'}`}>{step.action}</p>
+                                                        <div className="flex flex-wrap gap-2">
+                                                            {step.url && !isDone && (
+                                                                <a href={step.url} target="_blank" rel="noopener noreferrer"
+                                                                    className="inline-flex items-center gap-1.5 text-xs text-purple-400 hover:text-purple-300 border border-purple-500/30 hover:border-purple-400/50 bg-purple-500/5 hover:bg-purple-500/10 px-3 py-1.5 rounded-lg transition-all">
+                                                                    <i className="ph ph-arrow-square-out text-xs"></i>
+                                                                    {step.cta || 'Open link'}
+                                                                </a>
+                                                            )}
+                                                            {step.portalUrl && !isDone && (
+                                                                <a href={step.portalUrl} target="_blank" rel="noopener noreferrer"
+                                                                    className="inline-flex items-center gap-1.5 text-xs text-gray-400 hover:text-gray-300 border border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-lg transition-all">
+                                                                    <i className="ph ph-globe text-xs"></i>
+                                                                    {step.portalCta || 'Open filing portal'}
+                                                                </a>
+                                                            )}
+                                                            {!isDone && !hasReminder && !isReminderOpen && (
+                                                                <button type="button"
+                                                                    onClick={() => setVaultReminderStep({ stepKey, stepText: step.action.slice(0, 80) })}
+                                                                    className="inline-flex items-center gap-1.5 text-xs text-gray-600 hover:text-gray-400 border border-white/5 hover:border-white/10 px-3 py-1.5 rounded-lg transition-all">
+                                                                    <i className="ph ph-bell text-xs"></i>
+                                                                    Remind me
+                                                                </button>
+                                                            )}
+                                                            {hasReminder && !isDone && (
+                                                                <span className="inline-flex items-center gap-1.5 text-xs text-blue-400 border border-blue-500/20 bg-blue-500/5 px-3 py-1.5 rounded-lg">
+                                                                    <i className="ph ph-bell-ringing text-xs"></i>
+                                                                    Reminder set for {vaultReminderSent[stepKey].days} day{vaultReminderSent[stepKey].days > 1 ? 's' : ''}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {isReminderOpen && (
+                                                            <div className="flex items-center gap-2 mt-1 animate-[fadeIn_0.15s_ease-out]">
+                                                                <span className="text-xs text-gray-500">Remind me in</span>
+                                                                {['1','3','7','14'].map(d => (
+                                                                    <button key={d} type="button"
+                                                                        onClick={() => setVaultReminderDays(d)}
+                                                                        className={`text-xs px-2 py-1 rounded-md border transition-all ${vaultReminderDays === d ? 'border-purple-500/50 bg-purple-500/20 text-purple-300' : 'border-white/10 text-gray-500 hover:border-white/20'}`}>
+                                                                        {d}d
+                                                                    </button>
+                                                                ))}
+                                                                <button type="button" disabled={vaultReminderSending}
+                                                                    onClick={() => handleVaultReminder(cat.id, vaultProcessTrack, i, vaultReminderStep.stepText, parseInt(vaultReminderDays))}
+                                                                    className="text-xs px-3 py-1 rounded-md bg-purple-500/20 border border-purple-500/30 text-purple-300 hover:bg-purple-500/30 transition-all disabled:opacity-40">
+                                                                    {vaultReminderSending ? '…' : 'Set'}
+                                                                </button>
+                                                                <button type="button" onClick={() => setVaultReminderStep(null)} className="text-gray-600 hover:text-gray-400">
+                                                                    <i className="ph ph-x text-xs"></i>
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                );
+                                            })}
+                                        </div>
+                                        {/* Upload */}
+                                        <div className="px-6 pb-6">
+                                            <p className="text-xs uppercase tracking-widest text-gray-600 mb-3">Once you have the document:</p>
+                                            <VaultUploadButton disabled={clientUploading} onFile={uploadOnFile} fullWidth />
+                                            {vaultUploadError && <p className="text-xs text-red-400 mt-2">{vaultUploadError}</p>}
+                                        </div>
+                                    </div>
+                                </div>
+                            </>,
+                            document.body,
+                        );
+                    })()}</>}
+
+                    {/* Compliance tab: Ticket #08 recurring obligations (not Step 06) */}
+                    {dashTab === 'compliance' && (
+                        <ComplianceCalendar
+                            clientProfile={clientProfile}
+                            obligations={clientObligations}
+                            loading={clientObligationsLoading}
+                            error={clientObligationsError}
+                            onRefresh={refreshClientObligations}
+                            supabase={supabase}
+                            session={session}
+                            onUpgrade={handleUpgrade}
+                        />
+                    )}
+
+                    {/* Messages tab */}
+                    {dashTab === 'messages' && (() => {
+                        const plan = clientProfile?.plan ?? 'starter';
+                        const isPaid = plan === 'growth' || plan === 'enterprise';
+                        const navigatorUnlocked = (clientProfile?.onboarding_step ?? 0) >= 11;
+                        const teamMessages = myMessages.filter(m => msgThread(m) === 'team' && (!m.is_admin_message || m.sent_at || !m.scheduled_at));
+                        const assistantMessages = myMessages.filter(m => msgThread(m) === 'assistant');
+                        return (
+                        <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                            {/* Sub-tab nav */}
+                            <div className="flex gap-1 border-b border-white/5 mb-5 pb-px overflow-x-auto scrollbar-hide">
+                                {/* Assistant first */}
+                                {[
+                                    { id: 'assistant', icon: 'ph-sparkle', label: 'Assistant', badge: assistantMessages.filter(m => m.is_admin_message && !m.seen).length },
+                                ].map(t => (
+                                    <button key={t.id} onClick={() => setMsgInbox(t.id)}
+                                        className={`relative flex items-center gap-1.5 px-3 py-2 text-xs uppercase tracking-widest whitespace-nowrap transition-all ${msgInbox === t.id ? 'text-purple-200 border-b-2 border-purple-400 -mb-px' : 'text-gray-500 hover:text-gray-300'}`}>
+                                        <i className={`ph ${t.icon} text-base`}></i>
+                                        {t.label}
+                                        {t.badge > 0 && <span className="ml-1 w-4 h-4 bg-blue-500 rounded-full text-xs flex items-center justify-center text-white font-bold">{t.badge}</span>}
+                                    </button>
+                                ))}
+                                {/* Onboardin tab. Greyed + disabled on free tier */}
+                                {(() => {
+                                    const badge = teamMessages.filter(m => m.is_admin_message && !m.seen).length;
+                                    const active = msgInbox === 'team';
+                                    return (
+                                        <button onClick={() => setMsgInbox('team')}
+                                            className={`relative flex items-center gap-0 px-3 py-2 whitespace-nowrap transition-all ${active ? 'text-purple-200 border-b-2 border-purple-400 -mb-px' : 'text-gray-500 hover:text-gray-300'}`}>
+                                            <svg viewBox="0 0 73 85.4" className="w-6 h-6 flex-shrink-0" style={{opacity: isPaid ? 1 : 0.25, marginBottom: '2px'}}>
+                                                <path d="M36.9 8.7c-44.4.8-44.4 66.8 0 67.6 44.4-.8 44.4-66.8 0-67.6" fill="#b6499b"/>
+                                                <path d="M1.3 41c.2 13.9 6.6 23.6 15.5 29.2C-3.3 53.8 3.4 13.9 36.9 13.3c31.9.5 39.5 36.8 22.8 54.3 7-5.8 11.8-14.7 12-26.7C70.9-5.3 2.1-5.3 1.3 41" fill="#1b8dcd"/>
+                                                <path d="M36.9 23c-35.4.6-35.4 53.3 0 53.9 35.4-.6 35.4-53.3 0-53.9" fill="#fefefe"/>
+                                                <path d="M36.9 33.1c-22.2.4-22.2 33.4 0 33.7 22.2-.4 22.2-33.4 0-33.7" fill="#b6499b"/>
+                                            </svg>
+                                            <span className="text-base tracking-widest" style={{fontWeight:400,letterSpacing:'0.08em',opacity: isPaid ? 1 : 0.25}}>nboardin</span>
+                                            {badge > 0 && <span className="ml-1 w-4 h-4 bg-blue-500 rounded-full text-xs flex items-center justify-center text-white font-bold">{badge}</span>}
+                                        </button>
+                                    );
+                                })()}
+                                {/* Navigator last */}
+                                {[
+                                    { id: 'navigator', icon: 'ph-compass', label: 'Navigator' },
+                                ].map(t => (
+                                    <button key={t.id} onClick={() => setMsgInbox(t.id)}
+                                        className={`relative flex items-center gap-1.5 px-3 py-2 text-xs uppercase tracking-widest whitespace-nowrap transition-all ${msgInbox === t.id ? 'text-purple-200 border-b-2 border-purple-400 -mb-px' : 'text-gray-500 hover:text-gray-300'}`}>
+                                        <i className={`ph ${t.icon} text-base`}></i>
+                                        {t.label}
+                                        {t.badge > 0 && <span className="ml-1 w-4 h-4 bg-blue-500 rounded-full text-xs flex items-center justify-center text-white font-bold">{t.badge}</span>}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {/* Team inbox */}
+                            {msgInbox === 'team' && (
+                                !isPaid ? (
+                                    <div className="flex flex-col items-center justify-center py-10 gap-3 text-center">
+                                        <svg viewBox="0 0 73 85.4" className="w-10 h-10 opacity-20">
+                                            <path d="M36.9 8.7c-44.4.8-44.4 66.8 0 67.6 44.4-.8 44.4-66.8 0-67.6" fill="#b6499b"/>
+                                            <path d="M1.3 41c.2 13.9 6.6 23.6 15.5 29.2C-3.3 53.8 3.4 13.9 36.9 13.3c31.9.5 39.5 36.8 22.8 54.3 7-5.8 11.8-14.7 12-26.7C70.9-5.3 2.1-5.3 1.3 41" fill="#1b8dcd"/>
+                                            <path d="M36.9 23c-35.4.6-35.4 53.3 0 53.9 35.4-.6 35.4-53.3 0-53.9" fill="#fefefe"/>
+                                            <path d="M36.9 33.1c-22.2.4-22.2 33.4 0 33.7 22.2-.4 22.2-33.4 0-33.7" fill="#b6499b"/>
+                                        </svg>
+                                        <p className="text-sm uppercase tracking-widest text-gray-600">Direct access to your Onboardin team unlocks on the Growth plan.</p>
+                                        <button onClick={handleUpgrade} className="mt-1 text-sm uppercase tracking-widest text-purple-300 border border-purple-500/30 px-3 py-2 rounded-lg hover:bg-purple-500/10 transition-all">
+                                            Upgrade to Growth →
+                                        </button>
+                                    </div>
+                                ) : <>
+                                <div className="space-y-3 max-h-64 overflow-y-auto mb-4 pr-1">
+                                    {myMessagesLoading && teamMessages.length === 0 ? (
+                                        <div className="w-full h-8 bg-white/5 rounded animate-pulse" />
+                                    ) : teamMessages.length === 0 ? (
+                                        <p className="text-base text-gray-600 italic">Your Onboardin team will message you here.</p>
+                                    ) : teamMessages.map((msg) => (
+                                        <div key={msg.id} className={`flex ${msg.is_admin_message ? 'justify-start' : 'justify-end'}`}>
+                                            <div className="max-w-[80%] flex flex-col gap-1">
+                                                <div className={`px-3 py-2 rounded-xl text-base leading-relaxed relative ${msg.scheduled_at && !msg.sent_at ? 'opacity-60 border border-dashed border-white/20' : ''} ${msg.is_admin_message ? 'bg-white/5 text-gray-300' : 'bg-purple-500/20 text-purple-100'}`}>
+                                                    {msg.scheduled_at && !msg.sent_at && <div className="absolute -top-1 -left-1 w-1.5 h-1.5 bg-blue-400 rounded-full" title="Scheduled"></div>}
+                                                    {msg.body}
+                                                </div>
+                                                <p className={`text-xs uppercase tracking-widest text-gray-600 ${msg.is_admin_message ? 'text-left' : 'text-right'}`}>
+                                                    {msg.scheduled_at && !msg.sent_at
+                                                        ? `Scheduled · ${new Date(msg.scheduled_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+                                                        : msg.is_admin_message ? 'Onboardin Team' : 'You'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <form onSubmit={handleClientMessage} className="flex gap-2">
+                                    <input type="text" value={clientMessageInput} onChange={e => setClientMessageInput(e.target.value)}
+                                        placeholder="Message your team…"
+                                        className="flex-1 bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-base text-white focus:outline-none focus:border-purple-500/50 transition-all" />
+                                    <button type="submit" disabled={sendingClientMessage || !clientMessageInput.trim()}
+                                        className="px-4 py-2 bg-purple-500/20 border border-purple-500/30 rounded-lg text-sm font-bold uppercase tracking-widest text-purple-300 hover:bg-purple-500/30 transition-all disabled:opacity-40">
+                                        {sendingClientMessage ? '…' : 'Send'}
+                                    </button>
+                                </form>
+                            </>)}
+
+                            {/* Assistant inbox */}
+                            {msgInbox === 'assistant' && <>
+                                <div className="space-y-3 max-h-64 overflow-y-auto mb-4 pr-1">
+                                    {myMessagesLoading && assistantMessages.length === 0 ? (
+                                        <div className="w-full h-8 bg-white/5 rounded animate-pulse" />
+                                    ) : assistantMessages.length === 0 ? (
+                                        <p className="text-base text-gray-600 italic">Messages from the AI assistant will appear here.</p>
+                                    ) : assistantMessages.map((msg) => (
+                                        <div key={msg.id} className={`flex ${msg.is_admin_message ? 'justify-start' : 'justify-end'}`}>
+                                            <div className="max-w-[80%] flex flex-col gap-1">
+                                                <div className={`px-3 py-2 rounded-xl text-base leading-relaxed relative ${msg.is_admin_message ? 'bg-white/5 text-gray-300' : 'bg-purple-500/20 text-purple-100'}`}>
+                                                    <div className="absolute -top-1 -right-1 w-1.5 h-1.5 bg-green-400 rounded-full" title="AI Assistant"></div>
+                                                    {msg.body}
+                                                </div>
+                                                <p className={`text-xs uppercase tracking-widest text-gray-600 ${msg.is_admin_message ? 'text-left' : 'text-right'}`}>
+                                                    {msg.is_admin_message ? 'AI Assistant' : 'You'}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </>}
+
+                            {/* Navigator inbox */}
+                            {msgInbox === 'navigator' && (
+                                navigatorUnlocked ? (
+                                    <div className="space-y-3">
+                                        <p className="text-base text-gray-400 leading-relaxed">Navigator routes you to vetted partners, capital sources, and channels matched to your profile once all onboarding steps are complete.</p>
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center py-10 gap-3 text-center">
+                                        <i className="ph ph-compass text-4xl text-gray-700"></i>
+                                        <p className="text-sm uppercase tracking-widest text-gray-600">Navigator unlocks when all 11 pipeline steps are complete.</p>
+                                        <p className="text-sm text-gray-600">You are on step {clientProfile?.onboarding_step ?? 0} of 11.</p>
+                                    </div>
+                                )
+                            )}
+                        </div>
+                        );
+                    })()}
+
+                    {/* Capital tab */}
+                    {dashTab === 'capital' && (() => {
+                        const plan = clientProfile?.plan ?? 'starter';
+                        const isPaid = plan === 'growth' || plan === 'enterprise';
+
+                        /*--- scaf ---*/
+                        // Readiness score : deterministic checks, each missing = -20
+                        const checks = [
+                            { label: 'Entity formed', pass: (clientProfile?.onboarding_step ?? 0) >= 2 },
+                            { label: 'Jurisdiction confirmed', pass: !!clientProfile?.jurisdiction },
+                            { label: 'Entity type set', pass: !!clientProfile?.entity_type },
+                            { label: 'Funding stage set', pass: !!clientProfile?.funding_stage },
+                            { label: 'Founder docs uploaded', pass: myDocs.some(d => d.category === 'founder_docs') },
+                        ];
+                        const passed = checks.filter(c => c.pass).length;
+                        const score = Math.round((passed / checks.length) * 100);
+                        const status = score >= 80 ? 'Ready' : score >= 60 ? 'Almost there' : 'Not ready';
+                        const statusColor = score >= 80 ? 'text-green-300 bg-green-400/10 border-green-400/20' : score >= 60 ? 'text-yellow-300 bg-yellow-400/10 border-yellow-400/20' : 'text-gray-400 bg-white/5 border-white/10';
+
+                        if (!isPaid) {
+                            return (
+                                <div className="bg-gradient-to-br from-purple-500/5 to-blue-500/5 border border-purple-500/15 rounded-2xl p-6 backdrop-blur-xl">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h3 className="text-sm uppercase tracking-widest text-gray-500">Capital Readiness</h3>
+                                        <span className="text-sm uppercase tracking-widest text-purple-300 bg-purple-400/10 border border-purple-400/20 px-2 py-1 rounded-full">Growth</span>
+                                    </div>
+                                    <p className="text-base text-gray-400 leading-relaxed mb-4">Diagnose whether your business is ready to approach capital, and request introductions to vetted financing partners. Available on the Growth plan.</p>
+                                    <button onClick={handleUpgrade} className="text-sm uppercase tracking-widest text-purple-300 border border-purple-500/30 px-3 py-2 rounded-lg hover:bg-purple-500/10 transition-all">
+                                        Upgrade to unlock →
+                                    </button>
+                                </div>
+                            );
+                        }
+
+                        return (
+                            <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl space-y-5">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm uppercase tracking-widest text-gray-500">Capital Readiness</h3>
+                                </div>
+                                {/* Readiness Score */}
+                                <div className="bg-black/30 border border-white/5 rounded-xl p-4 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div>
+                                            <p className="text-sm uppercase tracking-widest text-gray-500">Your Readiness Score</p>
+                                            <p className="text-3xl font-bold text-white mt-1">{score}<span className="text-base text-gray-500 font-normal">/100</span></p>
+                                        </div>
+                                        <span className={`text-sm uppercase tracking-widest border px-2 py-1 rounded-full ${statusColor}`}>{status}</span>
+                                    </div>
+                                    <div className="w-full h-1 bg-white/5 rounded-full overflow-hidden">
+                                        <div className={`h-full rounded-full transition-all duration-500 ${score >= 80 ? 'bg-green-400' : score >= 60 ? 'bg-yellow-400' : 'bg-gray-500'}`} style={{ width: `${score}%` }} />
+                                    </div>
+                                    <ul className="space-y-1.5 pt-1">
+                                        {checks.map((c, i) => (
+                                            <li key={i} className="flex items-center gap-2 text-base">
+                                                <i className={`ph ${c.pass ? 'ph-check-circle text-green-400' : 'ph-circle-dashed text-gray-600'} text-base flex-shrink-0`}></i>
+                                                <span className={c.pass ? 'text-gray-300' : 'text-gray-500'}>{c.label}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                                {/* Capital Partners. Empty state */}
+                                <div className="bg-black/30 border border-white/5 rounded-xl p-4">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <i className="ph ph-handshake text-purple-300 text-base"></i>
+                                        <p className="text-sm uppercase tracking-widest text-gray-500">Capital Partners</p>
+                                    </div>
+                                    {capitalRequestSent ? (
+                                        <div className="flex items-start gap-2 py-2">
+                                            <i className="ph ph-check-circle text-green-400 text-base flex-shrink-0 mt-0.5"></i>
+                                            <p className="text-base text-gray-300 leading-relaxed">Request received. Our team will review your profile and message you with matched capital sources within 1 to 2 business days.</p>
+                                        </div>
+                                    ) : (<>
+                                            <p className="text-base text-gray-400 leading-relaxed mb-3">No direct partners are live in your region yet. While we build out integrations, our team can do a manual capital-source intro on request, matched to your stage, country, and business model.</p>
+                                            <button
+                                                onClick={handleRequestCapitalIntro}
+                                                disabled={capitalRequesting || score < 60}
+                                                className="text-sm uppercase tracking-widest text-purple-300 border border-purple-500/30 px-3 py-2 rounded-lg hover:bg-purple-500/10 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                                                title={score < 60 ? 'Reach at least 60/100 readiness to request an intro' : 'Request a manual intro'}
+                                            >
+                                                {capitalRequesting ? 'Sending…' : 'Request capital intro'}
+                                            </button>
+                                        </>)}
+                                </div>
+                            </div>
+                        );
+                    })()}
+
+                    {/* Navigator tab */}
+                    {dashTab === 'navigator' && (() => {
+                        const plan = clientProfile?.plan ?? 'starter';
+                        const isPaid = plan === 'growth' || plan === 'enterprise';
+                        const matches = getPartnerMatches(clientProfile);
+
+                        const categories = [
+                            { id: 'banking',        label: 'Banking',        icon: 'ph-bank' },
+                            { id: 'accounting',     label: 'Accounting',     icon: 'ph-calculator' },
+                            { id: 'payments',       label: 'Payments',       icon: 'ph-credit-card' },
+                            { id: 'compliance',     label: 'Compliance',     icon: 'ph-shield-check' },
+                            { id: 'infrastructure', label: 'Infrastructure', icon: 'ph-globe' },
+                        ];
+
+                        return (
+                            <div className="space-y-6">
+                                {/* Header */}
+                                <div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                                    <div className="flex items-start justify-between gap-4">
+                                        <div>
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <i className="ph ph-compass text-blue-300 text-xl"></i>
+                                                <h3 className="text-sm uppercase tracking-widest text-gray-400">Lead Navigator</h3>
+                                            </div>
+                                            <p className="text-base text-gray-400 leading-relaxed max-w-lg">Partners matched to your jurisdiction, entity type, and stage. Every match includes a reason. No generic recommendations.</p>
+                                        </div>
+                                        {!isPaid && (
+                                            <span className="text-xs uppercase tracking-widest text-purple-300 bg-purple-400/10 border border-purple-400/20 px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0">Growth unlocks all</span>
+                                        )}
+                                    </div>
+                                    {clientProfile?.jurisdiction && (
+                                        <div className="flex flex-wrap gap-2 mt-4">
+                                            <span className="text-xs text-gray-500 border border-white/10 px-2 py-1 rounded-full">{clientProfile.jurisdiction}</span>
+                                            {clientProfile.entity_type && <span className="text-xs text-gray-500 border border-white/10 px-2 py-1 rounded-full">{displayEntityType(clientProfile.entity_type)}</span>}
+                                            {clientProfile.funding_stage && <span className="text-xs text-gray-500 border border-white/10 px-2 py-1 rounded-full">{clientProfile.funding_stage}</span>}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Partner categories */}
+                                {categories.map(cat => {
+                                    const catMatches = matches.filter(m => m.category === cat.id);
+                                    if (catMatches.length === 0) return null;
+                                    return (
+                                        <div key={cat.id}>
+                                            <div className="flex items-center gap-2 mb-3">
+                                                <i className={`ph ${cat.icon} text-gray-500 text-base`}></i>
+                                                <p className="text-xs uppercase tracking-widest text-gray-500">{cat.label}</p>
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                {catMatches.map((partner, idx) => {
+                                                    const isTopMatch = idx === 0;
+                                                    const isLocked = !isPaid && idx > 0;
+                                                    return (
+                                                        <div
+                                                            key={partner.slug}
+                                                            className={`relative bg-white/5 border rounded-2xl p-5 backdrop-blur-xl transition-all ${isTopMatch ? 'border-blue-400/25' : 'border-white/10'} ${isLocked ? 'opacity-60' : ''}`}
+                                                        >
+                                                            {isTopMatch && (
+                                                                <span className="absolute top-3 right-3 text-xs uppercase tracking-widest text-blue-300 bg-blue-400/10 border border-blue-400/20 px-2 py-0.5 rounded-full">Top match</span>
+                                                            )}
+                                                            {isLocked && (
+                                                                <span className="absolute top-3 right-3 text-xs uppercase tracking-widest text-purple-300 bg-purple-400/10 border border-purple-400/20 px-2 py-0.5 rounded-full">Growth</span>
+                                                            )}
+                                                            <div className="flex items-start gap-3 mb-3">
+                                                                <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: partner.color + '20', border: `1px solid ${partner.color}40` }}>
+                                                                    <i className={`ph ${partner.icon} text-base`} style={{ color: partner.color }}></i>
+                                                                </div>
+                                                                <div className="min-w-0">
+                                                                    <p className="text-base font-semibold text-white leading-tight">{partner.name}</p>
+                                                                    <p className="text-sm text-gray-500 mt-0.5 leading-snug">{partner.tagline}</p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="bg-black/20 border border-white/5 rounded-xl px-4 py-3 mb-4">
+                                                                <p className="text-sm text-gray-400 leading-relaxed">
+                                                                    <i className="ph ph-info text-blue-400 mr-1.5 text-sm"></i>
+                                                                    {partner.why}
+                                                                </p>
+                                                            </div>
+                                                            {isLocked ? (
+                                                                <button onClick={handleUpgrade} className="w-full py-2 text-xs uppercase tracking-widest text-purple-300 border border-purple-500/30 rounded-lg hover:bg-purple-500/10 transition-all">
+                                                                    Upgrade to unlock →
+                                                                </button>
+                                                            ) : (
+                                                                <a
+                                                                    href={partner.url}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="flex items-center justify-center gap-1.5 w-full py-2 text-xs uppercase tracking-widest text-blue-300 border border-blue-400/25 rounded-lg hover:bg-blue-400/10 transition-all"
+                                                                >
+                                                                    Visit {partner.name}
+                                                                    <i className="ph ph-arrow-up-right text-xs"></i>
+                                                                </a>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+
+                                {/* No matches state */}
+                                {matches.length === 0 && (
+                                    <div className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl text-center">
+                                        <i className="ph ph-compass text-gray-600 text-3xl mb-3 block"></i>
+                                        <p className="text-sm uppercase tracking-widest text-gray-500 mb-2">Set your jurisdiction first</p>
+                                        <p className="text-base text-gray-500">Complete your profile in Overview to see matched partners.</p>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
+
+                    {/* Billing. Overview tab only */}
+                    {dashTab === 'overview' && (() => {
+                        const plan = clientProfile?.plan ?? 'starter';
+                        const isPaid = plan === 'growth' || plan === 'enterprise';
+                        const isPastDue = plan === 'past_due';
+                        return (<div className="bg-white/5 border border-white/10 rounded-2xl p-6 backdrop-blur-xl">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h3 className="text-sm uppercase tracking-widest text-gray-500">Billing</h3>
+                                    {isPaid && <span className="text-sm uppercase tracking-widest text-green-300 bg-green-400/10 border border-green-400/20 px-2 py-1 rounded-full">Growth: Active</span>}
+                                    {isPastDue && <span className="text-sm uppercase tracking-widest text-red-300 bg-red-400/10 border border-red-400/20 px-2 py-1 rounded-full">Payment Failed</span>}
+                                    {!isPaid && !isPastDue && <span className="text-sm uppercase tracking-widest text-gray-400 bg-white/5 border border-white/10 px-2 py-1 rounded-full">Starter, Free</span>}
+                                </div>
+                                {isPaid ? (
+                                    <p className="text-base text-gray-400 leading-relaxed">You're on the Growth plan. Full access to all features and priority support.</p>) : isPastDue ? (
+                                    <div className="space-y-3">
+                                        <p className="text-base text-red-300 leading-relaxed">Your last payment failed. Update your payment method to restore access.</p>
+                                        <button onClick={handleUpgrade} className="w-full py-3 bg-red-500/10 border border-red-500/30 rounded-lg text-sm font-bold uppercase tracking-wider text-red-300 hover:bg-red-500/20 transition-all">
+                                            Update Payment Method
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-4">
+                                        <div>
+                                            <p className="text-base font-bold text-white mb-1">Growth <span className="text-gray-500 font-normal text-base">$49 / mo</span></p>
+                                            <ul className="space-y-1 text-base text-gray-400">
+                                                <li className="flex items-center gap-2"><i className="ph ph-check text-green-400 text-base"></i>State Compliance Automation</li>
+                                                <li className="flex items-center gap-2"><i className="ph ph-check text-green-400 text-base"></i>Full Integration Suite</li>
+                                                <li className="flex items-center gap-2"><i className="ph ph-check text-green-400 text-base"></i>3 AI Agents</li>
+                                                <li className="flex items-center gap-2"><i className="ph ph-check text-green-400 text-base"></i>Priority Support</li>
+                                            </ul>
+                                        </div>
+                                        <button onClick={handleUpgrade} className="w-full py-3 bg-gradient-to-r from-blue-500/20 to-purple-500/20 border border-purple-500/30 rounded-lg text-sm font-bold uppercase tracking-wider text-purple-200 hover:from-blue-500/30 hover:to-purple-500/30 hover:border-purple-400/50 transition-all">
+                                            Upgrade to Growth
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })()}
+                </div>
+            </div>
+            {showPricing && (
+                <Pricing
+                    visible={showPricing}
+                    onDismiss={() => setShowPricing(false)}
+                    onContact={() => setShowPricing(false)}
+                    onUpgrade={handleStripeCheckout}
+                    checkoutLoading={checkoutLoading}
+                />
+            )}
+            </>
+        );
+    }
+
+    return (
+        <div className="pt-32 px-8 md:px-16 animate-[fadeIn_1s_ease-out] flex flex-col items-center min-h-[60vh] relative z-10">
+            <div className="w-full max-w-md">
+                <div className="mb-10 text-center">
+                    <div className="mx-auto mb-3 flex min-h-[4.5rem] w-full max-w-[22ch] items-center justify-center">
+                        <h1 className="py-1 text-center text-5xl font-bold uppercase leading-tight tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-blue-300 to-purple-400">
+                            {loginHeadline}
+                        </h1>
+                    </div>
+                    <p className="text-base text-gray-400 uppercase tracking-widest opacity-70">Open your client dashboard</p>
+                </div>
+
+                <form onSubmit={handleSignIn} className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur-xl shadow-2xl">
+                    <div className="space-y-6">
+                        <div className="group">
+                            <label className="block text-sm uppercase tracking-widest text-gray-500 mb-2 group-hover:text-purple-400 transition-colors">Email</label>
+                            <input
+                                type="email"
+                                value={email}
+                                onChange={e => setEmail(e.target.value)}
+                                required
+                                className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-base text-white focus:outline-none focus:border-purple-500/50 focus:bg-black/60 transition-all"
+                                placeholder="you@example.com"
+                            />
+                        </div>
+                        <div className="group">
+                            <label className="block text-sm uppercase tracking-widest text-gray-500 mb-2 group-hover:text-purple-400 transition-colors">Password</label>
+                            <input
+                                type="password"
+                                value={password}
+                                onChange={e => setPassword(e.target.value)}
+                                required
+                                className="w-full bg-black/40 border border-white/10 rounded-lg px-4 py-3 text-base text-white focus:outline-none focus:border-purple-500/50 focus:bg-black/60 transition-all"
+                                placeholder="••••••••••••"
+                            />
+                        </div>
+                        {error && (
+                            <p className="text-red-400 text-sm uppercase tracking-widest">{error}</p>
+                        )}
+                        <button
+                            type="submit"
+                            disabled={loading}
+                            className="w-full py-4 mt-2 bg-white/5 hover:bg-white/10 border border-white/20 rounded-lg text-base font-bold uppercase tracking-wider transition-all hover:shadow-[0_0_15px_rgba(255,255,255,0.05)] disabled:opacity-40"
+                        >
+                            {loading ? 'Signing In...' : 'Sign In'}
+                        </button>
+                        <div className="text-center pt-2">
+                            <p
+                                className="text-sm uppercase tracking-wider text-gray-500 hover:text-purple-300 transition-colors cursor-pointer"
+                                onClick={() => setCurrentView('signup')}
+                            >
+                                Request Access
+                            </p>
+                        </div>
+                    </div>
+                </form>
+
+                <div className="mt-12 text-center">
+                    {!showReset ? (
+                        <p
+                            className="text-sm uppercase tracking-wider cursor-pointer opacity-30 hover:opacity-100 transition-opacity"
+                            onClick={() => { setShowReset(true); setResetStatus(null); }}
+                        >
+                            Recover Access Credentials
+                        </p>
+                    ) : (<form onSubmit={handleReset} className="bg-black/40 border border-white/10 rounded-lg p-4 text-left space-y-3">
+                            {resetStatus === 'sent' ? (
+                                <p className="text-sm uppercase tracking-widest text-green-400 text-center py-1">
+                                    Reset link sent, check your inbox.
+                                </p>) : (
+                                <>
+                                    <div className="group">
+                                        <label className="block text-sm uppercase tracking-widest text-gray-500 mb-1 group-focus-within:text-purple-400 transition-colors">Email</label>
+                                        <input
+                                            type="email"
+                                            value={resetEmail}
+                                            onChange={e => setResetEmail(e.target.value)}
+                                            required
+                                            className="w-full bg-black/40 border border-white/10 rounded-lg px-3 py-2 text-base text-white focus:outline-none focus:border-purple-500/50 focus:bg-black/60 transition-all"
+                                            placeholder="you@example.com"
+                                        />
+                                    </div>
+                                    {resetStatus && (
+                                        <p className="text-red-400 text-sm uppercase tracking-widest">{resetStatus}</p>
+                                    )}
+                                    <div className="flex items-center gap-2 pt-1">
+                                        <button
+                                            type="submit"
+                                            disabled={resetLoading}
+                                            className="flex-1 py-2 bg-white/5 hover:bg-white/10 border border-white/20 rounded-lg text-sm font-bold uppercase tracking-widest transition-all disabled:opacity-40"
+                                        >
+                                            {resetLoading ? 'Sending…' : 'Send Reset Link'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => { setShowReset(false); setResetStatus(null); setResetEmail(''); }}
+                                            className="py-2 px-3 border border-white/10 rounded-lg text-sm uppercase tracking-widest text-gray-500 hover:text-white hover:border-white/30 transition-all"
+                                        >
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </form>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default Dashboard;

@@ -11,7 +11,7 @@ import {
 import { parseFormationDraft, buildDraftPatch } from '../lib/formation-draft-persist.js';
 import { markFiledManual, unfileManual } from '../lib/filing-adapter.js';
 import { canOpenInAppEditor } from '../lib/pdf-field-map.js';
-import DocumentEditor from './DocumentEditor.jsx';
+import { LazyDocumentEditor } from '../lib/lazy-document-ui.jsx';
 import { applyCojAutofill } from '../lib/coj-prefill.js';
 import {
   reconcileCojJobAfterDocRemoval,
@@ -537,16 +537,21 @@ export default function CojFormationPacketPanel({
                           {isAutofilling ? 'Filling...' : formDocs.length > 0 ? 'Re-autofill from my info' : 'Autofill from my info'}
                         </button>
                         <p className="text-xs text-gray-600 leading-relaxed">
-                          Updates your private working copy in the vault (working-latest.pdf). Edits in the browser tab do not auto-save - use Save edited PDF to vault after changing the file locally.
+                          Updates your private working copy in the vault (working-latest.pdf).
+                          {editorAvailable && formDocs.length > 0
+                            ? ' Open and edit in Onboardin to change fields, then save to vault.'
+                            : ' Edits in the browser tab do not auto-save. Use Save edited PDF to vault after changing the file locally.'}
                         </p>
                       </div>
                     )}
 
                     {formDocs.length > 0 && (
                       <div className="space-y-1">
-                        <p className="text-xs text-gray-600">
-                          This is your vault working copy - not the public COJ template. Download, edit in Acrobat or similar, then <span className="text-gray-500">Save edited PDF to vault</span> to replace it in your account.
-                        </p>
+                        {!editorAvailable && (
+                          <p className="text-xs text-gray-600">
+                            This is your vault working copy, not the public COJ template. Download, edit in Acrobat or similar, then Save edited PDF to vault to replace it in your account.
+                          </p>
+                        )}
                         {formDocs.map((doc, i) => (
                           <div
                             key={doc.id || doc.path}
@@ -585,9 +590,9 @@ export default function CojFormationPacketPanel({
                         <button
                           type="button"
                           onClick={() => setEditorFormId(formDef.form_id)}
-                          className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-purple-400 hover:text-purple-300 transition-colors"
+                          className="flex items-center gap-1.5 px-4 py-2 bg-purple-600/20 hover:bg-purple-600/30 border border-purple-500/30 rounded-xl text-xs uppercase tracking-widest text-purple-200 transition-all"
                         >
-                          <i className="ph ph-pencil-simple text-xs"></i>
+                          <i className="ph ph-pencil-simple text-sm"></i>
                           Open &amp; edit in Onboardin
                         </button>
                       )}
@@ -604,6 +609,7 @@ export default function CojFormationPacketPanel({
                         </button>
                       )}
 
+                      {(!editorAvailable || formDocs.length === 0) && (
                       <label
                         className={`flex items-center gap-1.5 text-xs uppercase tracking-widest cursor-pointer transition-colors ${isUploading ? 'text-gray-600 pointer-events-none' : 'text-purple-400 hover:text-purple-300'}`}
                       >
@@ -622,6 +628,7 @@ export default function CojFormationPacketPanel({
                         <i className="ph ph-upload text-xs"></i>
                         {isUploading ? 'Saving...' : formDocs.length > 0 ? 'Save edited PDF to vault' : 'Upload working copy'}
                       </label>
+                      )}
 
                       {!isFiled && formDocs.length > 0 && (
                         <button
@@ -822,7 +829,7 @@ export default function CojFormationPacketPanel({
     )}
 
     {editorFormId && templatesByKind[editorFormId] && jobs[editorFormId] && (
-      <DocumentEditor
+      <LazyDocumentEditor
         job={jobs[editorFormId]}
         template={templatesByKind[editorFormId]}
         clientProfile={clientProfile}

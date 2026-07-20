@@ -335,6 +335,10 @@ serve(async (req) => {
     const isAdmin = profile?.is_admin ?? false;
     if (!isAdmin && job.client_id !== user.id) return json({ error: 'Forbidden' }, 403);
 
+    if (['signed', 'voided', 'pending_signatures'].includes(job.status)) {
+      return json({ error: 'Job is sealed and cannot be re-filled.' }, 409);
+    }
+
     // Load client profile for context
     const { data: clientProfile } = await supabase.from('clients').select('*').eq('id', job.client_id).single();
 
@@ -392,7 +396,8 @@ serve(async (req) => {
         admin_user_id: isAdmin ? user.id : null,
         updated_at: new Date().toISOString(),
       })
-      .eq('id', job_id);
+      .eq('id', job_id)
+      .not('status', 'in', '("signed","voided","pending_signatures")');
     if (updateErr) return json({ error: updateErr.message }, 500);
 
     return json({ job_id, field_values: fieldValues, credits_charged: creditsCharged });

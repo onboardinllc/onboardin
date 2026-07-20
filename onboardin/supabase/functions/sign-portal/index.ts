@@ -61,6 +61,24 @@ function assertEnvelopeSigPath(signerUserId: string, envelopeId: string, signerR
   return `${signerUserId}/envelope-signatures/${envelopeId}/${signerRowId}.png`;
 }
 
+function mergeSignerPlacement(
+  key: string,
+  raw: unknown,
+  storagePath: string,
+): Record<string, unknown> {
+  const base: Record<string, unknown> = { placed: true, path: storagePath };
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return base;
+  const val = raw as Record<string, unknown>;
+  if (typeof val.page === 'number' && Number.isFinite(val.page)) base.page = val.page;
+  if (typeof val.x === 'number' && Number.isFinite(val.x)) base.x = val.x;
+  if (typeof val.y === 'number' && Number.isFinite(val.y)) base.y = val.y;
+  if (typeof val.w === 'number' && Number.isFinite(val.w)) base.w = val.w;
+  if (typeof val.h === 'number' && Number.isFinite(val.h)) base.h = val.h;
+  if (typeof val.width === 'number' && Number.isFinite(val.width)) base.width = val.width;
+  if (typeof val.height === 'number' && Number.isFinite(val.height)) base.height = val.height;
+  return base;
+}
+
 async function resolveTokenAndSigner(supabase: ReturnType<typeof createClient>, rawToken: string) {
   const tokenHash = await sha256Hex(rawToken);
 
@@ -298,14 +316,14 @@ serve(async (req) => {
       const now = new Date().toISOString();
 
       const placements: Record<string, unknown> = {};
-      for (const key of (signer.field_keys ?? [])) {
-        placements[key] = { placed: true, path: storagePath };
-      }
+      const allowed = new Set(signer.field_keys ?? []);
       if (field_placements && typeof field_placements === 'object') {
-        const allowed = new Set(signer.field_keys ?? []);
         for (const [key, val] of Object.entries(field_placements)) {
-          if (allowed.has(key)) placements[key] = val;
+          if (allowed.has(key)) placements[key] = mergeSignerPlacement(key, val, storagePath);
         }
+      }
+      for (const key of allowed) {
+        if (!placements[key]) placements[key] = mergeSignerPlacement(key, null, storagePath);
       }
 
       const { error: updateErr } = await supabase
@@ -317,7 +335,8 @@ serve(async (req) => {
           signer_user_id: user.id,
           signed_at: now,
         })
-        .eq('id', signer.id);
+        .eq('id', signer.id)
+        .in('status', ['pending', 'opened']);
       if (updateErr) return json({ error: updateErr.message || 'Failed to save signature.' }, 500);
 
       // Initiator activation after signer row is signed - avoids pending envelope with unsigned initiator

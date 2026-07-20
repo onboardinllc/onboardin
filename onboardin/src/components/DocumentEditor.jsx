@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom';
 import { fetchTemplatePdfBytes, buildSignedPdf } from '../lib/document-sign-pdf';
 import { upsertWorkingCopy, workingCopyCanonicalPath } from '../lib/document-vault.js';
 import { unfileManual } from '../lib/filing-adapter.js';
+import { indexTemplateFields, fieldIndexToFieldMap } from '../lib/pdf-field-index.js';
+import { getPdfFillStrategy, hasAcroFieldMap } from '../lib/pdf-field-map.js';
+import { buildFilledPdf } from '../lib/pdf-fill.js';
 import {
   fetchActiveMemberSignature,
   signaturePreviewUrl,
@@ -69,15 +72,19 @@ export default function DocumentEditor({
   const sigFileRef = useRef(null);
 
   const fieldMap = template?.field_map || {};
+  const [overlayFieldMap, setOverlayFieldMap] = useState(null);
+  const effectiveFieldMap = overlayFieldMap || fieldMap;
+  const fillStrategy = useMemo(() => getPdfFillStrategy(effectiveFieldMap), [effectiveFieldMap]);
   const jobStatus = job?.status;
   const signedLock = jobStatus === 'signed';
   const filedLock = jobStatus === 'filed_pending';
   const genericMode = mode === 'generic';
   const readOnly = signedLock || filedLock || genericMode;
   const hasBounds = useMemo(
-    () => Object.values(fieldMap).some((d) => typeof d?.x === 'number' && typeof d?.y === 'number'),
-    [fieldMap],
+    () => Object.values(effectiveFieldMap).some((d) => typeof d?.x === 'number' && typeof d?.y === 'number'),
+    [effectiveFieldMap],
   );
+  const usesAcroSave = fillStrategy === 'acro';
 
   const markDirty = useCallback(() => {
     setDirty(true);
@@ -158,17 +165,41 @@ export default function DocumentEditor({
   }, []);
 
   useEffect(() => {
+    setOverlayFieldMap(null);
+  }, [template?.id, job?.id]);
+
+  useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
       setLoadError('');
       try {
-        if (!hasBounds && !genericMode) {
-          setLoadError('This document is not indexed for in-app editing yet. Download it instead.');
+        if (genericMode) {
+          const bytes = await loadDocumentBytes();
+          if (cancelled) return;
+          await renderPdf(bytes);
           return;
         }
         const bytes = await loadDocumentBytes();
         if (cancelled) return;
+
+        let mapForRender = fieldMap;
+        const hasCoordinateBounds = Object.values(fieldMap).some(
+          (d) => typeof d?.x === 'number' && typeof d?.y === 'number',
+        );
+        if (!hasCoordinateBounds && hasAcroFieldMap(fieldMap)) {
+          const indexed = await indexTemplateFields(bytes, fieldMap);
+          mapForRender = fieldIndexToFieldMap(indexed.fields);
+          if (!cancelled) setOverlayFieldMap(mapForRender);
+        }
+
+        const canEdit = Object.values(mapForRender).some(
+          (d) => typeof d?.x === 'number' && typeof d?.y === 'number',
+        );
+        if (!canEdit) {
+          setLoadError('This document is not indexed for in-app editing yet. Download it instead.');
+          return;
+        }
         await renderPdf(bytes);
       } catch (e) {
         if (!cancelled) setLoadError(e.message || 'Could not open this document.');
@@ -180,7 +211,7 @@ export default function DocumentEditor({
       cancelled = true;
       pdfDocRef.current?.destroy?.();
     };
-  }, [hasBounds, genericMode, loadDocumentBytes, renderPdf]);
+  }, [genericMode, fieldMap, loadDocumentBytes, renderPdf, template?.id, job?.id]);
 
   const handleUnfile = async () => {
     if (!job?.id || !supabase || unfiling) return;
@@ -239,24 +270,37 @@ export default function DocumentEditor({
       // Burn from the clean master template so values never double-print
       const templatePdfBytes = await fetchTemplatePdfBytes(template, supabase);
 
-      let signaturePngBytes = null;
-      const hasPlacedSignature = Object.values(placements).some((p) => p?.placed);
-      if (hasPlacedSignature && sigStoragePath) {
-        assertSignaturePathForUser(session.user.id, sigStoragePath);
-        const { data: sigBlob, error: sigErr } = await supabase.storage
-          .from('client-documents')
-          .download(sigStoragePath);
-        if (sigErr) throw new Error(sigErr.message || 'Could not load signature image.');
-        signaturePngBytes = new Uint8Array(await sigBlob.arrayBuffer());
-      }
+      let pdfBytes;
+      if (usesAcroSave) {
+        const filled = await buildFilledPdf({
+          templatePdfBytes,
+          fieldMap: effectiveFieldMap,
+          fieldValues,
+          formKind: template?.kind,
+          supabase,
+          template,
+        });
+        pdfBytes = filled.pdfBytes;
+      } else {
+        let signaturePngBytes = null;
+        const hasPlacedSignature = Object.values(placements).some((p) => p?.placed);
+        if (hasPlacedSignature && sigStoragePath) {
+          assertSignaturePathForUser(session.user.id, sigStoragePath);
+          const { data: sigBlob, error: sigErr } = await supabase.storage
+            .from('client-documents')
+            .download(sigStoragePath);
+          if (sigErr) throw new Error(sigErr.message || 'Could not load signature image.');
+          signaturePngBytes = new Uint8Array(await sigBlob.arrayBuffer());
+        }
 
-      const pdfBytes = await buildSignedPdf({
-        templatePdfBytes,
-        fieldMap,
-        fieldValues,
-        placements,
-        signaturePngBytes,
-      });
+        pdfBytes = await buildSignedPdf({
+          templatePdfBytes,
+          fieldMap: effectiveFieldMap,
+          fieldValues,
+          placements,
+          signaturePngBytes,
+        });
+      }
 
       const doc = await upsertWorkingCopy(supabase, {
         clientId: clientProfile.id,
@@ -274,7 +318,8 @@ export default function DocumentEditor({
           field_values: fieldValues,
           field_placements: placements,
           updated_at: now,
-        }).eq('id', job.id);
+        }).eq('id', job.id)
+          .not('status', 'in', '("signed","voided","pending_signatures")');
         if (jobErr) throw new Error(jobErr.message || 'Could not update document record.');
       }
 
@@ -298,10 +343,10 @@ export default function DocumentEditor({
   };
 
   const fieldsForPage = useCallback(
-    (pageIndex) => Object.entries(fieldMap).filter(
+    (pageIndex) => Object.entries(effectiveFieldMap).filter(
       ([, d]) => (d.page ?? 0) === pageIndex && typeof d.x === 'number' && typeof d.y === 'number',
     ),
-    [fieldMap],
+    [effectiveFieldMap],
   );
 
   return createPortal(

@@ -13,7 +13,8 @@
     "verify:autofill-browser": "node ../scaffolds/tickets/verify-autofill-browser.mjs",
     "verify:envelope": "node ../scaffolds/tickets/verify-envelope-security.mjs",
     "verify:sign-portal": "node ../scaffolds/tickets/verify-sign-portal.mjs",
-    "verify:envelope-browser": "node ../scaffolds/tickets/verify-envelope-browser.mjs"
+    "verify:envelope-browser": "node ../scaffolds/tickets/verify-envelope-browser.mjs",
+    "ci:verify": "node scripts/ci-verify.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.4",

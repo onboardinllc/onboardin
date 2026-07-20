@@ -94,7 +94,8 @@ export async function runDocumentAutofill({
     const { error: jobErr } = await supabase
       .from('document_jobs')
       .update(jobPatch)
-      .eq('id', jobId);
+      .eq('id', jobId)
+      .not('status', 'in', '("signed","voided","pending_signatures")');
     if (jobErr) throw new Error(`Job update failed: ${jobErr.message}`);
   }
 

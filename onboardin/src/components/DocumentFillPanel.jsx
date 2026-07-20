@@ -14,8 +14,10 @@ import {
   sendInvites,
   checkFinalize,
 } from '../lib/document-envelope';
-import DocumentSignOverlay from './DocumentSignOverlay';
-import DocumentEditor from './DocumentEditor';
+import {
+  LazyDocumentEditor,
+  LazyDocumentSignOverlay,
+} from '../lib/lazy-document-ui.jsx';
 import EnvelopeSignersPanel from './EnvelopeSignersPanel';
 import { runDocumentAutofill } from '../lib/autofill-service.js';
 import { canAutofillTemplate, hasCoordinateFieldMap } from '../lib/pdf-field-map.js';
@@ -819,7 +821,7 @@ export default function DocumentFillPanel({
       </div>
 
       {showEditor && currentJob && template && (
-        <DocumentEditor
+        <LazyDocumentEditor
           job={currentJob}
           template={template}
           clientProfile={clientProfile}
@@ -843,7 +845,7 @@ export default function DocumentFillPanel({
       )}
 
       {showSign && currentJob && template && (
-        <DocumentSignOverlay
+        <LazyDocumentSignOverlay
           job={currentJob}
           template={template}
           clientProfile={clientProfile}

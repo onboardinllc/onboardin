@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import SignatureCanvas from './SignatureCanvas';
+import { LazySignatureCanvas } from '../lib/lazy-document-ui.jsx';
 
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFhdGZpaWNwa3VuYWJwcGh3cWVlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODAzMzgyOTEsImV4cCI6MjA5NTkxNDI5MX0.00A9OEwex4Yeb4EXCy8vUtRXpCVPXmZDyXVHxl6XiVA';
 const EDGE_BASE = 'https://qatfiicpkunabpphwqee.supabase.co/functions/v1';
@@ -272,7 +272,7 @@ export default function SignPortal({ token }) {
               }).length > 0 && (
                 <div className="space-y-3">
                   <p className="text-xs uppercase tracking-widest text-gray-500">Your signature</p>
-                  <SignatureCanvas
+                  <LazySignatureCanvas
                     key={canvasKey.current}
                     compact
                     onExport={handleCanvasExport}

@@ -10,7 +10,7 @@ import {
   assertSignaturePathForUser,
   assertSignedDocumentPath,
 } from '../lib/member-signature';
-import SignatureCanvas from './SignatureCanvas';
+import { LazySignatureCanvas } from '../lib/lazy-document-ui.jsx';
 
 /**
  * DocumentSignOverlay - places signature PNG + date text onto a PDF using pdf-lib.
@@ -241,7 +241,7 @@ export default function DocumentSignOverlay({
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      <SignatureCanvas
+                      <LazySignatureCanvas
                         compact
                         disabled={uploading}
                         onExport={handleSignatureUpload}

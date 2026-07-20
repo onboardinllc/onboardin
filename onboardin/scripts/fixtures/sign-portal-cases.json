@@ -1,0 +1,17 @@
+{
+  "validate_token_garbage": {
+    "action": "validate_token",
+    "token": "not-a-real-invite-token-smoke",
+    "expect_http": 404
+  },
+  "email_mismatch": {
+    "session_email": "founder@example.com",
+    "signer_email": "other@example.com",
+    "expect": "error"
+  },
+  "email_match_insensitive": {
+    "session_email": "Founder@Example.com",
+    "signer_email": "founder@example.com",
+    "expect": "ok"
+  }
+}

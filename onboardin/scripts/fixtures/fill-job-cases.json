@@ -1,0 +1,19 @@
+{
+  "terminal_signed": {
+    "job": { "status": "signed", "field_values": { "name": "Acme" } },
+    "expect_client_update_blocked": true
+  },
+  "terminal_voided": {
+    "job": { "status": "voided" },
+    "expect_client_update_blocked": true
+  },
+  "editable_working_saved": {
+    "job": { "status": "working_saved", "field_values": {} },
+    "expect_client_update_blocked": false
+  },
+  "illegal_revert_to_filled": {
+    "from_status": "signed",
+    "to_status": "filled",
+    "expect_trigger_blocks": true
+  }
+}

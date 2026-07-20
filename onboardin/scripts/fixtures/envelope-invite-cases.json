@@ -1,0 +1,24 @@
+{
+  "valid_pending": {
+    "invite": { "expires_at": "2099-01-01T00:00:00.000Z", "revoked_at": null },
+    "signer": { "status": "pending", "is_initiator": false },
+    "envelope": { "status": "pending" },
+    "expect": "ok"
+  },
+  "revoked": {
+    "invite": { "expires_at": "2099-01-01T00:00:00.000Z", "revoked_at": "2026-01-01T00:00:00.000Z" },
+    "signer": { "status": "pending", "is_initiator": false },
+    "envelope": { "status": "pending" },
+    "expect": "error"
+  },
+  "expired": {
+    "invite": { "expires_at": "2020-01-01T00:00:00.000Z", "revoked_at": null },
+    "signer": { "status": "pending", "is_initiator": false },
+    "envelope": { "status": "pending" },
+    "expect": "error"
+  },
+  "uuid_guess_token": {
+    "token": "00000000-0000-4000-8000-000000000001",
+    "expect_live_status": 404
+  }
+}

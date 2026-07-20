@@ -5,7 +5,7 @@ import {
   uploadMemberSignaturePng,
   assertSignaturePathForUser,
 } from '../lib/member-signature';
-import SignatureCanvas from './SignatureCanvas';
+import { LazySignatureCanvas } from '../lib/lazy-document-ui.jsx';
 
 /**
  * Overview card - draw or upload member signature PNG.
@@ -139,7 +139,7 @@ export default function SignatureSettings({ supabase, session, onUploadSuccess }
         <div className="space-y-3">
           <ModeToggle current={inputMode} onChange={setInputMode} />
           {inputMode === 'draw' ? (
-            <SignatureCanvas
+            <LazySignatureCanvas
               onExport={handleCanvasExport}
               disabled={uploading}
               onCancel={previewUrl ? () => setShowCanvas(false) : undefined}
@@ -172,7 +172,7 @@ export default function SignatureSettings({ supabase, session, onUploadSuccess }
         <div className="space-y-3">
           <ModeToggle current={inputMode} onChange={setInputMode} />
           {inputMode === 'draw' ? (
-            <SignatureCanvas
+            <LazySignatureCanvas
               onExport={handleCanvasExport}
               disabled={uploading}
             />
